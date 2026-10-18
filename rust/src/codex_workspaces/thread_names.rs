@@ -319,9 +319,10 @@ fn database_titles(database: &Path, ids: &[&str]) -> Vec<(String, String)> {
     if conn.busy_timeout(BUSY_TIMEOUT).is_err() {
         return Vec::new();
     }
-    // Codex copies the whole first prompt into `threads.title`. Truncating in SQL
-    // keeps prompt-sized text out of memory; SQLite counts Unicode code points
-    // for TEXT, so `substr` never splits a character.
+    // Codex copies the whole first prompt into `threads.title`. SQLite still reads
+    // the full value, but truncating in SQL keeps the copy handed to Rust (and
+    // every label built from it) bounded. SQLite counts Unicode code points for
+    // TEXT, so `substr` never splits a character.
     let query = format!(
         "SELECT substr(title, 1, {DATABASE_TITLE_MAX_CHARS}) FROM threads WHERE id = ?1 LIMIT 1"
     );
