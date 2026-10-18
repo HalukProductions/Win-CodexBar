@@ -9,6 +9,7 @@
 
 ## [Windows] Unreleased
 
+- Settings: a `settings.json` that exists but can't be read or parsed (such as a DPAPI decrypt failure or a damaged file) is no longer replaced by the defaults on the next settings change. The app runs on temporary defaults, skips its one-shot settings migrations, and refuses to save until the file loads again, so saved API keys, cookies and accounts are kept. A missing file still starts fresh (upstream v0.76.0 #4509).
 - Usage cards: plan renewal dates now read "Plan renews" (in every locale) so they are not mistaken for quota resets (upstream v0.77.0 #4540).
 - Settings > Menu: offer a six-day (Monday–Saturday) work week for weekly pace and the session forecast, alongside 4, 5 and 7 days (upstream v0.77.0 #4548).
 - Qwen Cloud: treat a Team summary with an empty `Data` object as no Team subscription, so Individual-only accounts no longer show "Team usage unavailable" (upstream v0.77.0 #4527, fixes #4525).
