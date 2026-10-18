@@ -105,4 +105,5 @@ export const TEST_PROVIDER_CATALOG: Array<[string, string]> = [
   ["parallel", "Parallel"],
   ["fal", "fal"],
   ["flora", "FLORA"],
+  ["claudeplatform", "Claude Platform"],
 ];

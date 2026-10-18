@@ -10,6 +10,7 @@ use super::{
 };
 use crate::providers::AerostackProvider;
 use crate::providers::AtlasCloudProvider;
+use crate::providers::ClaudePlatformProvider;
 use crate::providers::ClawRouterProvider;
 use crate::providers::CosmicProvider;
 use crate::providers::ExaProvider;
@@ -159,6 +160,7 @@ pub fn instantiate(id: ProviderId) -> Box<dyn Provider> {
         ProviderId::Parallel => Box::new(ParallelProvider::new()),
         ProviderId::Fal => Box::new(FalProvider::new()),
         ProviderId::Flora => Box::new(FloraProvider::new()),
+        ProviderId::ClaudePlatform => Box::new(ClaudePlatformProvider::new()),
     }
 }
 
@@ -276,7 +278,8 @@ pub fn pace_capability(id: ProviderId) -> ProviderPaceCapability {
         | ProviderId::Aerostack
         | ProviderId::Parallel
         | ProviderId::Fal
-        | ProviderId::Flora => ProviderPaceCapability::UNSUPPORTED,
+        | ProviderId::Flora
+        | ProviderId::ClaudePlatform => ProviderPaceCapability::UNSUPPORTED,
     }
 }
 
@@ -394,7 +397,8 @@ pub fn limit_reset_policy(id: ProviderId) -> ProviderLimitResetPolicy {
         | ProviderId::Aerostack
         | ProviderId::Parallel
         | ProviderId::Fal
-        | ProviderId::Flora => ProviderLimitResetPolicy::DEFAULT,
+        | ProviderId::Flora
+        | ProviderId::ClaudePlatform => ProviderLimitResetPolicy::DEFAULT,
     }
 }
 
@@ -510,7 +514,8 @@ pub(crate) fn cost_cli_extension_for(id: ProviderId) -> Option<&'static dyn Cost
         | ProviderId::Aerostack
         | ProviderId::Parallel
         | ProviderId::Fal
-        | ProviderId::Flora => None,
+        | ProviderId::Flora
+        | ProviderId::ClaudePlatform => None,
     }
 }
 

@@ -430,3 +430,7 @@ Flora cli=flora display="FLORA" cookie=None color=#111111 deprecated=false block
   map=["flora"]
   metadata=ProviderMetadata { id: Flora, display_name: "FLORA", session_label: "Balance", weekly_label: "Balance", supports_opus: false, supports_credits: false, default_enabled: false, is_primary: false, dashboard_url: Some("https://app.flora.ai"), status_page_url: None, tertiary_label_key: None }
   sources=[Auto, OAuth] oauth=false web=false cli=false
+ClaudePlatform cli=claudeplatform display="Claude Platform" cookie=Some("platform.claude.com") color=#CC7C5E deprecated=false blocking=None
+  map=["claude-platform", "claudeplatform"]
+  metadata=ProviderMetadata { id: ClaudePlatform, display_name: "Claude Platform", session_label: "API credit", weekly_label: "Purchased credit", supports_opus: false, supports_credits: false, default_enabled: false, is_primary: false, dashboard_url: Some("https://platform.claude.com/settings/billing"), status_page_url: Some("https://status.claude.com/"), tertiary_label_key: None }
+  sources=[Auto, Web] oauth=false web=true cli=false
