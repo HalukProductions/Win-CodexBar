@@ -573,6 +573,25 @@ mod tests {
         }
 
         #[test]
+        fn six_work_days_counts_saturday_and_excludes_sunday() {
+            // Window Sat Jun 6 00:00 -> Sat Jun 13 00:00; Mon-Sat are work days.
+            let w = window(60.0, 10080, Some(utc(2026, 6, 13, 0)));
+            // Saturday noon: half of the first of six work days has elapsed.
+            let saturday = weekly_utc(&w, utc(2026, 6, 6, 12), Some(6)).unwrap();
+            assert!(close(
+                saturday.expected_used_percent,
+                100.0 * 0.5 / 6.0,
+                0.01
+            ));
+            // Sunday is not a work day, so the expected rate stays flat through it.
+            let sunday = weekly_utc(&w, utc(2026, 6, 7, 12), Some(6)).unwrap();
+            assert!(close(sunday.expected_used_percent, 100.0 / 6.0, 0.01));
+            // Five work days excludes Saturday, so nothing has elapsed by Sunday noon.
+            let five = weekly_utc(&w, utc(2026, 6, 7, 12), Some(5)).unwrap();
+            assert!(close(five.expected_used_percent, 0.0, 0.01));
+        }
+
+        #[test]
         fn zero_usage_becomes_safe_only_after_the_first_configured_workday_begins() {
             let la = chrono_tz::America::Los_Angeles;
             let resets_at = la

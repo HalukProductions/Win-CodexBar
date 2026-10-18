@@ -109,10 +109,12 @@ describe("MenuTab Usage section", () => {
     expect(set).toHaveBeenCalledWith({ showPace: true });
   });
 
-  it("offers Automatic, 4, 5 and 7 work days and saves null for Automatic", () => {
+  it("offers Automatic, 4, 5, 6 and 7 work days and saves null for Automatic", () => {
     const { set } = renderTab({ weeklyProgressWorkDays: 5 });
     expect(select("WorkDaysLabel").value).toBe("5");
-    expect(Array.from(select("WorkDaysLabel").options, (o) => o.value)).toEqual(["", "4", "5", "7"]);
+    expect(Array.from(select("WorkDaysLabel").options, (o) => o.value)).toEqual(["", "4", "5", "6", "7"]);
+    fireEvent.change(select("WorkDaysLabel"), { target: { value: "6" } });
+    expect(set).toHaveBeenCalledWith({ weeklyProgressWorkDays: 6 });
     fireEvent.change(select("WorkDaysLabel"), { target: { value: "7" } });
     expect(set).toHaveBeenCalledWith({ weeklyProgressWorkDays: 7 });
     fireEvent.change(select("WorkDaysLabel"), { target: { value: "" } });
@@ -122,7 +124,7 @@ describe("MenuTab Usage section", () => {
   it("keeps a saved work day count that is not a Mac preset selectable", () => {
     renderTab({ weeklyProgressWorkDays: 3 });
     expect(select("WorkDaysLabel").value).toBe("3");
-    expect(Array.from(select("WorkDaysLabel").options, (o) => o.value)).toEqual(["", "3", "4", "5", "7"]);
+    expect(Array.from(select("WorkDaysLabel").options, (o) => o.value)).toEqual(["", "3", "4", "5", "6", "7"]);
   });
 
   it("disables Workday tick appearance while Work days is Automatic", () => {

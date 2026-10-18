@@ -10,6 +10,7 @@
 ## [Windows] Unreleased
 
 - Usage cards: plan renewal dates now read "Plan renews" (in every locale) so they are not mistaken for quota resets (upstream v0.77.0 #4540).
+- Settings > Menu: offer a six-day (Monday–Saturday) work week for weekly pace and the session forecast, alongside 4, 5 and 7 days (upstream v0.77.0 #4548).
 - Qwen Cloud: treat a Team summary with an empty `Data` object as no Team subscription, so Individual-only accounts no longer show "Team usage unavailable" (upstream v0.77.0 #4527, fixes #4525).
 - Keep Claude usage working when reading Claude Code's credentials is off and Claude Code's login is missing or expired: use the one saved Claude account that was added through a fresh CodexBar sign-in and never installed into Claude Code, renewing its token only in CodexBar's own store. Accounts saved by older versions or copied from Claude Code are not used; add them again to qualify.
 - Browser cookies: automatic import reads browsers one at a time and stops at the first session the site accepts. Typesafe, HelmCode, Hyper, Claude (web), OpenCode Go (web), Zed, Notion, and Cursor now move on to the next browser when a signed-out or expired session is rejected, instead of failing on the first browser that had any cookies, and later browsers are not decrypted once a session works. Cookie source Off still never reads a browser (upstream v0.75.0).
