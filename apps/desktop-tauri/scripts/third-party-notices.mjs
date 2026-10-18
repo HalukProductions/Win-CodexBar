@@ -15,14 +15,24 @@
 //     production frontend dependencies; texts come from node_modules.
 //   NOTICE (repo root)
 //     vendored code that carries its own notice.
+//   license-templates/ (standard texts)
+//     a component that publishes no license file gets the canonical text of
+//     each SPDX id it names (see third-party-notices-lib.mjs).
 //
 // Exit codes: 0 ok, 1 stale (--check), 2 collection failed.
 
-import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { execFileSync, execSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  buildDocument,
+  finalizeComponents,
+  mergeComponent,
+  normalizeText,
+  standardNotices,
+  textIdOf,
+} from "./third-party-notices-lib.mjs";
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = resolve(appDir, "..", "..");
@@ -38,26 +48,27 @@ function die(code, msg) {
 }
 
 function run(cmd, args, cwd) {
+  const options = {
+    cwd,
+    encoding: "utf8",
+    maxBuffer: 256 * 1024 * 1024,
+    stdio: ["ignore", "pipe", "pipe"],
+  };
   try {
-    return execFileSync(cmd, args, {
-      cwd,
-      encoding: "utf8",
-      maxBuffer: 256 * 1024 * 1024,
-      stdio: ["ignore", "pipe", "pipe"],
-      // pnpm is a .cmd shim on Windows, which execFile cannot start directly.
-      shell: process.platform === "win32" && cmd === "pnpm",
-    });
+    if (cmd === "pnpm" && process.platform === "win32") {
+      // pnpm is a .cmd shim on Windows, which execFile cannot start directly. When
+      // pnpm runs this script it sets npm_execpath to its JS entry point; run that
+      // with Node. Otherwise go through the shell, with constant arguments only.
+      const entry = process.env.npm_execpath;
+      if (entry && /pnpm/i.test(entry)) {
+        return execFileSync(process.execPath, [entry, ...args], options);
+      }
+      return execSync(["pnpm", ...args].join(" "), options);
+    }
+    return execFileSync(cmd, args, options);
   } catch (err) {
     die(2, `\`${cmd} ${args.join(" ")}\` failed: ${err.stderr || err.message}`);
   }
-}
-
-function normalizeText(text) {
-  return text
-    .replace(/^\uFEFF/, "")
-    .replace(/\r\n?/g, "\n")
-    .replace(/[ \t]+$/gm, "")
-    .trim();
 }
 
 const texts = new Map();
@@ -65,7 +76,7 @@ const texts = new Map();
 function internText(raw) {
   const text = normalizeText(raw);
   if (!text) return null;
-  const id = createHash("sha256").update(text).digest("hex").slice(0, 16);
+  const id = textIdOf(text);
   const existing = texts.get(id);
   if (existing !== undefined && existing !== text) die(2, `text id collision on ${id}`);
   texts.set(id, text);
@@ -97,27 +108,6 @@ function noticeFiles(dir, extra = []) {
     if (textId) notices.push({ file, textId });
   }
   return notices;
-}
-
-function mergeComponent(map, key, component) {
-  const prev = map.get(key);
-  if (!prev) {
-    map.set(key, component);
-    return;
-  }
-  prev.versions = [...new Set([...prev.versions, ...component.versions])];
-  for (const author of component.authors) {
-    if (!prev.authors.includes(author)) prev.authors.push(author);
-  }
-  for (const notice of component.notices) {
-    if (!prev.notices.some((n) => n.file === notice.file && n.textId === notice.textId)) {
-      prev.notices.push(notice);
-    }
-  }
-}
-
-function compareVersions(a, b) {
-  return a.localeCompare(b, "en", { numeric: true });
 }
 
 function collectCargo(components) {
@@ -214,43 +204,32 @@ function collectVendored(components) {
   });
 }
 
+// A component that ships no license or notice file gets the standard text of each
+// SPDX id it names. These notices carry `standard` so the UI can say so.
+function applyStandardTexts(components) {
+  for (const component of components.values()) {
+    if (component.notices.length > 0) continue;
+    for (const { id, text } of standardNotices(component.license, component.name, component.authors)) {
+      component.notices.push({ file: `standard-${id}`, textId: internText(text), standard: id });
+    }
+  }
+}
+
 function generate() {
   const components = new Map();
   collectCargo(components);
   collectNpm(components);
   collectVendored(components);
-
-  const list = [...components.values()]
-    .map((c) => ({
-      ...c,
-      versions: [...c.versions].sort(compareVersions),
-      notices: [...c.notices].sort(
-        (a, b) => a.file.localeCompare(b.file, "en") || a.textId.localeCompare(b.textId, "en"),
-      ),
-    }))
-    .sort(
-      (a, b) =>
-        a.name.toLowerCase().localeCompare(b.name.toLowerCase(), "en") ||
-        a.ecosystem.localeCompare(b.ecosystem, "en"),
-    );
-
-  const used = new Set(list.flatMap((c) => c.notices.map((n) => n.textId)));
-  const textEntries = [...texts]
-    .filter(([id]) => used.has(id))
-    .sort(([a], [b]) => a.localeCompare(b, "en"));
-
-  return `${JSON.stringify(
-    { schemaVersion: 1, components: list, texts: Object.fromEntries(textEntries) },
-    null,
-    2,
-  )}\n`;
+  applyStandardTexts(components);
+  return buildDocument(finalizeComponents(components.values()), texts);
 }
 
 const check = process.argv.includes("--check");
 const output = generate();
 const parsed = JSON.parse(output);
+const standard = parsed.components.filter((c) => c.notices.some((n) => n.standard)).map((c) => c.name);
 const missing = parsed.components.filter((c) => c.notices.length === 0).map((c) => c.name);
-const summary = `${parsed.components.length} components, ${Object.keys(parsed.texts).length} distinct texts, ${missing.length} without a bundled license file`;
+const summary = `${parsed.components.length} components, ${Object.keys(parsed.texts).length} distinct texts, ${standard.length} with standard license text (no license file in the package), ${missing.length} without any license text`;
 
 if (check) {
   const current = existsSync(outPath) ? readFileSync(outPath, "utf8").replace(/\r\n/g, "\n") : "";
@@ -262,5 +241,6 @@ if (check) {
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, output);
   console.log(`[notices] wrote ${outPath} - ${summary}`);
-  if (missing.length) console.log(`[notices] license id + SPDX link only: ${missing.join(", ")}`);
+  if (standard.length) console.log(`[notices] standard text (no license file): ${standard.join(", ")}`);
+  if (missing.length) console.log(`[notices] no license text at all: ${missing.join(", ")}`);
 }
