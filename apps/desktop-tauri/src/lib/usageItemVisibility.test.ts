@@ -66,7 +66,7 @@ describe("projectClaudeSections", () => {
 describe("claudePlanDateNote", () => {
   it("keeps a calendar-only date on its own day", () => {
     expect(claudePlanDateNote("claude", sections([]).subscription, en)).toBe(
-      "Renews: Dec 1, 2026",
+      "Plan renews: Dec 1, 2026",
     );
   });
 
