@@ -1346,6 +1346,20 @@ fn tokens_per_minute_metric_without_reported_minutes_is_unavailable() {
 }
 
 #[test]
+fn tokens_per_minute_metric_on_a_provider_without_a_rate_falls_back() {
+    // A saved Tokens/min value must not leak onto a provider that cannot
+    // report a rate: the row keeps the Automatic usage label instead.
+    let mut settings = Settings::default();
+    settings.set_provider_metric(ProviderId::Codex, MetricPreference::TokensPerMinute);
+    let mut codex = fake_snapshot("codex", "Codex", 30.0);
+    codex.throughput = Some(openai_api_throughput(Some(12_000)));
+    assert_eq!(
+        tokens_per_minute_status(&codex, &settings, Language::English),
+        None
+    );
+}
+
+#[test]
 fn tokens_per_minute_metric_keeps_the_automatic_icon_lane() {
     let mut settings = Settings {
         tray_icon_mode: TrayIconMode::Single,

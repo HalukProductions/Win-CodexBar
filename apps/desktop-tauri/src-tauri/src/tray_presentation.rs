@@ -467,14 +467,17 @@ fn provider_status_label(
 /// Tray status text for the Tokens/min metric: the latest reported minute
 /// ("12K/min"), or an explicit unavailable label when no minute has been
 /// reported (Live usage off, no Admin key, or nothing complete yet). `None`
-/// when the provider's metric is not Tokens/min.
+/// when the provider's metric is not Tokens/min or the provider cannot report
+/// a rate, so a saved value never leaks onto another provider's row.
 pub(crate) fn tokens_per_minute_status(
     snapshot: &ProviderUsageSnapshot,
     settings: &Settings,
     language: Language,
 ) -> Option<String> {
     let provider = ProviderId::from_cli_name(&snapshot.provider_id)?;
-    if settings.get_provider_metric(provider) != MetricPreference::TokensPerMinute {
+    if !provider.reports_tokens_per_minute()
+        || settings.get_provider_metric(provider) != MetricPreference::TokensPerMinute
+    {
         return None;
     }
     Some(

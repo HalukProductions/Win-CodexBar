@@ -713,10 +713,6 @@ impl Provider for OpenAIApiProvider {
     fn available_sources(&self) -> Vec<SourceMode> {
         vec![SourceMode::Auto, SourceMode::OAuth]
     }
-
-    fn reports_tokens_per_minute(&self) -> bool {
-        true
-    }
 }
 
 /// Resolve the key from Preferences, the credential store, then the environment.
