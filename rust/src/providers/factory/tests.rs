@@ -1,4 +1,8 @@
 use super::*;
+use crate::browser::detection::BrowserType;
+use crate::browser::session_scan::test_support::FakeCookieStore;
+use crate::providers::browser_cookie_sessions_from;
+use mockito::{Matcher, Mock, Server, ServerGuard};
 use std::fs;
 
 #[test]
@@ -223,4 +227,156 @@ fn secret_redactor_covers_factory_keys() {
         !redacted.contains("fk-test-key"),
         "factory key must not appear: {redacted}"
     );
+}
+
+// ── Browser session fall-through (web path) ──────────────────────────
+
+const LEGACY_USAGE_BODY: &str = r#"{
+  "standard": { "used": 25.0, "allowance": 100.0 }
+}"#;
+
+/// Auth answers for every cookie; the rest of the cases are decided by usage.
+async fn mock_factory_auth(server: &mut ServerGuard) -> Mock {
+    server
+        .mock("GET", "/api/app/auth/me")
+        .with_status(200)
+        .with_body("{}")
+        .create_async()
+        .await
+}
+
+/// Usage answers `status` only for requests carrying exactly `cookie`.
+async fn mock_factory_session(
+    server: &mut ServerGuard,
+    cookie: &str,
+    status: usize,
+    body: &str,
+    hits: usize,
+) -> Mock {
+    server
+        .mock("GET", "/api/organization/subscription/usage")
+        .match_query(Matcher::Any)
+        .match_header("cookie", cookie)
+        .with_status(status)
+        .with_body(body)
+        .expect(hits)
+        .create_async()
+        .await
+}
+
+/// Two-browser store: each browser holds one Factory cookie on the app host.
+fn factory_browser_store(first: &'static str, second: &'static str) -> FakeCookieStore {
+    FakeCookieStore::default()
+        .cookies(BrowserType::Chrome, "app.factory.ai", &[("session", first)])
+        .cookies(BrowserType::Edge, "app.factory.ai", &[("session", second)])
+}
+
+async fn fetch_web_with_store(
+    store: &FakeCookieStore,
+    base: &str,
+) -> Result<UsageSnapshot, ProviderError> {
+    let client = FactoryProvider::build_client()?;
+    let sessions =
+        browser_cookie_sessions_from(store, &FetchContext::default(), FACTORY_COOKIE_DOMAINS);
+    FactoryProvider::new()
+        .fetch_web_sessions(&client, base, sessions)
+        .await
+}
+
+#[tokio::test]
+async fn rejected_browser_session_moves_on_to_the_next_browser() {
+    let mut server = Server::new_async().await;
+    let _auth = mock_factory_auth(&mut server).await;
+    let stale = mock_factory_session(&mut server, "session=stale-chrome", 401, "{}", 1).await;
+    let valid =
+        mock_factory_session(&mut server, "session=valid-edge", 200, LEGACY_USAGE_BODY, 1).await;
+    let store = factory_browser_store("stale-chrome", "valid-edge").cookies(
+        BrowserType::Firefox,
+        "app.factory.ai",
+        &[("session", "never-read")],
+    );
+
+    let usage = fetch_web_with_store(&store, &server.url())
+        .await
+        .expect("the second browser's session is accepted");
+
+    stale.assert_async().await;
+    valid.assert_async().await;
+    assert!((usage.primary.used_percent - 25.0).abs() < f64::EPSILON);
+    assert!(
+        store
+            .reads()
+            .iter()
+            .all(|(browser, _)| *browser != BrowserType::Firefox),
+        "the browser after the accepted session must not be read"
+    );
+}
+
+#[tokio::test]
+async fn forbidden_browser_session_also_moves_on() {
+    let mut server = Server::new_async().await;
+    let _auth = mock_factory_auth(&mut server).await;
+    let forbidden = mock_factory_session(&mut server, "session=stale-chrome", 403, "{}", 1).await;
+    let valid =
+        mock_factory_session(&mut server, "session=valid-edge", 200, LEGACY_USAGE_BODY, 1).await;
+    let store = factory_browser_store("stale-chrome", "valid-edge");
+
+    fetch_web_with_store(&store, &server.url())
+        .await
+        .expect("a 403 is a rejected session, so the next browser is tried");
+
+    forbidden.assert_async().await;
+    valid.assert_async().await;
+}
+
+#[tokio::test]
+async fn every_rejected_browser_session_reports_auth_required() {
+    let mut server = Server::new_async().await;
+    let _auth = mock_factory_auth(&mut server).await;
+    let chrome = mock_factory_session(&mut server, "session=stale-chrome", 401, "{}", 1).await;
+    let edge = mock_factory_session(&mut server, "session=stale-edge", 401, "{}", 1).await;
+    let store = factory_browser_store("stale-chrome", "stale-edge");
+
+    let error = fetch_web_with_store(&store, &server.url())
+        .await
+        .expect_err("no browser session is accepted");
+
+    chrome.assert_async().await;
+    edge.assert_async().await;
+    assert!(
+        matches!(error, ProviderError::AuthRequired),
+        "all rejected sessions report the sign-in error, got {error:?}"
+    );
+}
+
+#[tokio::test]
+async fn server_error_from_a_browser_session_stops_the_search() {
+    let mut server = Server::new_async().await;
+    let _auth = mock_factory_auth(&mut server).await;
+    let broken = mock_factory_session(&mut server, "session=stale-chrome", 500, "{}", 1).await;
+    let untried = mock_factory_session(&mut server, "session=valid-edge", 200, "{}", 0).await;
+    let store = factory_browser_store("stale-chrome", "valid-edge");
+
+    let error = fetch_web_with_store(&store, &server.url())
+        .await
+        .expect_err("a server error is not a rejected session");
+
+    broken.assert_async().await;
+    untried.assert_async().await;
+    assert!(
+        matches!(error, ProviderError::Other(_)),
+        "server error is reported, not replaced by a later browser: {error:?}"
+    );
+}
+
+#[tokio::test]
+async fn no_browser_cookies_reports_no_cookies_without_a_request() {
+    let server = Server::new_async().await;
+    let store = FakeCookieStore::default();
+
+    let error = fetch_web_with_store(&store, &server.url())
+        .await
+        .expect_err("no browser holds a Factory cookie");
+
+    assert!(matches!(error, ProviderError::NoCookies), "got {error:?}");
 }
