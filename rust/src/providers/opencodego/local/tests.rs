@@ -1,4 +1,7 @@
-use super::test_db::{insert_message, insert_step_finish, iso_ms, open_db, write_message_db};
+use super::test_db::{
+    create_session_message_table, insert_message, insert_session_message, insert_step_finish,
+    iso_ms, open_db, write_message_db,
+};
 use super::*;
 use crate::core::RateWindow;
 use chrono::Weekday;
@@ -418,6 +421,72 @@ fn daily_entries_group_cost_by_model_within_a_day() {
     let by_model: std::collections::HashMap<&str, f64> =
         buckets.iter().map(|b| (b.model.as_str(), b.cost)).collect();
     assert!((by_model["claude-sonnet-4-5"] - 4.0).abs() < 1e-6);
+    assert!((by_model["gpt-5.1-codex"] - 2.0).abs() < 1e-6);
+}
+
+#[test]
+fn v2_session_messages_add_new_turns_without_double_counting_migrated_ones() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("opencode.db");
+    let conn = open_db(&db, false);
+    create_session_message_table(&conn);
+    let migrated_ms = iso_ms("2026-03-06T11:00:00.000Z");
+    // Migrated turn: present in both tables under one id, counted once via the legacy row.
+    insert_message(
+        &conn,
+        "migrated",
+        migrated_ms,
+        Some(3.0),
+        Some("claude-sonnet-4-5"),
+        None,
+    );
+    insert_session_message(
+        &conn,
+        "migrated",
+        migrated_ms,
+        3.0,
+        "claude-sonnet-4-5",
+        "opencode-go",
+        None,
+    );
+    // New v2-only opencode-go turn with recorded tokens: 10 + 5 + 1 + 4 + 0 = 20.
+    insert_session_message(
+        &conn,
+        "v2-new",
+        iso_ms("2026-03-06T12:00:00.000Z"),
+        2.0,
+        "gpt-5.1-codex",
+        "opencode-go",
+        Some(r#"{"input":10,"output":5,"reasoning":1,"cache":{"read":4,"write":0}}"#),
+    );
+    // Other providers never count toward OpenCode Go.
+    insert_session_message(
+        &conn,
+        "v2-other",
+        iso_ms("2026-03-06T13:00:00.000Z"),
+        7.0,
+        "gpt-5.1-codex",
+        "openrouter",
+        None,
+    );
+    drop(conn);
+
+    let now = a14_now_afternoon();
+    let rows = read_rows(&db).unwrap();
+    assert_eq!(rows.len(), 2, "{rows:?}");
+    let v2_new = rows
+        .iter()
+        .find(|row| row.model == "gpt-5.1-codex")
+        .expect("v2 turn row");
+    assert_eq!(v2_new.tokens.as_ref().map(|t| t.total), Some(20));
+
+    let buckets = daily_model_costs(&rows, now, 30);
+    let total: f64 = buckets.iter().map(|b| b.cost).sum();
+    assert!((total - 5.0).abs() < 1e-6, "total {total}");
+    assert_eq!(buckets.iter().map(|b| b.request_count).sum::<u32>(), 2);
+    let by_model: std::collections::HashMap<&str, f64> =
+        buckets.iter().map(|b| (b.model.as_str(), b.cost)).collect();
+    assert!((by_model["claude-sonnet-4-5"] - 3.0).abs() < 1e-6);
     assert!((by_model["gpt-5.1-codex"] - 2.0).abs() < 1e-6);
 }
 
