@@ -1681,7 +1681,7 @@ AntigravityProfileHomesPickFailed = Не удалось открыть выбо�
 # Claude optional usage rows and plan dates
 UsageItemPlanRenewalExpiry = Продление / окончание тарифа
 UsageItemHiddenByCostSummary = Скрыто, пока стиль отображения стоимости — «Скрытый».
-PlanRenewsOn = Продление: { "{}" }
+PlanRenewsOn = Продление тарифа: { "{}" }
 PlanExpiresOn = Тариф истекает: { "{}" }
 OpenAiLiveUsageTitle = Живое использование
 OpenAiLiveUsageToggle = Живое использование (токены в минуту)

@@ -1681,7 +1681,7 @@ AntigravityProfileHomesPickFailed = 無法開啟資料夾選擇器。
 # Claude optional usage rows and plan dates
 UsageItemPlanRenewalExpiry = 方案續訂 / 到期
 UsageItemHiddenByCostSummary = 費用摘要顯示方式設為「隱藏」時不顯示。
-PlanRenewsOn = 續訂：{ "{}" }
+PlanRenewsOn = 方案續訂：{ "{}" }
 PlanExpiresOn = 方案到期：{ "{}" }
 OpenAiLiveUsageTitle = 即時用量
 OpenAiLiveUsageToggle = 即時用量（每分鐘 Token）

@@ -1680,7 +1680,7 @@ AntigravityProfileHomesPickFailed = No se pudo abrir el selector de carpetas.
 # Claude optional usage rows and plan dates
 UsageItemPlanRenewalExpiry = Renovación / vencimiento del plan
 UsageItemHiddenByCostSummary = Oculto mientras el estilo de resumen de costos está en Oculto.
-PlanRenewsOn = Se renueva: { "{}" }
+PlanRenewsOn = El plan se renueva: { "{}" }
 PlanExpiresOn = El plan vence: { "{}" }
 OpenAiLiveUsageTitle = Uso en vivo
 OpenAiLiveUsageToggle = Uso en vivo (tokens por minuto)

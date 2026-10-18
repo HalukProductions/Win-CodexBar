@@ -1685,7 +1685,7 @@ AntigravityProfileHomesPickFailed = Não foi possível abrir o seletor de pastas
 # Claude optional usage rows and plan dates
 UsageItemPlanRenewalExpiry = Renovação / expiração do plano
 UsageItemHiddenByCostSummary = Oculto enquanto a exibição do resumo de custos estiver em Oculto.
-PlanRenewsOn = Renova: { "{}" }
+PlanRenewsOn = Plano renova: { "{}" }
 PlanExpiresOn = O plano expira: { "{}" }
 OpenAiLiveUsageTitle = Uso ao vivo
 OpenAiLiveUsageToggle = Uso ao vivo (tokens por minuto)

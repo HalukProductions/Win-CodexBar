@@ -14,6 +14,28 @@
       ]
     },
     {
+      "name": "tray-claude-plan-renews",
+      "query": "window=main&fixture=default",
+      "size": [310, 1032],
+      "steps": [
+        { "click": { "selector": ".provider-grid__item", "label": "Claude" } },
+        { "expectText": ["claude.user@example.com", "Plan renews: Dec 1, 2026"] },
+        { "expectNoText": "Plan expires:" },
+        { "screenshot": "tray-claude-plan-renews", "clip": "panel" }
+      ]
+    },
+    {
+      "name": "tray-claude-plan-hidden",
+      "query": "window=main&fixture=claude-plan-hidden",
+      "size": [310, 1032],
+      "steps": [
+        { "click": { "selector": ".provider-grid__item", "label": "Claude" } },
+        { "expectText": "claude.user@example.com" },
+        { "expectNoText": ["Plan renews", "Plan expires"] },
+        { "screenshot": "tray-claude-plan-hidden", "clip": "panel" }
+      ]
+    },
+    {
       "name": "tray-errors",
       "query": "window=main&fixture=errors",
       "size": [310, 1032],
@@ -90,7 +112,26 @@
       "size": [880, 620],
       "steps": [
         { "expectText": ["OpenAI API", "Menu and floating bar metric", "Tokens/min"] },
+        { "expectField": { "label": "Menu and floating bar metric", "value": "automatic" } },
+        { "select": { "label": "Menu and floating bar metric", "value": "tokensPerMinute" } },
+        { "expectCall": { "cmd": "update_settings", "args": { "patch": { "providerMetrics": { "openaiapi": "tokensPerMinute" } } } } },
+        { "expectField": { "label": "Menu and floating bar metric", "value": "tokensPerMinute" } },
         { "screenshot": "settings-openaiapi-tokens-per-minute-metric" }
+      ]
+    },
+    {
+      "name": "settings-menu-work-days",
+      "query": "window=settings&tab=menu&theme=dark",
+      "size": [880, 620],
+      "steps": [
+        { "expectField": { "label": "Work days", "value": "", "options": ["Automatic", "4 days", "5 days", "6 days", "7 days"] } },
+        { "expectField": { "label": "Workday tick appearance", "enabled": false } },
+        { "screenshot": "settings-menu-work-days-automatic" },
+        { "select": { "label": "Work days", "value": "6" } },
+        { "expectField": { "label": "Work days", "value": "6" } },
+        { "expectField": { "label": "Workday tick appearance", "enabled": true } },
+        { "expectCall": { "cmd": "update_settings", "args": { "patch": { "weeklyProgressWorkDays": 6 } } } },
+        { "screenshot": "settings-menu-work-days-6" }
       ]
     },
     {

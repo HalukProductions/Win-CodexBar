@@ -23,7 +23,11 @@ impl Settings {
         #[cfg(target_os = "windows")]
         if settings_file_override().is_none() {
             settings.start_at_login = Self::sync_start_at_login_registry();
-            settings.apply_promote_tray_default_migration();
+            // The one-shot migration writes its marker even when the save fails,
+            // so running it on stand-in defaults would skip the real file later.
+            if !settings.load_state.is_unreadable_file() {
+                settings.apply_promote_tray_default_migration();
+            }
         }
 
         // One-shot migration: materialize the persisted hidden usage-item list
@@ -36,15 +40,42 @@ impl Settings {
         settings
     }
 
+    /// A missing file is a first run and loads saveable defaults. A file that
+    /// exists but cannot be read or parsed loads defaults that refuse to save,
+    /// so a later settings change cannot replace it (upstream 0.76.0 #4509).
     pub(super) fn load_from_path(path: Option<&Path>) -> Self {
-        match path {
-            Some(path) if path.exists() => match crate::secure_file::read_string(path) {
-                Ok(content) => {
-                    serde_json::from_str(content.trim_start_matches('\u{feff}')).unwrap_or_default()
-                }
-                Err(_) => Self::default(),
-            },
-            _ => Self::default(),
+        let Some(path) = path else {
+            return Self::default();
+        };
+        let content = match crate::secure_file::read_string(path) {
+            Ok(content) => content,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Self::default(),
+            Err(error) => {
+                tracing::warn!(
+                    "settings.json could not be read ({error}); using defaults and leaving the file untouched"
+                );
+                return Self::unreadable_file_defaults();
+            }
+        };
+        match serde_json::from_str(content.trim_start_matches('\u{feff}')) {
+            Ok(settings) => settings,
+            Err(error) => {
+                // Only the position is logged: serde messages can quote file values.
+                tracing::warn!(
+                    "settings.json could not be parsed ({:?} error at line {}, column {}); using defaults and leaving the file untouched",
+                    error.classify(),
+                    error.line(),
+                    error.column()
+                );
+                Self::unreadable_file_defaults()
+            }
+        }
+    }
+
+    fn unreadable_file_defaults() -> Self {
+        Self {
+            load_state: SettingsLoadState::UNREADABLE_FILE,
+            ..Self::default()
         }
     }
 
@@ -151,6 +182,10 @@ impl Settings {
         marker: &Path,
         persist: impl FnOnce(&Self) -> anyhow::Result<()>,
     ) {
+        // Retry on a launch that reads the real file instead of marking it done.
+        if self.load_state.is_unreadable_file() {
+            return;
+        }
         let already_migrated = marker.exists();
         if self.fold_minimal_display_mode(already_migrated)
             && let Err(error) = persist(self)
@@ -205,6 +240,14 @@ impl Settings {
     }
 
     pub(super) fn save_to_path(&self, path: &Path) -> anyhow::Result<()> {
+        if self.load_state.is_unreadable_file() {
+            tracing::warn!("Not saving settings: settings.json exists but could not be loaded");
+            anyhow::bail!(
+                "settings.json could not be read, so CodexBar will not overwrite it. \
+                 Repair or move the file, then change the setting again."
+            );
+        }
+
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
