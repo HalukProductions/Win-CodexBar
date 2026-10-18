@@ -1,4 +1,4 @@
-import { render, waitFor } from "@testing-library/react";
+import { fireEvent, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const tauriMocks = vi.hoisted(() => ({
@@ -20,6 +20,7 @@ vi.mock("../lib/tauri", async (importOriginal) => ({
 vi.mock("@tauri-apps/api/event", () => eventMocks);
 
 import { LocaleProvider } from "../i18n/LocaleProvider";
+import { PROVIDER_CHART_MODES_STORAGE_KEY } from "../lib/openaiSpend";
 import { buildBundle } from "../test/localeHarness";
 import type { OpenAiApiUsageSnapshot, ProviderUsageSnapshot } from "../types/bridge";
 import MenuCard from "./MenuCard";
@@ -136,6 +137,30 @@ describe("MenuCard OpenAI daily usage", () => {
     const { container } = renderCard(withThroughput(snapshot("openaiapi", null)));
     await waitFor(() => expect(container.querySelector(".card-header__name")).not.toBeNull());
     expect(container.querySelector(".openai-tpm")).not.toBeNull();
+  });
+
+  it("offers the Live · Spend switch only when both charts have points", async () => {
+    window.localStorage.removeItem(PROVIDER_CHART_MODES_STORAGE_KEY);
+    const onlyLive = renderCard(withThroughput(snapshot("openaiapi", null)));
+    await waitFor(() => expect(onlyLive.container.querySelector(".openai-tpm")).not.toBeNull());
+    expect(onlyLive.container.querySelector(".openai-live-spend__switch")).toBeNull();
+    onlyLive.unmount();
+
+    const { container } = renderCard(withThroughput(snapshot("openaiapi", usage())));
+    await waitFor(() => expect(container.querySelector(".openai-live-spend__switch")).not.toBeNull());
+    const [live, spend] = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="radio"]'));
+    expect(live).toHaveAttribute("aria-checked", "true");
+    expect(container.querySelector('[data-testid="openai-spend-layer"]')).toHaveAttribute("aria-hidden", "true");
+
+    fireEvent.click(spend);
+    expect(spend).toHaveAttribute("aria-checked", "true");
+    expect(container.querySelector('[data-testid="openai-live-layer"]')).toHaveAttribute("aria-hidden", "true");
+    expect(container.querySelector('[data-testid="openai-spend-layer"]')).toHaveAttribute("aria-hidden", "false");
+    expect(container).toHaveTextContent("OpenAiSpendChartTitle");
+    expect(JSON.parse(window.localStorage.getItem(PROVIDER_CHART_MODES_STORAGE_KEY) ?? "{}")).toEqual({
+      openaiapi: "spend",
+    });
+    window.localStorage.removeItem(PROVIDER_CHART_MODES_STORAGE_KEY);
   });
 
   it("masks the Admin project id in the card identity when privacy is enabled", async () => {

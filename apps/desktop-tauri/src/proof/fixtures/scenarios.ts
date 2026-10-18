@@ -21,6 +21,7 @@ export const PROOF_SCENARIO_NAMES = [
   "two-codex-accounts",
   "errors",
   "empty",
+  "openai-live-spend",
 ] as const;
 
 export type ProofScenarioName = (typeof PROOF_SCENARIO_NAMES)[number];
@@ -322,11 +323,94 @@ function emptyScenario(): ProofScenario {
   };
 }
 
+const MINUTE_SECONDS = 60;
+const DAY_SECONDS = 86_400;
+
+/**
+ * OpenAI API card with both a Tokens/min window and daily spend, so the card
+ * offers the Live · Spend switch. The last two minutes are still reporting.
+ */
+function openAiApiSnapshot(now: Date): ProviderUsageSnapshot {
+  const nowSeconds = Math.floor(now.getTime() / 1000);
+  const firstMinute = Math.floor(nowSeconds / MINUTE_SECONDS) * MINUTE_SECONDS - 59 * MINUTE_SECONDS;
+  const minutes = Array.from({ length: 60 }, (_, i) => {
+    const isPending = i >= 58;
+    const totalTokens = isPending ? 0 : 6_000 + ((i * 7_919) % 18_000);
+    return {
+      start: firstMinute + i * MINUTE_SECONDS,
+      totalTokens,
+      requests: isPending ? 0 : 2 + (i % 5),
+      isPending,
+    };
+  });
+  const reported = minutes.filter((minute) => !minute.isPending);
+  const peak = reported.reduce((best, minute) => (minute.totalTokens > best.totalTokens ? minute : best));
+  const lastFive = reported.slice(-5);
+  const firstDay = Math.floor(nowSeconds / DAY_SECONDS) * DAY_SECONDS - 29 * DAY_SECONDS;
+  const daily = Array.from({ length: 30 }, (_, i) => {
+    const costUsd = Math.round((1.5 + ((i * 37) % 11) * 0.45) * 100) / 100;
+    const totalTokens = Math.round(costUsd * 190_000);
+    return {
+      startTime: firstDay + i * DAY_SECONDS,
+      endTime: firstDay + (i + 1) * DAY_SECONDS,
+      costUsd,
+      requests: 120 + i,
+      inputTokens: Math.round(totalTokens * 0.7),
+      cachedInputTokens: Math.round(totalTokens * 0.1),
+      outputTokens: Math.round(totalTokens * 0.3),
+      totalTokens,
+      lineItems: [{ name: "Text tokens", costUsd }],
+      models: [],
+    };
+  });
+  return providerSnapshot(
+    {
+      providerId: "openaiapi",
+      displayName: "OpenAI API",
+      primary: rateWindow(now, 0, null, null),
+      primaryLabel: "Spend",
+      updatedAt: isoBefore(now, 1),
+    },
+    {
+      planName: "Admin API",
+      sourceLabel: "api",
+      throughput: {
+        minutes,
+        frontier: reported[reported.length - 1].start,
+        latestTokensPerMinute: reported[reported.length - 1].totalTokens,
+        peakTokensPerMinute: peak.totalTokens,
+        peakAt: peak.start,
+        fiveMinuteAverageTokensPerMinute: Math.round(
+          lastFive.reduce((sum, minute) => sum + minute.totalTokens, 0) / lastFive.length,
+        ),
+        models: [],
+        windowMinutes: 60,
+        fetchedAt: nowSeconds,
+        projectId: null,
+      },
+      openAiApiUsage: { historyDays: 30, projectId: null, daily },
+    },
+  );
+}
+
+function openAiLiveSpendScenario(now: Date): ProofScenario {
+  return {
+    name: "openai-live-spend",
+    settings: baseSettings({ enabledProviders: ["openaiapi"] }),
+    catalog: PROOF_PROVIDER_CATALOG,
+    providers: [openAiApiSnapshot(now)],
+    codexAccounts: emptyCodexAccounts(),
+    claudeAccounts: [],
+    localSpend: [],
+  };
+}
+
 const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   default: defaultScenario,
   "two-codex-accounts": twoCodexAccountsScenario,
   errors: errorsScenario,
   empty: emptyScenario,
+  "openai-live-spend": openAiLiveSpendScenario,
 };
 
 export function isProofScenarioName(value: string): value is ProofScenarioName {
