@@ -132,6 +132,8 @@ fn credit_equity_and_reset_are_independent_of_list_order() {
 fn no_active_subscription_leaves_individual_available() {
     for payload in [
         r#"{"successResponse":true,"data":{"Success":true,"Data":null}}"#,
+        // An empty Data object is the same "no Team subscription" answer.
+        r#"{"successResponse":true,"data":{"Success":true,"Data":{}}}"#,
         // Empty groups win before the (absent) period is read.
         r#"{"successResponse":true,"data":{"Success":true,"Data":{"SubscriptionGroupList":[]}}}"#,
     ] {
@@ -168,6 +170,22 @@ fn invalid_remaining_credits_are_errors() {
 fn malformed_successful_envelopes_and_multiple_pools_are_errors() {
     let error = parse(r#"{"successResponse":true,"data":{}}"#, NOW_MS).unwrap_err();
     assert_eq!(message(error), unsupported("subscription"));
+
+    // Only an empty Data object is "no subscription"; partial or non-object
+    // Data stays an error.
+    for (data, expected) in [
+        (
+            r#"{"SubscriptionGroupList":{}}"#,
+            unsupported("subscription groups"),
+        ),
+        (r#"{"ProductCode":"x"}"#, unsupported("subscription groups")),
+        (r#"[]"#, unsupported("subscription")),
+    ] {
+        let payload =
+            format!(r#"{{"successResponse":true,"data":{{"Success":true,"Data":{data}}}}}"#);
+        let error = parse(&payload, NOW_MS).unwrap_err();
+        assert_eq!(message(error), expected, "{payload}");
+    }
 
     let mut root: Value = serde_json::from_str(SUMMARY).unwrap();
     let group = root["data"]["Data"]["SubscriptionGroupList"][0].clone();
