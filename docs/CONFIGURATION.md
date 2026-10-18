@@ -51,7 +51,7 @@ The app keeps its files in `%APPDATA%\CodexBar` (`dirs::config_dir()` plus `Code
 | `codex-weekly-reset-v1.json` | `%LOCALAPPDATA%\CodexBar` | Yes | Codex weekly reset cache |
 
 - Files marked DPAPI are written through `secure_file` in `rust/src/settings/`. On Windows it wraps them with DPAPI for the current user every time it saves.
-- `settings.json` is always wrapped. The app still reads a plain JSON file you edited by hand, but the next save wraps it again. If the file can't be parsed, the app loads the defaults.
+- `settings.json` is always wrapped. The app still reads a plain JSON file you edited by hand, but the next save wraps it again. If the file exists but can't be read or parsed (for example DPAPI can't decrypt it), the app runs on the defaults but never overwrites the file: every save fails and logs a warning until the file loads again. Repair or move the file to save settings again. A missing file is a first run and saves normally.
 - Browser cookies are read from the browser profiles when a refresh needs them. See [COOKIES.md](./COOKIES.md).
 - `token-accounts.json` falls back to `~/.codexbar/` only when Windows reports no config folder.
 - Don't commit a real `settings.json` or key file to the repo.
