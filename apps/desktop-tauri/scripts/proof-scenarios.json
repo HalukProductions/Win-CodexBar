@@ -100,6 +100,25 @@
       ]
     },
     {
+      "name": "settings-claude-token-account-config-dir",
+      "query": "window=settings&tab=providers:claude&fixture=default&theme=dark",
+      "size": [880, 620],
+      "steps": [
+        { "click": { "selector": "summary", "label": "Token accounts1/2" } },
+        { "expectText": ["Claude config directory", "C:\\Users\\proof\\.claude-work", "Unavailable", "Choose folder…"] },
+        { "screenshot": "settings-claude-token-account-config-dir" },
+        { "click": { "selector": "button", "label": "Clear C:\\Users\\proof\\.claude-work" } },
+        {
+          "expectCall": {
+            "cmd": "set_token_account_claude_config_dir",
+            "args": { "providerId": "claude", "accountId": "00000000-0000-4000-8000-00000000c1a1", "directory": null }
+          }
+        },
+        { "expectNoText": ["C:\\Users\\proof\\.claude-work", "Unavailable"] },
+        { "screenshot": "settings-claude-token-account-config-dir-cleared" }
+      ]
+    },
+    {
       "name": "floatbar",
       "query": "window=floatbar",
       "size": [520, 120],
