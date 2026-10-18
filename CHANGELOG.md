@@ -9,7 +9,7 @@
 
 ## [Windows] Unreleased
 
-- **Claude**: the OAuth account email no longer delays a usage refresh. The profile lookup runs in the background, once per access token, with a 2-second budget, and later refreshes reuse its result. A failed lookup is not retried until the token changes or CodexBar restarts (previously every 15 minutes), and the first refresh after launch or a token change may show no email until the next refresh (upstream v0.76.0, #4538).
+- **Claude**: the OAuth account email no longer delays a usage refresh. The profile lookup runs in the background, once per access token that passes the expiry and `user:profile` scope checks, with a 2-second budget, and later refreshes reuse its result. A failed lookup is not retried until the token changes or CodexBar restarts (previously every 15 minutes), and the first refresh after launch or a token change may show no email until the next refresh (upstream v0.76.0, #4538).
 - Usage cards: plan renewal dates now read "Plan renews" (in every locale) so they are not mistaken for quota resets (upstream v0.77.0 #4540).
 - Settings > Menu: offer a six-day (Monday–Saturday) work week for weekly pace and the session forecast, alongside 4, 5 and 7 days (upstream v0.77.0 #4548).
 - Qwen Cloud: treat a Team summary with an empty `Data` object as no Team subscription, so Individual-only accounts no longer show "Team usage unavailable" (upstream v0.77.0 #4527, fixes #4525).

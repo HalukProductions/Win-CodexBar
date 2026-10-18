@@ -29,6 +29,24 @@ enum CachedProfile {
 static PROFILE_CACHE: LazyLock<Mutex<HashMap<String, CachedProfile>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
+// Test-only profile URL, so fetch-level tests can observe lookups on a mock
+// server. Thread-local because each test runs on its own thread.
+#[cfg(test)]
+thread_local! {
+    static TEST_PROFILE_URL: std::cell::RefCell<Option<String>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+fn profile_url() -> String {
+    #[cfg(test)]
+    {
+        if let Some(url) = TEST_PROFILE_URL.with(|url| url.borrow().clone()) {
+            return url;
+        }
+    }
+    PROFILE_URL.to_string()
+}
+
 /// The known email for `access_token`, without waiting. The first call for a
 /// token starts the background lookup and returns `None`, as do later calls
 /// while it is pending or after it failed.
@@ -39,7 +57,7 @@ pub(super) fn display_email(
 ) -> Option<String> {
     lookup(
         client,
-        PROFILE_URL,
+        &profile_url(),
         access_token,
         fingerprint,
         LOOKUP_BUDGET,
@@ -113,6 +131,7 @@ async fn request_email(client: &Client, url: &str, access_token: &str) -> Option
     }
     email
 }
+
 /// `account.email_address` (also `emailAddress` / `email`), falling back to
 /// the same keys at the top level. Blank or non-email values are ignored.
 pub(super) fn parse_email(body: &str) -> Option<String> {
@@ -330,5 +349,75 @@ mod tests {
                 .unwrap()
                 .contains_key(&fingerprint(token))
         );
+    }
+
+    #[tokio::test]
+    async fn expired_or_scope_less_tokens_send_no_profile_request() {
+        let mut server = Server::new_async().await;
+        let profile = server
+            .mock("GET", "/api/oauth/profile")
+            .with_status(200)
+            .with_body(PROFILE_FIXTURE)
+            .expect(0)
+            .create_async()
+            .await;
+        TEST_PROFILE_URL.with(|url| {
+            *url.borrow_mut() = Some(format!("{}/api/oauth/profile", server.url()));
+        });
+        let expired = super::super::ClaudeOAuthCredentials {
+            access_token: "fixture-profile-expired".to_string(),
+            refresh_token: None,
+            expires_at: Some(chrono::Utc::now() - chrono::Duration::minutes(10)),
+            scopes: vec!["user:profile".to_string()],
+            rate_limit_tier: None,
+        };
+        let scope_less = super::super::ClaudeOAuthCredentials {
+            access_token: "fixture-profile-scope-less".to_string(),
+            refresh_token: None,
+            expires_at: None,
+            scopes: vec!["user:inference".to_string()],
+            rate_limit_tier: None,
+        };
+        let fetcher = super::super::ClaudeOAuthFetcher::new();
+
+        let expired_error = fetcher
+            .fetch_with_credentials(expired, "fixture-gate")
+            .await
+            .err()
+            .unwrap();
+        let scope_error = fetcher
+            .fetch_with_credentials(scope_less, "fixture-gate")
+            .await
+            .err()
+            .unwrap();
+
+        assert!(matches!(
+            expired_error,
+            crate::core::ProviderError::OAuthExpired(_)
+        ));
+        assert!(matches!(
+            scope_error,
+            crate::core::ProviderError::OAuth(ref message) if message.contains("user:profile")
+        ));
+        // A lookup that had started would answer the mock within milliseconds.
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        profile.assert_async().await;
+    }
+
+    /// Control for the test above: the mock does see a /profile request when a
+    /// lookup runs for a valid token.
+    #[tokio::test]
+    async fn a_valid_token_reaches_the_profile_endpoint() {
+        let mut server = Server::new_async().await;
+        let token = "fixture-profile-valid";
+        let mock = profile_mock(&mut server, token, 200, 1).await;
+        let url = format!("{}/api/oauth/profile", server.url());
+
+        assert_eq!(
+            refresh(&url, token, TEST_BUDGET).await,
+            None,
+            "the first refresh starts the lookup"
+        );
+        mock.assert_async().await;
     }
 }
