@@ -1716,3 +1716,11 @@ OpenAiOrgLimitsLoad = 프로젝트 한도 불러오기
 OpenAiOrgLimitsEmpty = 프로젝트 한도를 찾지 못했습니다.
 OpenAiOrgLimitsScoped = 프로젝트 한도는 조직 전체에 적용됩니다. 불러오려면 프로젝트 ID를 지우세요.
 OpenAiOrgLimitsTruncated = 일부 프로젝트만 확인했습니다.
+
+# About - Acknowledgements
+AboutLinkAcknowledgements = 감사의 글
+AcknowledgementsFooter = CodexBar는 다음 오픈 소스 프로젝트로 만들어졌습니다.
+AcknowledgementsOthers = 외 { "{}" }명
+AcknowledgementsAuthor = 작성자
+AcknowledgementsAuthors = 작성자
+AcknowledgementsLicense = 라이선스

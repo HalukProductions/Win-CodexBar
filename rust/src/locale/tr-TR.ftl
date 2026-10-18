@@ -1717,3 +1717,11 @@ OpenAiOrgLimitsLoad = Proje limitlerini yükle
 OpenAiOrgLimitsEmpty = Proje limiti bulunamadı.
 OpenAiOrgLimitsScoped = Proje limitleri tüm kuruluş için geçerlidir. Yüklemek için proje kimliğini temizleyin.
 OpenAiOrgLimitsTruncated = Yalnızca bazı projeler kontrol edildi.
+
+# About - Acknowledgements
+AboutLinkAcknowledgements = Teşekkürler
+AcknowledgementsFooter = CodexBar bu açık kaynak projelerle geliştirilmiştir.
+AcknowledgementsOthers = { "{}" } kişi daha
+AcknowledgementsAuthor = Yazar
+AcknowledgementsAuthors = Yazarlar
+AcknowledgementsLicense = Lisans

@@ -1717,3 +1717,11 @@ OpenAiOrgLimitsLoad = 載入專案上限
 OpenAiOrgLimitsEmpty = 找不到專案上限。
 OpenAiOrgLimitsScoped = 專案上限適用於整個組織。請先清空專案 ID 再載入。
 OpenAiOrgLimitsTruncated = 僅檢查了部分專案。
+
+# About - Acknowledgements
+AboutLinkAcknowledgements = 致謝
+AcknowledgementsFooter = CodexBar 使用了以下開源專案。
+AcknowledgementsOthers = 其他 { "{}" } 人
+AcknowledgementsAuthor = 作者
+AcknowledgementsAuthors = 作者
+AcknowledgementsLicense = 授權條款

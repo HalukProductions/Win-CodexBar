@@ -8,6 +8,9 @@ Package.swift linguist-vendored
 # never EOL-convert them (parsers split on LF).
 rust/src/agent_sessions/fixtures/** -text
 
+# Generated notices are compared byte-for-byte by `pnpm run notices:check`.
+apps/desktop-tauri/src/generated/third-party-notices.json text eol=lf
+
 # Bash scripts must remain LF for Linux and WSL execution.
 *.sh text eol=lf
 

@@ -85,6 +85,20 @@
       ]
     },
     {
+      "name": "settings-about-acknowledgements",
+      "query": "window=settings&tab=about&theme=dark",
+      "size": [880, 620],
+      "steps": [
+        { "expectText": "Acknowledgements" },
+        { "click": { "selector": ".settings-link-row span", "label": "Acknowledgements" } },
+        { "expectText": ["CodexBar is built with these open-source projects.", "tauri", "react", "codexcontrol"] },
+        { "screenshot": "settings-about-acknowledgements" },
+        { "click": { "selector": ".acknowledgement__name", "label": "tauri" } },
+        { "expectText": ["Apache License", "https://github.com/tauri-apps/tauri"] },
+        { "screenshot": "settings-about-acknowledgement-open" }
+      ]
+    },
+    {
       "name": "floatbar",
       "query": "window=floatbar",
       "size": [520, 120],

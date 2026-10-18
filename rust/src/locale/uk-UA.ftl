@@ -1719,3 +1719,11 @@ OpenAiOrgLimitsLoad = Завантажити ліміти проєктів
 OpenAiOrgLimitsEmpty = Лімітів проєктів не знайдено.
 OpenAiOrgLimitsScoped = Ліміти проєктів діють для всієї організації. Очистіть ID проєкту, щоб їх завантажити.
 OpenAiOrgLimitsTruncated = Перевірено не всі проєкти.
+
+# About - Acknowledgements
+AboutLinkAcknowledgements = Подяки
+AcknowledgementsFooter = CodexBar створено з використанням цих проєктів з відкритим кодом.
+AcknowledgementsOthers = ще { "{}" }
+AcknowledgementsAuthor = Автор
+AcknowledgementsAuthors = Автори
+AcknowledgementsLicense = Ліцензія
