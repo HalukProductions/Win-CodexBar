@@ -22,6 +22,9 @@ const SESSION_INDEX_MAX_LINE_BYTES: u64 = 64 * 1024;
 const CONFIG_PREFIX_BYTES: u64 = 256 * 1024;
 pub(super) const BUSY_TIMEOUT: Duration = Duration::from_millis(100);
 const DEFAULT_STATE_DATABASE: &str = "state_5.sqlite";
+/// Fallback titles from the state database are capped at this many characters.
+/// Names from `session_index.jsonl` are not capped.
+const DATABASE_TITLE_MAX_CHARS: usize = 256;
 const PROJECT_TOP_SESSION_LIMIT: usize = 5;
 
 /// A session whose thread name is wanted: its id and original working directory.
@@ -301,7 +304,8 @@ pub(super) fn newest_state_database(dir: &Path) -> PathBuf {
     newest.unwrap_or_else(|| dir.join(DEFAULT_STATE_DATABASE))
 }
 
-/// `SELECT title FROM threads WHERE id = ?1 LIMIT 1` for each id, read-only.
+/// `threads.title` for each id, read-only, bounded to
+/// [`DATABASE_TITLE_MAX_CHARS`] characters.
 fn database_titles(database: &Path, ids: &[&str]) -> Vec<(String, String)> {
     if !database.is_file() {
         return Vec::new();
@@ -315,7 +319,13 @@ fn database_titles(database: &Path, ids: &[&str]) -> Vec<(String, String)> {
     if conn.busy_timeout(BUSY_TIMEOUT).is_err() {
         return Vec::new();
     }
-    let Ok(mut statement) = conn.prepare("SELECT title FROM threads WHERE id = ?1 LIMIT 1") else {
+    // Codex copies the whole first prompt into `threads.title`. Truncating in SQL
+    // keeps prompt-sized text out of memory; SQLite counts Unicode code points
+    // for TEXT, so `substr` never splits a character.
+    let query = format!(
+        "SELECT substr(title, 1, {DATABASE_TITLE_MAX_CHARS}) FROM threads WHERE id = ?1 LIMIT 1"
+    );
+    let Ok(mut statement) = conn.prepare(&query) else {
         return Vec::new();
     };
     ids.iter()
