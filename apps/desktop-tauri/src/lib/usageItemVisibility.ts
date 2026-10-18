@@ -98,7 +98,7 @@ function formatPlanDate(raw: string, dateOnly: boolean, locale: string): string 
 }
 
 /**
- * Upstream `subscriptionMetadataNotes`: one "Renews: <date>" line, else
+ * Upstream `subscriptionMetadataNotes`: one "Plan renews: <date>" line, else
  * "Plan expires: <date>". Claude only; it sits under the quota rows.
  */
 export function claudePlanDateNote(

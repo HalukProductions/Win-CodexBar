@@ -1596,7 +1596,7 @@ OverviewProvidersDefaultSummary = 有効な最初の { "{}" } 件のプロバイ
 QuotaWarningMarkersLabel = クォータ警告マーカーを表示
 QuotaWarningMarkersHelper = クォータ警告が設定されている場合、使用量バーにしきい値の目盛りを描画します。
 WorkDaysLabel = 稼働日
-WorkDaysCount = { "{}" } 日
+WorkDaysCount = { "{}" }日間
 WorkdayTickAppearanceLabel = 稼働日の目盛りの表示
 WorkdayTickAppearanceHelper = 週間使用量バーで稼働日の境界をどう表示するかを選びます。
 WorkdayTickHidden = 非表示
@@ -1679,7 +1679,7 @@ AntigravityProfileHomesPickFailed = フォルダーの選択画面を開けま�
 # Claude optional usage rows and plan dates
 UsageItemPlanRenewalExpiry = プランの更新日 / 有効期限
 UsageItemHiddenByCostSummary = 費用サマリー表示スタイルが「非表示」の間は表示されません。
-PlanRenewsOn = 更新日: { "{}" }
+PlanRenewsOn = プランの更新日: { "{}" }
 PlanExpiresOn = プランの有効期限: { "{}" }
 OpenAiLiveUsageTitle = ライブ使用量
 OpenAiLiveUsageToggle = ライブ使用量（毎分トークン数）
