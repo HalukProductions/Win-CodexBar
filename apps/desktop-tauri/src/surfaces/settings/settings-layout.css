@@ -490,9 +490,9 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-/* Centered like the macOS title; the left padding balances the controls. */
+/* Centered like the macOS title; Back/Forward on the left balance the
+   window controls on the right. */
 .settings--sidebar .settings-titlebar__title {
-  padding-left: 92px;
   text-align: center;
   font-size: 13px;
   font-weight: 650;
