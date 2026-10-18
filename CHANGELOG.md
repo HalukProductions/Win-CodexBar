@@ -9,7 +9,7 @@
 
 ## [Windows] Unreleased
 
-- **Claude**: OAuth usage now shows saved limit-reset credits, as the Web source already did. The usage request opts in with `cedar_ember=1` and, when Claude rejects that optional query with HTTP 400 or a 403 that does not name the missing `user:profile` scope, retries once without it so quota and Extra usage still appear. Missing-scope 403, 401 and 429 keep their normal handling. The cached usage body keeps reset counts and dates but never the grant identifiers (upstream 0.72.0, #3895, #4232).
+- **Claude**: OAuth usage now shows saved limit-reset credits, as the Web source already did. The usage request opts in with `cedar_ember=1` and identifies as the Claude CLI (`claude-cli/<version> (external, cli)`); when Claude rejects that optional query with HTTP 400 or a 403 that does not name the missing `user:profile` scope, it retries once without it, as `claude-code/<version>`, so quota and Extra usage still appear. The version is read from `claude --version`, or 2.1.0 when it cannot be read. Missing-scope 403, 401 and 429 keep their normal handling. The cached usage body keeps reset counts and dates but never the grant identifiers (upstream 0.72.0, #3895, #4232).
 - Usage cards: plan renewal dates now read "Plan renews" (in every locale) so they are not mistaken for quota resets (upstream v0.77.0 #4540).
 - Settings > Menu: offer a six-day (Monday–Saturday) work week for weekly pace and the session forecast, alongside 4, 5 and 7 days (upstream v0.77.0 #4548).
 - Qwen Cloud: treat a Team summary with an empty `Data` object as no Team subscription, so Individual-only accounts no longer show "Team usage unavailable" (upstream v0.77.0 #4527, fixes #4525).

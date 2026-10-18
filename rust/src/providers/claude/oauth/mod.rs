@@ -217,6 +217,74 @@ pub struct ClaudeOAuthFetcher {
     client: Client,
     api_base: String,
     usage_gate: &'static Mutex<usage_gate::UsageGate>,
+    version_source: ClaudeVersionSource,
+}
+
+/// Where the Claude CLI version in the usage User-Agent comes from.
+#[derive(Clone, Copy)]
+enum ClaudeVersionSource {
+    /// Run `claude --version`, cached for `CLAUDE_VERSION_CACHE_TTL`.
+    Detect,
+    /// A fixed answer for tests. `None` exercises the fallback version.
+    #[cfg(test)]
+    Fixed(Option<&'static str>),
+}
+
+/// Upstream `ClaudeOAuthUsageFetcher.fallbackClaudeCodeVersion`, used when the
+/// CLI version cannot be detected.
+const FALLBACK_CLAUDE_CODE_VERSION: &str = "2.1.0";
+/// Upstream caches the detected CLI version for 30 minutes.
+const CLAUDE_VERSION_CACHE_TTL: Duration = Duration::from_secs(30 * 60);
+/// Last successful `claude --version` detection, as (when, version).
+static CLAUDE_VERSION_CACHE: Mutex<Option<(Instant, String)>> = Mutex::new(None);
+#[cfg(test)]
+const TEST_CLAUDE_CODE_VERSION: &str = "2.3.4";
+
+/// Version used in the User-Agent: the detected CLI version, or the fallback
+/// when detection failed or returned nothing usable.
+fn claude_agent_version(detected: Option<&str>) -> &str {
+    detected
+        .map(str::trim)
+        .filter(|version| !version.is_empty())
+        .unwrap_or(FALLBACK_CLAUDE_CODE_VERSION)
+}
+
+/// Legacy agent string (`claude-code/<version>`). The fallback retry sends it.
+fn claude_code_user_agent(detected: Option<&str>) -> String {
+    format!("claude-code/{}", claude_agent_version(detected))
+}
+
+/// Opt-in agent string (`claude-cli/<version> (external, cli)`). Upstream
+/// derives it from the legacy string by renaming the product.
+fn claude_cli_user_agent(detected: Option<&str>) -> String {
+    format!(
+        "claude-cli/{} (external, cli)",
+        claude_agent_version(detected)
+    )
+}
+
+/// The Claude CLI version from `claude --version`, cached for the TTL.
+/// Failed detections are not cached, so a later poll can still succeed.
+async fn detected_claude_version() -> Option<String> {
+    {
+        let cache = CLAUDE_VERSION_CACHE
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some((cached_at, version)) = cache.as_ref()
+            && cached_at.elapsed() < CLAUDE_VERSION_CACHE_TTL
+        {
+            return Some(version.clone());
+        }
+    }
+    // The detector blocks on a child process, so keep it off the async runtime.
+    let version = tokio::task::spawn_blocking(super::cli_binary::detect_claude_version)
+        .await
+        .ok()
+        .flatten()?;
+    *CLAUDE_VERSION_CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = Some((Instant::now(), version.clone()));
+    Some(version)
 }
 
 /// Gate shared with other CodexBar processes through a small file (#775).
@@ -380,17 +448,28 @@ impl ClaudeOAuthFetcher {
             client: Client::new(),
             api_base: Self::API_BASE.to_string(),
             usage_gate: &USAGE_GATE,
+            version_source: ClaudeVersionSource::Detect,
         }
     }
 
     /// A fetcher against a local server with its own in-memory usage gate, so
-    /// tests never touch the shared gate file.
+    /// tests never touch the shared gate file. The CLI version is pinned so
+    /// the User-Agent is deterministic.
     #[cfg(test)]
     fn for_test_server(api_base: impl Into<String>) -> Self {
         Self {
             client: Client::new(),
             api_base: api_base.into(),
             usage_gate: Box::leak(Box::new(Mutex::new(usage_gate::UsageGate::new(None)))),
+            version_source: ClaudeVersionSource::Fixed(Some(TEST_CLAUDE_CODE_VERSION)),
+        }
+    }
+
+    async fn claude_code_version(&self) -> Option<String> {
+        match self.version_source {
+            ClaudeVersionSource::Detect => detected_claude_version().await,
+            #[cfg(test)]
+            ClaudeVersionSource::Fixed(version) => version.map(str::to_string),
         }
     }
 
@@ -733,16 +812,24 @@ impl ClaudeOAuthFetcher {
         // Opt in to the saved limit-reset block (upstream 0.72.0). Rejecting
         // the optional query must not hide quota or spend, so one plain
         // request follows; its outcome gets the normal handling below.
+        // Upstream 0.77.0: the opt-in request identifies as the Claude CLI,
+        // and the fallback keeps the legacy `claude-code/` string.
         let usage_url = format!("{}{}", self.api_base, Self::USAGE_PATH);
+        let claude_version = self.claude_code_version().await;
         let mut reply = self
             .request_usage(
                 &format!("{usage_url}?{}", super::reset_credits::RESET_OPT_IN_QUERY),
                 &credentials.access_token,
+                &claude_cli_user_agent(claude_version.as_deref()),
             )
             .await?;
         if rejects_reset_opt_in(reply.status, &reply.body) {
             reply = self
-                .request_usage(&usage_url, &credentials.access_token)
+                .request_usage(
+                    &usage_url,
+                    &credentials.access_token,
+                    &claude_code_user_agent(claude_version.as_deref()),
+                )
                 .await?;
         }
         let UsageReply {
@@ -816,6 +903,7 @@ impl ClaudeOAuthFetcher {
         &self,
         url: &str,
         access_token: &str,
+        user_agent: &str,
     ) -> Result<UsageReply, ProviderError> {
         let response = self
             .client
@@ -823,6 +911,7 @@ impl ClaudeOAuthFetcher {
             .header("Authorization", format!("Bearer {access_token}"))
             .header("Accept", "application/json")
             .header("anthropic-beta", "oauth-2025-04-20")
+            .header("User-Agent", user_agent)
             .timeout(std::time::Duration::from_secs(10))
             .send()
             .await?;

@@ -2,7 +2,8 @@
 //! `ClaudeOAuthResetCreditsTests`).
 
 use super::{
-    ClaudeOAuthCredentials, ClaudeOAuthFetcher, is_rate_limited_error, reset_credits_item,
+    ClaudeOAuthCredentials, ClaudeOAuthFetcher, ClaudeVersionSource, claude_cli_user_agent,
+    claude_code_user_agent, is_rate_limited_error, reset_credits_item,
 };
 use crate::core::ProviderError;
 use chrono::Utc;
@@ -10,6 +11,10 @@ use mockito::{Matcher, Mock, Server, ServerGuard};
 
 const USAGE_PATH: &str = "/api/oauth/usage";
 const GATE_KEY: &str = "gate-key-fixture";
+/// Opt-in request agent for the pinned test CLI version (upstream format).
+const CLI_USER_AGENT: &str = "claude-cli/2.3.4 (external, cli)";
+/// Legacy fallback agent for the pinned test CLI version.
+const LEGACY_USER_AGENT: &str = "claude-code/2.3.4";
 
 const ELIGIBLE_BLOCK: &str = r#"{"eligible":true,"grants":[
   {"id":"redemption-handle","label":"private grant","resets_left":2,"resets_total":2,
@@ -44,6 +49,7 @@ async fn opted_in(server: &mut ServerGuard, status: usize, body: &str, calls: us
         .match_query(Matcher::UrlEncoded("cedar_ember".into(), "1".into()))
         .match_header("authorization", "Bearer synthetic-reset-token")
         .match_header("anthropic-beta", "oauth-2025-04-20")
+        .match_header("user-agent", CLI_USER_AGENT)
         .with_status(status)
         .with_header("retry-after", "300")
         .with_body(body)
@@ -58,6 +64,7 @@ async fn plain(server: &mut ServerGuard, status: usize, body: &str, calls: usize
         .match_query(Matcher::Missing)
         .match_header("authorization", "Bearer synthetic-reset-token")
         .match_header("anthropic-beta", "oauth-2025-04-20")
+        .match_header("user-agent", LEGACY_USER_AGENT)
         .with_status(status)
         .with_header("retry-after", "300")
         .with_body(body)
@@ -196,7 +203,7 @@ async fn the_gate_keeps_reset_counts_but_never_redemption_handles() {
     let first = opted_in(&mut server, 200, &payload(ELIGIBLE_BLOCK), 1).await;
     let fetcher = ClaudeOAuthFetcher::for_test_server(server.url());
     let creds = credentials("synthetic-reset-token");
-    fetcher.fetch_usage(&creds, GATE_KEY).await.unwrap();
+    let live = fetcher.fetch_usage(&creds, GATE_KEY).await.unwrap();
 
     let decision = fetcher
         .usage_gate
@@ -216,7 +223,65 @@ async fn the_gate_keeps_reset_counts_but_never_redemption_handles() {
         reset_credits_item(&cached, Utc::now()).map(|item| item.available_count),
         Some(2)
     );
+    assert_eq!(
+        cached.five_hour.as_ref().unwrap().utilization,
+        live.five_hour.as_ref().unwrap().utilization
+    );
+    let (cached_extra, live_extra) = (
+        cached.extra_usage.as_ref().unwrap(),
+        live.extra_usage.as_ref().unwrap(),
+    );
+    assert_eq!(cached_extra.is_enabled, live_extra.is_enabled);
+    assert_eq!(cached_extra.used_credits, live_extra.used_credits);
+    assert_eq!(cached_extra.monthly_limit, live_extra.monthly_limit);
     first.assert_async().await;
+}
+
+#[tokio::test]
+async fn user_agents_fall_back_to_the_default_version_when_detection_fails() {
+    let mut server = Server::new_async().await;
+    let first = server
+        .mock("GET", USAGE_PATH)
+        .match_query(Matcher::UrlEncoded("cedar_ember".into(), "1".into()))
+        .match_header("user-agent", "claude-cli/2.1.0 (external, cli)")
+        .with_status(400)
+        .with_body("{}")
+        .expect(1)
+        .create_async()
+        .await;
+    let retry = server
+        .mock("GET", USAGE_PATH)
+        .match_query(Matcher::Missing)
+        .match_header("user-agent", "claude-code/2.1.0")
+        .with_status(200)
+        .with_body(payload("null"))
+        .expect(1)
+        .create_async()
+        .await;
+    let mut fetcher = ClaudeOAuthFetcher::for_test_server(server.url());
+    fetcher.version_source = ClaudeVersionSource::Fixed(None);
+
+    fetcher
+        .fetch_usage(&credentials("synthetic-reset-token"), GATE_KEY)
+        .await
+        .unwrap();
+
+    first.assert_async().await;
+    retry.assert_async().await;
+}
+
+#[test]
+fn user_agent_strings_follow_upstream_format() {
+    assert_eq!(claude_code_user_agent(Some(" 2.3.4 ")), "claude-code/2.3.4");
+    assert_eq!(
+        claude_cli_user_agent(Some("2.3.4")),
+        "claude-cli/2.3.4 (external, cli)"
+    );
+    assert_eq!(
+        claude_cli_user_agent(None),
+        "claude-cli/2.1.0 (external, cli)"
+    );
+    assert_eq!(claude_code_user_agent(Some("  ")), "claude-code/2.1.0");
 }
 
 #[test]
