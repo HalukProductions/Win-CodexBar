@@ -1681,7 +1681,7 @@ ProviderTextOfRemaining = Залишилося { "{}" } із { "{}" }
 # Claude optional usage rows and plan dates
 UsageItemPlanRenewalExpiry = Поновлення / завершення тарифу
 UsageItemHiddenByCostSummary = Приховано, поки показ вартості встановлено на «Приховано».
-PlanRenewsOn = Поновлення: { "{}" }
+PlanRenewsOn = Поновлення тарифу: { "{}" }
 PlanExpiresOn = Тариф спливає: { "{}" }
 OpenAiLiveUsageTitle = Живе використання
 OpenAiLiveUsageToggle = Живе використання (токени за хвилину)

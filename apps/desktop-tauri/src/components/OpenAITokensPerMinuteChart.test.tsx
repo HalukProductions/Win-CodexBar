@@ -17,6 +17,13 @@ function pointer(target: Element, type: string, clientX: number) {
   fireEvent(target, new MouseEvent(type, { bubbles: true, clientX }));
 }
 
+/** jsdom has no PointerEvent, so pointerType is patched onto a MouseEvent. */
+function pointerUp(target: Element, clientX: number, clientY: number) {
+  const event = new MouseEvent("pointerup", { bubbles: true, clientX, clientY });
+  Object.defineProperty(event, "pointerType", { value: "mouse" });
+  fireEvent(target, event);
+}
+
 function model(name: string, overrides: Partial<ThroughputModelSnapshot> = {}): ThroughputModelSnapshot {
   return {
     name,
@@ -138,6 +145,26 @@ describe("OpenAITokensPerMinuteChart", () => {
     expect(container.querySelector(".openai-tpm__summary")?.textContent).toBe(
       `${formatClock(START + 240)} · OpenAiTpmReporting`,
     );
+  });
+
+  it("clears the selection when a mouse drag ends outside the strip", () => {
+    const { container, getByTestId } = render(
+      <OpenAITokensPerMinuteChart throughput={throughput()} t={t} />,
+    );
+    const chart = getByTestId("openai-tpm-chart");
+    chart.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 100, height: 56, right: 100, bottom: 56, x: 0, y: 0 }) as DOMRect;
+    const summary = () => container.querySelector(".openai-tpm__summary")?.textContent;
+
+    // A drag released inside keeps the hovered minute.
+    pointer(chart, "pointerdown", 30);
+    pointerUp(chart, 30, 10);
+    expect(summary()).toBe(`${formatClock(START + 60)} · OpenAiTpmHoverMinute`);
+
+    // Released past the right edge, nothing is hovered anymore.
+    pointerUp(chart, 150, 10);
+    expect(summary()).toBe("\u00a0");
+    expect(container.querySelector("rect.openai-tpm__bar--selected")).toBeNull();
   });
 
   it("steps through minutes with the arrow keys", () => {

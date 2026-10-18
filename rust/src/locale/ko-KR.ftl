@@ -1678,7 +1678,7 @@ AntigravityProfileHomesPickFailed = 폴더 선택 창을 열 수 없습니다.
 # Claude optional usage rows and plan dates
 UsageItemPlanRenewalExpiry = 요금제 갱신 / 만료
 UsageItemHiddenByCostSummary = 비용 요약 표시 스타일이 숨김이면 표시되지 않습니다.
-PlanRenewsOn = 갱신: { "{}" }
+PlanRenewsOn = 요금제 갱신: { "{}" }
 PlanExpiresOn = 요금제 만료: { "{}" }
 OpenAiLiveUsageTitle = 실시간 사용량
 OpenAiLiveUsageToggle = 실시간 사용량(분당 토큰)

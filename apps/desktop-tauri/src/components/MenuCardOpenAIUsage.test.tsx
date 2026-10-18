@@ -148,12 +148,17 @@ describe("MenuCard OpenAI daily usage", () => {
 
     const { container } = renderCard(withThroughput(snapshot("openaiapi", usage())));
     await waitFor(() => expect(container.querySelector(".openai-live-spend__switch")).not.toBeNull());
-    const [live, spend] = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="radio"]'));
-    expect(live).toHaveAttribute("aria-checked", "true");
+    // Plain toggle buttons: both stay tabbable and need no arrow-key wiring.
+    const switchGroup = container.querySelector(".openai-live-spend__switch");
+    expect(switchGroup).toHaveAttribute("role", "group");
+    const [live, spend] = Array.from(switchGroup!.querySelectorAll<HTMLButtonElement>("button"));
+    expect(live).toHaveAttribute("aria-pressed", "true");
+    expect(spend).toHaveAttribute("aria-pressed", "false");
     expect(container.querySelector('[data-testid="openai-spend-layer"]')).toHaveAttribute("aria-hidden", "true");
 
     fireEvent.click(spend);
-    expect(spend).toHaveAttribute("aria-checked", "true");
+    expect(spend).toHaveAttribute("aria-pressed", "true");
+    expect(live).toHaveAttribute("aria-pressed", "false");
     expect(container.querySelector('[data-testid="openai-live-layer"]')).toHaveAttribute("aria-hidden", "true");
     expect(container.querySelector('[data-testid="openai-spend-layer"]')).toHaveAttribute("aria-hidden", "false");
     expect(container).toHaveTextContent("OpenAiSpendChartTitle");

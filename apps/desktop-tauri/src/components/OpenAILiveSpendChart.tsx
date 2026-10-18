@@ -47,15 +47,14 @@ export function OpenAILiveSpendChart({ providerId, throughput, usage, t }: OpenA
     <div className="openai-live-spend" data-mode={mode}>
       <div
         className="provider-detail-segmented openai-live-spend__switch"
-        role="radiogroup"
+        role="group"
         aria-label={t("OpenAiChartModeLabel")}
       >
         {MODES.map((option) => (
           <button
             key={option.id}
             type="button"
-            role="radio"
-            aria-checked={option.id === mode}
+            aria-pressed={option.id === mode}
             className={`provider-detail-segmented__option${option.id === mode ? " is-active" : ""}`}
             onClick={() => setMode(option.id)}
           >

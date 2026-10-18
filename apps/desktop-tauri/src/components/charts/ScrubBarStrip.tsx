@@ -75,7 +75,23 @@ export function ScrubBarStrip({
   const onPointerUp = (event: PointerEvent<SVGSVGElement>) => {
     endDrag(event);
     // Touch and pen have no hover to fall back to once the finger lifts.
-    if (event.pointerType !== "mouse") onSelect(null);
+    if (event.pointerType !== "mouse") {
+      onSelect(null);
+      return;
+    }
+    // Capture keeps pointerup on the strip even when the drag ended outside
+    // it; a mouse released out there is not hovering any bar anymore. A
+    // zero-size rect (no layout yet) says nothing, so it keeps the selection.
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (
+      rect.width > 0 &&
+      (event.clientX < rect.left ||
+        event.clientX > rect.right ||
+        event.clientY < rect.top ||
+        event.clientY > rect.bottom)
+    ) {
+      onSelect(null);
+    }
   };
 
   const onPointerLeave = () => {
