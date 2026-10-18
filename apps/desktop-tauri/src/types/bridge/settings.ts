@@ -49,7 +49,8 @@ export type MetricPreference =
   | "credits"
   | "extraUsage"
   | "monthlyPlan"
-  | "average";
+  | "average"
+  | "tokensPerMinute";
 
 export type Language =
   | "english"

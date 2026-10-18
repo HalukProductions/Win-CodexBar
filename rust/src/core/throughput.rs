@@ -25,6 +25,12 @@ pub struct ProviderThroughput {
     pub project_id: Option<String>,
 }
 
+/// Compact menu bar rate such as "12K/min", "1.5M/min" or "0/min" (upstream
+/// `ProviderThroughputSection.count(_) + "/min"`).
+pub fn tokens_per_minute_label(tokens: u64) -> String {
+    format!("{}/min", crate::providers::format::token_count(tokens))
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ThroughputMinute {
     pub start: i64,
@@ -44,4 +50,18 @@ pub struct ThroughputModel {
     /// Limit-counted tokens aligned with [`ProviderThroughput::minutes`]; pending
     /// values are retained but excluded from utilization.
     pub limit_counted_tokens_by_minute: Vec<u64>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tokens_per_minute_label;
+
+    #[test]
+    fn tokens_per_minute_label_is_compact_like_upstream() {
+        assert_eq!(tokens_per_minute_label(0), "0/min");
+        assert_eq!(tokens_per_minute_label(950), "950/min");
+        assert_eq!(tokens_per_minute_label(12_345), "12K/min");
+        assert_eq!(tokens_per_minute_label(1_500_000), "1.5M/min");
+        assert_eq!(tokens_per_minute_label(49_000_000), "49M/min");
+    }
 }
