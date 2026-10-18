@@ -748,6 +748,15 @@ pub fn get_api_key_providers() -> Vec<ProviderConfigInfo> {
             ),
         },
         ProviderConfigInfo {
+            id: ProviderId::Munito,
+            name: "Munito",
+            api_key_env_var: Some("MUNITO_API_KEY"),
+            api_key_help: Some(
+                "Key with Read account data (Admin API) permission. Or set MUNITO_API_KEY.",
+            ),
+            dashboard_url: Some("https://console.munito.ai/keys"),
+        },
+        ProviderConfigInfo {
             id: ProviderId::Cosmic,
             name: "Cosmic AI",
             api_key_env_var: Some("COSMIC_TOKEN"),

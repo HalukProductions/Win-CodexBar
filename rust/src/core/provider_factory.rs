@@ -19,6 +19,7 @@ use crate::providers::IBMBobProvider;
 use crate::providers::LangdockProvider;
 use crate::providers::LinkupProvider;
 use crate::providers::LithosAIProvider;
+use crate::providers::MunitoProvider;
 use crate::providers::MuseAIProvider;
 use crate::providers::ParallelProvider;
 use crate::providers::SyntheticProvider;
@@ -159,6 +160,7 @@ pub fn instantiate(id: ProviderId) -> Box<dyn Provider> {
         ProviderId::Parallel => Box::new(ParallelProvider::new()),
         ProviderId::Fal => Box::new(FalProvider::new()),
         ProviderId::Flora => Box::new(FloraProvider::new()),
+        ProviderId::Munito => Box::new(MunitoProvider::new()),
     }
 }
 
@@ -276,7 +278,8 @@ pub fn pace_capability(id: ProviderId) -> ProviderPaceCapability {
         | ProviderId::Aerostack
         | ProviderId::Parallel
         | ProviderId::Fal
-        | ProviderId::Flora => ProviderPaceCapability::UNSUPPORTED,
+        | ProviderId::Flora
+        | ProviderId::Munito => ProviderPaceCapability::UNSUPPORTED,
     }
 }
 
@@ -394,7 +397,8 @@ pub fn limit_reset_policy(id: ProviderId) -> ProviderLimitResetPolicy {
         | ProviderId::Aerostack
         | ProviderId::Parallel
         | ProviderId::Fal
-        | ProviderId::Flora => ProviderLimitResetPolicy::DEFAULT,
+        | ProviderId::Flora
+        | ProviderId::Munito => ProviderLimitResetPolicy::DEFAULT,
     }
 }
 
@@ -510,7 +514,8 @@ pub(crate) fn cost_cli_extension_for(id: ProviderId) -> Option<&'static dyn Cost
         | ProviderId::Aerostack
         | ProviderId::Parallel
         | ProviderId::Fal
-        | ProviderId::Flora => None,
+        | ProviderId::Flora
+        | ProviderId::Munito => None,
     }
 }
 

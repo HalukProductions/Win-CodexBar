@@ -19,7 +19,7 @@ Rules:
 - Keep parsing, auth and display choices inside the provider module. Shared code has no `if provider == X` branches. When shared code needs a provider-specific answer, add a typed field or a trait method with a default, as `menu_bar_pace_lane` and `reset_regenerates` below do.
 - Keep identity, plan and email per provider. Never show one provider's account data on another provider's card or page.
 
-`ProviderId` has 108 variants. A fresh install enables only Claude and Codex. Kimi K2 and CrossModel are deprecated and stay hidden unless they are already enabled.
+`ProviderId` has 109 variants. A fresh install enables only Claude and Codex. Kimi K2 and CrossModel are deprecated and stay hidden unless they are already enabled.
 
 ## Fetch sources
 
@@ -621,6 +621,49 @@ Errors: 401 reports a rejected key; 403 reports that the key needs billing
 permission on the workspace; 404 reports an unknown workspace ID; other HTTP
 errors report their status. A response without a finite `available_cost` is
 reported as unrecognized. Response bodies are never echoed in errors.
+
+### Munito
+
+Munito is disabled by default. In Settings → Providers → Munito, enter an
+**admin API key** with the "Read account data" (Admin API) permission, or set
+`MUNITO_API_KEY` (`MUNITO_ADMIN_KEY` is also read). Surrounding whitespace and
+one pair of wrapping quotes are removed. Create keys at
+[console.munito.ai/keys](https://console.munito.ai/keys). The key is stored with
+the other API keys and is never written to logs.
+
+The provider makes two read-only requests at the same time:
+
+```text
+GET https://api.munito.ai/admin/v1/limits
+GET https://api.munito.ai/admin/v1/organization
+Authorization: Bearer <admin API key>
+```
+
+The organization read is best effort. When it fails or returns something other
+than a JSON object, the spend limits still show and only the organization rows
+and name are missing.
+
+- `periods` entries with `period` `day` and `month` become the **Today** and
+  **This month** rows in the **Spend limits** section. Other periods are
+  ignored. A row shows `$spent of $limit` with a progress bar when `limit_usd`
+  is positive, otherwise only the spend.
+- **Today organization limit** / **Today account limit** (and the monthly
+  equivalents) appear when that cap is positive and differs from `limit_usd`.
+  **Today stopped until** / **This month stopped until** show `stopped_until`
+  in UTC; the daily and monthly stops stay separate.
+- **Usage tier** comes from the limits response, or else from the organization.
+- The **Organization** section shows **Status** and **Data region**. The
+  organization `name` is shown as the account organization. The provider reports
+  identity as "Admin API key".
+- The primary window is today's spend against a positive daily limit (one-day
+  window); the secondary window is this month's spend against a positive monthly
+  limit. Cost uses this month's spend and limit, or today's when no month period
+  is reported. With no periods, the card shows only the identity and the rows.
+- 401 and other HTTP errors report `Munito returned HTTP <status>.`; 403 reports
+  that the key needs the "Read account data" permission. Amounts must be
+  non-negative numbers or numeric strings, and `stopped_until` must be an ISO 8601
+  timestamp; anything else fails parsing. Response bodies are never echoed in
+  errors.
 
 ### Aerostack
 
