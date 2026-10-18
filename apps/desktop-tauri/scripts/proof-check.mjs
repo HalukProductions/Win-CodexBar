@@ -323,6 +323,12 @@ const asList = (value) => (Array.isArray(value) ? value : [value]);
 // which innerText reads back with layout spaces in between.
 const hasText = (text) => `document.body.textContent.includes(${js(text)})`;
 
+// A native <select> named by its Field label (Field wires aria-labelledby to the label span).
+const selectByLabel = (label) => `[...document.querySelectorAll("select")].find((el) => {
+  const id = el.getAttribute("aria-labelledby");
+  return id !== null && document.getElementById(id)?.textContent.trim() === ${js(label)};
+}) ?? null`;
+
 async function runStep(page, step, ctx) {
   if (step.expectText !== undefined) {
     for (const text of asList(step.expectText)) {
@@ -385,6 +391,32 @@ async function runStep(page, step, ctx) {
     writeFileSync(file, Buffer.from(shot.data, "base64"));
     ctx.screenshots.push(file);
     if (ctx.hold) await sleep(ctx.hold);
+  } else if (step.select !== undefined) {
+    // Native <select> ignores mouse clicks here: set the value through the
+    // prototype setter and fire `change`, which is what React's onChange reads.
+    const { label, value } = step.select;
+    const ok = await page.eval(`(() => {
+      const el = ${selectByLabel(label)};
+      if (!el || ![...el.options].some((o) => o.value === ${js(value)})) return false;
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(el, ${js(value)});
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+      return true;
+    })()`);
+    if (!ok) throw new Error(`cannot select ${js(value)} in ${js(label)}`);
+  } else if (step.expectField !== undefined) {
+    // Polls until the control matches, so a re-render after a save can settle.
+    const { label, value, options, enabled } = step.expectField;
+    const mismatch = `(() => {
+      const el = ${selectByLabel(label)};
+      if (!el) return "no select labelled ${label}";
+      ${value !== undefined ? `if (el.value !== ${js(value)}) return "value is " + JSON.stringify(el.value);` : ""}
+      ${options !== undefined ? `const texts = [...el.options].map((o) => o.textContent.trim());
+      const want = ${js(options)};
+      if (JSON.stringify(texts) !== JSON.stringify(want)) return "options are " + JSON.stringify(texts);` : ""}
+      ${enabled !== undefined ? `if (el.disabled === ${js(enabled)}) return "enabled is " + !el.disabled;` : ""}
+      return "";
+    })()`;
+    if (!(await page.poll(`${mismatch} === ""`))) throw new Error(await page.eval(mismatch));
   } else if (step.wait !== undefined) {
     await sleep(step.wait);
   } else {
