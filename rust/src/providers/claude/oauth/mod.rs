@@ -131,8 +131,38 @@ pub struct OAuthUsageResponse {
     #[serde(default)]
     pub iguana_necktie: Option<serde_json::Value>,
 
+    /// Saved limit-reset block, present when the request opted in. Decoded
+    /// leniently by `reset_credits` so a malformed block never hides usage.
+    #[serde(default)]
+    cedar_ember: Option<serde_json::Value>,
+
     #[serde(default)]
     limits: Vec<super::scoped_weekly::ScopedWeeklyLimit>,
+}
+
+/// Display-only limit-reset inventory, when the block is present and valid.
+fn reset_credits_item(
+    response: &OAuthUsageResponse,
+    now: DateTime<Utc>,
+) -> Option<crate::core::ProviderInventoryItem> {
+    response
+        .cedar_ember
+        .as_ref()
+        .and_then(|block| super::reset_credits::inventory_from_block(block, now))
+}
+
+/// Upstream retries without the reset opt-in on 400, and on 403 unless the
+/// rejection names the missing `user:profile` scope.
+fn rejects_reset_opt_in(status: reqwest::StatusCode, body: &str) -> bool {
+    status == reqwest::StatusCode::BAD_REQUEST
+        || (status == reqwest::StatusCode::FORBIDDEN && !body.contains("user:profile"))
+}
+
+/// Status, `Retry-After` and body of one usage response.
+struct UsageReply {
+    status: reqwest::StatusCode,
+    retry_after: Option<HeaderValue>,
+    body: String,
 }
 
 /// Display row for the promotional cloud-credits block, when present and valid.
@@ -185,6 +215,8 @@ pub(super) fn is_rate_limited_error(error: &ProviderError) -> bool {
 /// Claude OAuth fetcher
 pub struct ClaudeOAuthFetcher {
     client: Client,
+    api_base: String,
+    usage_gate: &'static Mutex<usage_gate::UsageGate>,
 }
 
 /// Gate shared with other CodexBar processes through a small file (#775).
@@ -339,12 +371,26 @@ fn apply_standalone_summary(
 }
 
 impl ClaudeOAuthFetcher {
-    const USAGE_URL: &'static str = "https://api.anthropic.com/api/oauth/usage";
+    const API_BASE: &'static str = "https://api.anthropic.com";
+    const USAGE_PATH: &'static str = "/api/oauth/usage";
     const DEFAULT_RATE_LIMIT_BACKOFF: Duration = Duration::from_secs(5 * 60);
 
     pub fn new() -> Self {
         Self {
             client: Client::new(),
+            api_base: Self::API_BASE.to_string(),
+            usage_gate: &USAGE_GATE,
+        }
+    }
+
+    /// A fetcher against a local server with its own in-memory usage gate, so
+    /// tests never touch the shared gate file.
+    #[cfg(test)]
+    fn for_test_server(api_base: impl Into<String>) -> Self {
+        Self {
+            client: Client::new(),
+            api_base: api_base.into(),
+            usage_gate: Box::leak(Box::new(Mutex::new(usage_gate::UsageGate::new(None)))),
         }
     }
 
@@ -524,6 +570,9 @@ impl ClaudeOAuthFetcher {
         }
         let mut result = ProviderFetchResult::new(usage, "oauth")
             .with_display_detail(cloud_credits_row(&usage_response, Utc::now()));
+        if let Some(item) = reset_credits_item(&usage_response, Utc::now()) {
+            result = result.with_inventory_item(item);
+        }
         if let Some(cost) = spend_cost {
             result = result.with_cost(cost);
         }
@@ -677,27 +726,33 @@ impl ClaudeOAuthFetcher {
             )));
         }
 
-        if let Some(result) = Self::gate_precheck(&USAGE_GATE, usage_gate::now_ms(), gate_key) {
+        if let Some(result) = Self::gate_precheck(self.usage_gate, usage_gate::now_ms(), gate_key) {
             return result;
         }
 
-        let response = self
-            .client
-            .get(Self::USAGE_URL)
-            .header(
-                "Authorization",
-                format!("Bearer {}", credentials.access_token),
+        // Opt in to the saved limit-reset block (upstream 0.72.0). Rejecting
+        // the optional query must not hide quota or spend, so one plain
+        // request follows; its outcome gets the normal handling below.
+        let usage_url = format!("{}{}", self.api_base, Self::USAGE_PATH);
+        let mut reply = self
+            .request_usage(
+                &format!("{usage_url}?{}", super::reset_credits::RESET_OPT_IN_QUERY),
+                &credentials.access_token,
             )
-            .header("Accept", "application/json")
-            .header("anthropic-beta", "oauth-2025-04-20")
-            .timeout(std::time::Duration::from_secs(10))
-            .send()
             .await?;
+        if rejects_reset_opt_in(reply.status, &reply.body) {
+            reply = self
+                .request_usage(&usage_url, &credentials.access_token)
+                .await?;
+        }
+        let UsageReply {
+            status,
+            retry_after,
+            body,
+        } = reply;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let retry_after = Self::retry_after_duration(response.headers().get(RETRY_AFTER));
-            let body = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            let retry_after = Self::retry_after_duration(retry_after.as_ref());
 
             // Upstream 0.50.1 #2516: distinguish revoked tokens (keyring ACL
             // revocation, token rotation) from merely expired/invalid ones.
@@ -729,7 +784,8 @@ impl ClaudeOAuthFetcher {
             }
 
             if status.as_u16() == 429 {
-                let backoff = USAGE_GATE
+                let backoff = self
+                    .usage_gate
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
                     .record_rate_limit(usage_gate::now_ms(), gate_key, retry_after);
@@ -743,17 +799,50 @@ impl ClaudeOAuthFetcher {
             )));
         }
 
-        let body = response
-            .text()
-            .await
-            .map_err(|e| ProviderError::Parse(format!("Failed to read OAuth response: {}", e)))?;
         let usage = Self::parse_usage(&body)?;
 
-        USAGE_GATE
+        self.usage_gate
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .record_success(usage_gate::now_ms(), gate_key, body);
+            .record_success(
+                usage_gate::now_ms(),
+                gate_key,
+                super::reset_credits::redact_usage_body(&body),
+            );
         Ok(usage)
+    }
+
+    async fn request_usage(
+        &self,
+        url: &str,
+        access_token: &str,
+    ) -> Result<UsageReply, ProviderError> {
+        let response = self
+            .client
+            .get(url)
+            .header("Authorization", format!("Bearer {access_token}"))
+            .header("Accept", "application/json")
+            .header("anthropic-beta", "oauth-2025-04-20")
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await?;
+        let status = response.status();
+        let retry_after = response.headers().get(RETRY_AFTER).cloned();
+        let body = match response.text().await {
+            Ok(body) => body,
+            Err(e) if status.is_success() => {
+                return Err(ProviderError::Parse(format!(
+                    "Failed to read OAuth response: {}",
+                    e
+                )));
+            }
+            Err(_) => String::new(),
+        };
+        Ok(UsageReply {
+            status,
+            retry_after,
+            body,
+        })
     }
 
     fn parse_usage(body: &str) -> Result<OAuthUsageResponse, ProviderError> {
@@ -982,3 +1071,6 @@ fn format_reset_date(date: DateTime<Utc>) -> String {
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod reset_opt_in_tests;
