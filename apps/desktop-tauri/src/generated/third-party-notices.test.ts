@@ -47,6 +47,15 @@ describe("third-party notices generator", () => {
     expect(copyrightLine("webview2-com", [])).toBe("Copyright (c) webview2-com contributors");
   });
 
+  it("uses the documented holder override ahead of authors metadata", () => {
+    expect(copyrightLine("alloc-stdlib", ["Daniel Reiter Horn <danielrh@dropbox.com>"])).toBe(
+      "Copyright (c) 2016 Dropbox, Inc.",
+    );
+    expect(copyrightLine("alloc-no-stdlib", ["Daniel Reiter Horn <danielrh@dropbox.com>"])).toBe(
+      "Copyright (c) Daniel Reiter Horn <danielrh@dropbox.com>",
+    );
+  });
+
   it("keeps dollar signs in author names literal when rendering", () => {
     expect(renderStandardText("{{copyright}}\n", "Copyright (c) $& Co")).toBe(
       "Copyright (c) $& Co\n",

@@ -45,9 +45,18 @@ export function licenseIds(license) {
   return [...new Set(ids)];
 }
 
+// Copyright lines copied from the license file that a package's standard text came
+// from, for packages whose authors metadata does not name the holder. Keyed by crate name.
+//   alloc-stdlib: its BSD-3-Clause text is alloc-no-stdlib 2.0.4 LICENSE (same
+//   repository, dropbox/rust-alloc-no-stdlib), whose first line is this copyright.
+export const COPYRIGHT_OVERRIDES = Object.freeze({
+  "alloc-stdlib": "Copyright (c) 2016 Dropbox, Inc.",
+});
+
 // Copyright line for a standard text. A package with no authors metadata gets a
 // generic holder rather than an invented person.
 export function copyrightLine(name, authors) {
+  if (Object.hasOwn(COPYRIGHT_OVERRIDES, name)) return COPYRIGHT_OVERRIDES[name];
   const holders = authors.length > 0 ? authors.join(", ") : `${name} contributors`;
   return `Copyright (c) ${holders}`;
 }

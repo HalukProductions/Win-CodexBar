@@ -19,6 +19,7 @@ export interface NoticeComponent {
 
 export const TEMPLATE_DIR: string;
 export const STANDARD_TEMPLATES: Readonly<Record<string, string>>;
+export const COPYRIGHT_OVERRIDES: Readonly<Record<string, string>>;
 
 export function normalizeText(text: string): string;
 export function textIdOf(text: string): string;
