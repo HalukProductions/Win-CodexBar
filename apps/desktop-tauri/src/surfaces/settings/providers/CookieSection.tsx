@@ -80,7 +80,7 @@ export function CookieSection({ providerId, cookieDomain, onChanged }: Props) {
 
   useEffect(() => {
     if (cookieDomain === null) return;
-    listDetectedBrowsers()
+    listDetectedBrowsers(providerId)
       .then((list) => {
         setBrowsers(list);
         setBrowsersLoaded(true);
@@ -89,7 +89,7 @@ export function CookieSection({ providerId, cookieDomain, onChanged }: Props) {
       .catch(() => {
         setBrowsersLoaded(true);
       });
-  }, [cookieDomain]);
+  }, [cookieDomain, providerId]);
 
   if (cookieDomain === null) return null;
   if (!loaded) return null;

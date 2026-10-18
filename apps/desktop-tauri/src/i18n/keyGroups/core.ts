@@ -410,6 +410,8 @@ export const CORE_LOCALE_KEYS = [
   "ProviderClaudeCookiesHelp",
   "ProviderClaudeAvoidKeychainPrompts",
   "ProviderClaudeAvoidKeychainPromptsHelp",
+  "ProviderClaudeDesktopCookies",
+  "ProviderClaudeDesktopCookiesHelp",
   "ProviderClaudeDailyRoutinesUsage",
   "ProviderClaudeDailyRoutinesUsageHelp",
   "ProviderClaudeAllowReadingClaudeCodeCredentials",

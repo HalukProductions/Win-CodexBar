@@ -55,6 +55,15 @@ Chromium App-Bound Encryption (ABE) ties the cookie key to the browser install. 
 
 Closing the browser doesn't remove ABE. Paste the cookie by hand, or sign in to the provider in Firefox and import from there. The Chromium choices stay in the list because older profiles can still hold readable DPAPI and AES-GCM cookies.
 
+## Claude desktop app cookies
+
+The Claude desktop app keeps its claude.ai session in its own Chromium cookie store. CodexBar looks in `%APPDATA%\Claude` (classic install) and `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude` (Microsoft Store install). When both exist, it uses the one whose cookie database changed last.
+
+- For Claude, the cookie import list adds **Claude desktop app** after the browsers. Other providers never see it, and automatic browser order never reads it.
+- Settings > Providers > Claude > Options has **Use Claude desktop app cookies** (off by default). It shows only while the Claude cookie source is Automatic. When it is on, Claude web usage reads the desktop app session on every refresh, without falling back to a browser, the cookie cache, or a stored cookie. Switch the cookie source to **Manual** to use a pasted cookie instead.
+- The session needs a `sessionKey` cookie. If the app is signed out, CodexBar reports that no readable Claude desktop app session was found.
+- Recent desktop app builds may protect cookies with App-Bound Encryption (`v20`). CodexBar doesn't bypass it and says so; import from a browser signed in to claude.ai, or paste the cookie by hand.
+
 ## Kimi tokens from local storage
 
 When the Kimi cookie source is Automatic, CodexBar also reads `access_token` from the `Local Storage` of Chromium browsers, for the selected Kimi region (`www.kimi.com` or `www.kimi.ai`). It tries this after the Kimi Desktop session and the browser cookies.
