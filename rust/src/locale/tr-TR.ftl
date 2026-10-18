@@ -1681,7 +1681,7 @@ AntigravityProfileHomesPickFailed = Klasör seçici açılamadı.
 # Claude optional usage rows and plan dates
 UsageItemPlanRenewalExpiry = Plan yenileme / bitiş
 UsageItemHiddenByCostSummary = Maliyet özeti görünümü Gizli olarak ayarlıyken gizlenir.
-PlanRenewsOn = Yenilenme: { "{}" }
+PlanRenewsOn = Plan yenilenir: { "{}" }
 PlanExpiresOn = Plan bitişi: { "{}" }
 OpenAiLiveUsageTitle = Canlı kullanım
 OpenAiLiveUsageToggle = Canlı kullanım (dakikadaki token)
