@@ -1439,6 +1439,7 @@ locale_keys! {
     AcknowledgementsAuthor,
     AcknowledgementsAuthors,
     AcknowledgementsLicense,
+    AcknowledgementsStandardText,
     DiagnosticsSectionHeading,
     DiagnosticsCopyButton,
     DiagnosticsCopied,

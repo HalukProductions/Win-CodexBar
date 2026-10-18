@@ -1725,3 +1725,4 @@ AcknowledgementsOthers = 其他 { "{}" } 人
 AcknowledgementsAuthor = 作者
 AcknowledgementsAuthors = 作者
 AcknowledgementsLicense = 许可证
+AcknowledgementsStandardText = 标准许可证文本。该软件包未附带许可证文件。

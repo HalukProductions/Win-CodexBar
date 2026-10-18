@@ -112,6 +112,7 @@ export const SHELL_LOCALE_KEYS = [
   "AcknowledgementsAuthor",
   "AcknowledgementsAuthors",
   "AcknowledgementsLicense",
+  "AcknowledgementsStandardText",
   "DiagnosticsSectionHeading",
   "DiagnosticsCopyButton",
   "DiagnosticsCopied",

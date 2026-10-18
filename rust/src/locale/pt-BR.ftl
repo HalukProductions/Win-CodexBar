@@ -1729,3 +1729,4 @@ AcknowledgementsOthers = mais { "{}" }
 AcknowledgementsAuthor = Autor
 AcknowledgementsAuthors = Autores
 AcknowledgementsLicense = Licença
+AcknowledgementsStandardText = Texto padrão da licença. O pacote não inclui arquivo de licença.

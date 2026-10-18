@@ -1724,3 +1724,4 @@ AcknowledgementsOthers = 외 { "{}" }명
 AcknowledgementsAuthor = 작성자
 AcknowledgementsAuthors = 작성자
 AcknowledgementsLicense = 라이선스
+AcknowledgementsStandardText = 표준 라이선스 텍스트입니다. 이 패키지에는 라이선스 파일이 없습니다.

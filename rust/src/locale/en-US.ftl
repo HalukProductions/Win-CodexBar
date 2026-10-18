@@ -1727,3 +1727,4 @@ AcknowledgementsOthers = { "{}" } others
 AcknowledgementsAuthor = Author
 AcknowledgementsAuthors = Authors
 AcknowledgementsLicense = License
+AcknowledgementsStandardText = Standard license text. This package ships no license file.

@@ -1725,3 +1725,4 @@ AcknowledgementsOthers = 其他 { "{}" } 人
 AcknowledgementsAuthor = 作者
 AcknowledgementsAuthors = 作者
 AcknowledgementsLicense = 授權條款
+AcknowledgementsStandardText = 標準授權條款文字。此套件未附授權檔案。

@@ -1725,3 +1725,4 @@ AcknowledgementsOthers = ещё { "{}" }
 AcknowledgementsAuthor = Автор
 AcknowledgementsAuthors = Авторы
 AcknowledgementsLicense = Лицензия
+AcknowledgementsStandardText = Стандартный текст лицензии. Пакет не содержит файла лицензии.

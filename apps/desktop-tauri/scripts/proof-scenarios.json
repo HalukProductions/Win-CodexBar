@@ -95,7 +95,10 @@
         { "screenshot": "settings-about-acknowledgements" },
         { "click": { "selector": ".acknowledgement__name", "label": "tauri" } },
         { "expectText": ["Apache License", "https://github.com/tauri-apps/tauri"] },
-        { "screenshot": "settings-about-acknowledgement-open" }
+        { "screenshot": "settings-about-acknowledgement-open" },
+        { "click": { "selector": ".acknowledgement__name", "label": "webview2-com" } },
+        { "expectText": ["Standard license text. This package ships no license file.", "Copyright (c) webview2-com contributors"] },
+        { "screenshot": "settings-about-acknowledgement-standard" }
       ]
     },
     {

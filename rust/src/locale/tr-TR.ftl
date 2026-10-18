@@ -1725,3 +1725,4 @@ AcknowledgementsOthers = { "{}" } kişi daha
 AcknowledgementsAuthor = Yazar
 AcknowledgementsAuthors = Yazarlar
 AcknowledgementsLicense = Lisans
+AcknowledgementsStandardText = Standart lisans metni. Paket bir lisans dosyası içermiyor.

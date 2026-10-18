@@ -391,6 +391,12 @@
   word-break: break-all;
 }
 
+.acknowledgement__note {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
 .acknowledgement__text {
   margin: 0;
   white-space: pre-wrap;

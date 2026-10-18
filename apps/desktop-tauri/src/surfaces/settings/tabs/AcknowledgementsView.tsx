@@ -122,11 +122,16 @@ function AcknowledgementRow({
           <div className="acknowledgement__detail">
             <h4>{t("AcknowledgementsLicense")}</h4>
             {item.notices.length > 0 ? (
-              item.notices.map((notice, index) => (
-                <pre key={`${notice.file}-${index}`} className="acknowledgement__text" dir="ltr">
-                  {notice.text}
-                </pre>
-              ))
+              <>
+                {item.notices.some((notice) => notice.standard) && (
+                  <p className="acknowledgement__note">{t("AcknowledgementsStandardText")}</p>
+                )}
+                {item.notices.map((notice, index) => (
+                  <pre key={`${notice.file}-${index}`} className="acknowledgement__text" dir="ltr">
+                    {notice.text}
+                  </pre>
+                ))}
+              </>
             ) : (
               spdxIds(item.license).map((id) => (
                 <button

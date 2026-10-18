@@ -1725,3 +1725,4 @@ AcknowledgementsOthers = ほか { "{}" } 名
 AcknowledgementsAuthor = 作者
 AcknowledgementsAuthors = 作者
 AcknowledgementsLicense = ライセンス
+AcknowledgementsStandardText = 標準のライセンス文です。このパッケージにはライセンスファイルが含まれていません。
