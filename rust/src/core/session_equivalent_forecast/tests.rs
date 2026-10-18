@@ -351,11 +351,26 @@ fn old_reset_reversals_do_not_poison_a_clean_recent_history_segment() {
             .expect("session series");
         let old_start = session.entries[0].captured_at.timestamp() - 150 * 86_400;
         let old_entries = [
-            entry(old_start, 10.0, old_start + 5 * 3_600),
+            entry(old_start + 60, 10.0, old_start + 5 * 3_600),
             // The reset moves 30 minutes backward: a correction, not a new window.
-            entry(old_start + 600, 20.0, old_start + 4 * 3_600 + 1_800),
+            entry(old_start + 660, 20.0, old_start + 4 * 3_600 + 1_800),
         ];
         session.entries.splice(0..0, old_entries);
+        let weekly_history = histories
+            .iter_mut()
+            .find(|h| h.name == PlanUtilizationSeriesName::Weekly)
+            .expect("weekly series");
+        // Pre-correction group (reset old+5h) has a start anchor at old-60 and
+        // weekly 40 -> 45 while the session goes 0% -> 10%: a 50-per-session burn. If that
+        // group survived the correction, it would add a sample to the estimate.
+        // The post-correction group has no start anchor, so it yields no burn.
+        let old_weekly_reset = old_start + 6 * 86_400;
+        let old_weekly = [
+            entry(old_start - 60, 40.0, old_weekly_reset),
+            entry(old_start + 60, 45.0, old_weekly_reset),
+            entry(old_start + 660, 50.0, old_weekly_reset),
+        ];
+        weekly_history.entries.splice(0..0, old_weekly);
 
         let now = current_end - Duration::hours(1);
         let estimate =
