@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import generated from "../../../generated/third-party-notices.json?raw";
-import { authorSummary, parseNotices, spdxIds, spdxUrl } from "./acknowledgements";
+import { authorSummary, loadAcknowledgements, parseNotices, spdxIds, spdxUrl } from "./acknowledgements";
 
 describe("acknowledgements", () => {
   it("resolves shared texts into each component's notices", () => {
@@ -55,6 +55,42 @@ describe("acknowledgements", () => {
     ]);
     expect(spdxIds("MIT/Apache-2.0")).toEqual(["MIT", "Apache-2.0"]);
     expect(spdxUrl("GPL-2.0+")).toBe("https://spdx.org/licenses/GPL-2.0.html");
+  });
+
+  it("does not link free-text license fields", () => {
+    expect(spdxIds("Unknown")).toEqual([]);
+    expect(spdxIds("See license file")).toEqual([]);
+    expect(spdxIds("NOASSERTION")).toEqual([]);
+    expect(spdxIds("Custom Terms")).toEqual([]);
+  });
+
+  it("keeps the standard-text flag on notices", () => {
+    const [item] = parseNotices(
+      JSON.stringify({
+        schemaVersion: 1,
+        components: [
+          {
+            name: "gamma",
+            ecosystem: "cargo",
+            versions: ["1.0.0"],
+            authors: [],
+            url: "https://example.com/gamma",
+            license: "MIT",
+            notices: [{ file: "standard-MIT", textId: "t2", standard: "MIT" }],
+          },
+        ],
+        texts: { t2: "Copyright (c) gamma contributors" },
+      }),
+    );
+    expect(item.notices).toEqual([
+      { file: "standard-MIT", text: "Copyright (c) gamma contributors", standard: "MIT" },
+    ]);
+  });
+
+  it("parses the generated file once and shares the result between mounts", async () => {
+    const first = loadAcknowledgements();
+    expect(loadAcknowledgements()).toBe(first);
+    expect((await first).length).toBeGreaterThan(100);
   });
 
   it("ships a well-formed, sorted generated notices file", () => {
