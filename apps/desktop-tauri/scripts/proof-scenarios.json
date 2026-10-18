@@ -85,6 +85,21 @@
       ]
     },
     {
+      "name": "settings-menu-work-days",
+      "query": "window=settings&tab=menu&theme=dark",
+      "size": [880, 620],
+      "steps": [
+        { "expectField": { "label": "Work days", "value": "", "options": ["Automatic", "4 days", "5 days", "6 days", "7 days"] } },
+        { "expectField": { "label": "Workday tick appearance", "enabled": false } },
+        { "screenshot": "settings-menu-work-days-automatic" },
+        { "select": { "label": "Work days", "value": "6" } },
+        { "expectField": { "label": "Work days", "value": "6" } },
+        { "expectField": { "label": "Workday tick appearance", "enabled": true } },
+        { "expectCall": { "cmd": "update_settings", "args": { "patch": { "weeklyProgressWorkDays": 6 } } } },
+        { "screenshot": "settings-menu-work-days-6" }
+      ]
+    },
+    {
       "name": "floatbar",
       "query": "window=floatbar",
       "size": [520, 120],

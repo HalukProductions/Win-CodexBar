@@ -19,7 +19,7 @@ import {
 import CostPeriodControl from "./CostPeriodControl";
 
 /** macOS "Work days" choices; Automatic (empty) saves null. */
-const WORK_DAY_PRESETS = [4, 5, 7];
+const WORK_DAY_PRESETS = [4, 5, 6, 7];
 
 function parseSshHosts(value: string): string[] {
   return value

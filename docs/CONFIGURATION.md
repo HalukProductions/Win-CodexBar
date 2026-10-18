@@ -201,7 +201,7 @@ These controls set the tray panel and the float bar.
 | Bars show used instead of remaining | `show_as_used` | off |
 | Show quota warning markers | `quota_warning_markers_visible` | on |
 | Show pace | `show_pace` | on |
-| Work days | `weekly_progress_work_days` (Automatic, 4, 5 or 7) | Automatic |
+| Work days | `weekly_progress_work_days` (Automatic, 4, 5, 6 or 7) | Automatic |
 | Workday ticks | `workday_tick_style` (`hidden`, `subtle`, `high_contrast`) | `subtle` |
 | Reset times as countdown | `reset_time_relative` | on |
 | Keep the tray panel on top | `tray_panel_always_on_top` | off |
