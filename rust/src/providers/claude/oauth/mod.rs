@@ -508,17 +508,17 @@ impl ClaudeOAuthFetcher {
         credentials: ClaudeOAuthCredentials,
         gate_key: &str,
     ) -> Result<ProviderFetchResult, ProviderError> {
+        let fingerprint = usage_gate::token_fingerprint(&credentials.access_token);
+        // Started before the usage request so a quick profile answer can still
+        // label this refresh; the usage request never waits for it.
+        let _ = profile::display_email(&self.client, &credentials.access_token, &fingerprint);
         let usage_response = self.fetch_usage(&credentials, gate_key).await?;
         let mut usage = self.build_usage_snapshot(&usage_response, &credentials);
         let spend_cost = apply_spend_only_extra_usage(&mut usage, &usage_response);
-        // Header email only; a profile failure leaves the usage result intact.
+        // Header email only; a missing or failed profile leaves usage intact.
         if usage.account_email.is_none()
-            && let Some(email) = profile::fetch_email(
-                &self.client,
-                &credentials.access_token,
-                &usage_gate::token_fingerprint(&credentials.access_token),
-            )
-            .await
+            && let Some(email) =
+                profile::display_email(&self.client, &credentials.access_token, &fingerprint)
         {
             usage = usage.with_email(email);
         }
