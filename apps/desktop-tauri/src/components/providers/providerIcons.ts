@@ -39,6 +39,7 @@ import exa from "./icons/ProviderIcon-exa.svg?raw";
 import factory from "./icons/ProviderIcon-factory.svg?raw";
 import fal from "./icons/ProviderIcon-fal.svg?raw";
 import flora from "./icons/ProviderIcon-flora.svg?raw";
+import futureagi from "./icons/ProviderIcon-futureagi.svg?raw";
 import gemini from "./icons/ProviderIcon-gemini.svg?raw";
 import grok from "./icons/ProviderIcon-grok.svg?raw";
 import groq from "./icons/ProviderIcon-groq.svg?raw";
@@ -153,6 +154,7 @@ const RAW: Record<string, string> = {
   factory: tint(factory),
   fal: tint(fal),
   flora: tint(flora),
+  futureagi: tint(futureagi),
   gemini: tint(gemini),
   grok: tint(grok),
   groq: tint(groq),
@@ -242,6 +244,7 @@ export const PROVIDER_ICON_REGISTRY: Record<string, ProviderIcon> = {
   factory:     { id: "factory",     brandColor: "#ff6b35", fallbackLetter: "◎", svgPath: RAW.factory },
   fal:         { id: "fal",         brandColor: "#7C3AED", fallbackLetter: "F", svgPath: RAW.fal },
   flora:       { id: "flora",       brandColor: "#111111", fallbackLetter: "F", svgPath: RAW.flora },
+  futureagi:   { id: "futureagi",   brandColor: "#7857FC", fallbackLetter: "F", svgPath: RAW.futureagi },
   gemini:      { id: "gemini",      brandColor: "#ab87ea", fallbackLetter: "✦", svgPath: RAW.gemini },
   grok:        { id: "grok",        brandColor: "#10a37f", fallbackLetter: "G", svgPath: RAW.grok },
   groq:        { id: "groq",        brandColor: "#f56844", fallbackLetter: "G", svgPath: RAW.groq },
