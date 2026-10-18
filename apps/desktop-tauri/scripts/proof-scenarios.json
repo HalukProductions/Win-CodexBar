@@ -14,6 +14,28 @@
       ]
     },
     {
+      "name": "tray-claude-plan-renews",
+      "query": "window=main&fixture=default",
+      "size": [310, 1032],
+      "steps": [
+        { "click": { "selector": ".provider-grid__item", "label": "Claude" } },
+        { "expectText": ["claude.user@example.com", "Plan renews: Dec 1, 2026"] },
+        { "expectNoText": "Plan expires:" },
+        { "screenshot": "tray-claude-plan-renews", "clip": "panel" }
+      ]
+    },
+    {
+      "name": "tray-claude-plan-hidden",
+      "query": "window=main&fixture=claude-plan-hidden",
+      "size": [310, 1032],
+      "steps": [
+        { "click": { "selector": ".provider-grid__item", "label": "Claude" } },
+        { "expectText": "claude.user@example.com" },
+        { "expectNoText": ["Plan renews", "Plan expires"] },
+        { "screenshot": "tray-claude-plan-hidden", "clip": "panel" }
+      ]
+    },
+    {
       "name": "tray-errors",
       "query": "window=main&fixture=errors",
       "size": [310, 1032],
