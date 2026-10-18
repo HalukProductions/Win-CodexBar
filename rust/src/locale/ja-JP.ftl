@@ -1679,7 +1679,7 @@ AntigravityProfileHomesPickFailed = フォルダーの選択画面を開けま�
 # Claude optional usage rows and plan dates
 UsageItemPlanRenewalExpiry = プランの更新日 / 有効期限
 UsageItemHiddenByCostSummary = 費用サマリー表示スタイルが「非表示」の間は表示されません。
-PlanRenewsOn = 更新日: { "{}" }
+PlanRenewsOn = プランの更新日: { "{}" }
 PlanExpiresOn = プランの有効期限: { "{}" }
 OpenAiLiveUsageTitle = ライブ使用量
 OpenAiLiveUsageToggle = ライブ使用量（毎分トークン数）
