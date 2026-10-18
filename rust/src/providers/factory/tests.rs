@@ -380,3 +380,51 @@ async fn no_browser_cookies_reports_no_cookies_without_a_request() {
 
     assert!(matches!(error, ProviderError::NoCookies), "got {error:?}");
 }
+
+#[test]
+fn factory_owns_browser_cookie_resolution() {
+    // The shell must not pre-resolve the first browser's header for Factory;
+    // this provider tries each browser session itself.
+    assert!(FactoryProvider::new().owns_browser_cookie_resolution());
+}
+
+#[tokio::test]
+async fn missing_manual_cookie_gate_reports_no_cookies_without_any_request() {
+    let mut server = Server::new_async().await;
+    let auth = server
+        .mock("GET", "/api/app/auth/me")
+        .with_status(200)
+        .with_body("{}")
+        .expect(0)
+        .create_async()
+        .await;
+    let usage = server
+        .mock("GET", "/api/organization/subscription/usage")
+        .match_query(Matcher::Any)
+        .with_status(200)
+        .with_body(LEGACY_USAGE_BODY)
+        .expect(0)
+        .create_async()
+        .await;
+    // Both browsers hold a Factory cookie, so only the gate keeps them unread.
+    let store = factory_browser_store("valid-chrome", "valid-edge");
+    let ctx = FetchContext {
+        manual_cookie_missing: true,
+        ..FetchContext::default()
+    };
+    let client = FactoryProvider::build_client().expect("client builds");
+    let sessions = browser_cookie_sessions_from(&store, &ctx, FACTORY_COOKIE_DOMAINS);
+
+    let error = FactoryProvider::new()
+        .fetch_web_sessions(&client, &server.url(), sessions)
+        .await
+        .expect_err("import is forbidden, so no session is available");
+
+    auth.assert_async().await;
+    usage.assert_async().await;
+    assert!(matches!(error, ProviderError::NoCookies), "got {error:?}");
+    assert!(
+        store.reads().is_empty(),
+        "no browser cookie store may be read while import is forbidden"
+    );
+}

@@ -762,6 +762,12 @@ impl Provider for FactoryProvider {
         // Shell maps cookie-source "off" to Cli; Factory treats Cli as API-only.
         true
     }
+
+    /// The shell would import only the first browser's cookies; the provider
+    /// tries each browser so a rejected session can move on to the next one.
+    fn owns_browser_cookie_resolution(&self) -> bool {
+        true
+    }
 }
 
 #[cfg(test)]
