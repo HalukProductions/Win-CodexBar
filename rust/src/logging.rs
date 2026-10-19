@@ -11,7 +11,7 @@
 
 use std::io::Write as _;
 use std::path::PathBuf;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 /// Convert a displayable error into a frontend/log-safe message.
@@ -143,13 +143,84 @@ fn file_writer() -> Option<&'static CappedFileWriter> {
     WRITER.as_ref()
 }
 
-/// Initialize the logging system for this process (default: CLI file name).
-pub fn init(verbose: bool, json: bool) -> anyhow::Result<()> {
-    let filter = if verbose {
+/// `(verbose, json)` as passed to [`init`]; read by [`capture_dispatch`] so a
+/// captured fetch uses the same filter and stderr format as the process.
+static INIT_OPTIONS: OnceLock<(bool, bool)> = OnceLock::new();
+
+fn log_filter(verbose: bool) -> EnvFilter {
+    if verbose {
         EnvFilter::new("debug")
     } else {
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"))
+    }
+}
+
+/// Shared byte buffer that receives one provider fetch's stderr diagnostics
+/// while a multi-provider usage command runs, so they can be replayed in
+/// selection order (upstream 0.76.0 #4501 `CLIStderrBuffer`).
+#[derive(Clone, Default)]
+pub struct DiagnosticBuffer(Arc<Mutex<Vec<u8>>>);
+
+impl DiagnosticBuffer {
+    /// Everything captured so far, lossily decoded as UTF-8.
+    pub fn contents(&self) -> String {
+        let bytes = self.0.lock().map(|guard| guard.clone()).unwrap_or_default();
+        String::from_utf8_lossy(&bytes).into_owned()
+    }
+}
+
+impl std::io::Write for DiagnosticBuffer {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if let Ok(mut guard) = self.0.lock() {
+            guard.extend_from_slice(buf);
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a> fmt::MakeWriter<'a> for DiagnosticBuffer {
+    type Writer = DiagnosticBuffer;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        self.clone()
+    }
+}
+
+/// Dispatch for one provider fetch in a multi-provider usage command.
+///
+/// Events go to `buffer` (stderr format, same filter as [`init`]) and to the
+/// size-capped log file, but not to the process stderr directly. Attach it to
+/// the fetch future with `tracing::instrument::WithSubscriber` so the capture
+/// follows the future across polls; the caller then replays the buffer in order.
+pub fn capture_dispatch(buffer: &DiagnosticBuffer) -> tracing::Dispatch {
+    // Without `init` (unit tests) there is no process log to mirror, so the
+    // file layer stays off and the defaults match the non-JSON CLI.
+    let options = INIT_OPTIONS.get().copied();
+    let (verbose, json) = options.unwrap_or((false, false));
+    let stderr_layer = if json {
+        fmt::layer().json().with_writer(buffer.clone()).boxed()
+    } else {
+        fmt::layer().with_writer(buffer.clone()).boxed()
     };
+    let file_layer = options
+        .and_then(|_| file_writer())
+        .map(|w| fmt::layer().with_writer(move || w).boxed());
+    tracing::Dispatch::new(
+        tracing_subscriber::registry()
+            .with(log_filter(verbose))
+            .with(stderr_layer)
+            .with(file_layer),
+    )
+}
+
+/// Initialize the logging system for this process (default: CLI file name).
+pub fn init(verbose: bool, json: bool) -> anyhow::Result<()> {
+    let _recorded = INIT_OPTIONS.set((verbose, json));
+    let filter = log_filter(verbose);
 
     let file_writer = file_writer();
     let stderr_layer = if json {
