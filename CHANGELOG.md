@@ -9,6 +9,7 @@
 
 ## [Windows] Unreleased
 
+- OpenCode Go: include OpenCode v2 session history in local cost and token totals, without counting migrated messages twice (upstream v0.77.0 #4526).
 - Codex: session titles read from the Codex state database are capped at 256 characters when read, so a whole first prompt stored as the thread title is no longer carried into Usage & Spend session lists. Names from `session_index.jsonl` keep precedence and are not capped (upstream #4550).
 - Settings: go back and forward through visited panes and providers with the Back and Forward buttons in the Settings title bar, Alt+Left / Alt+Right, the keyboard Back/Forward keys, or the mouse side buttons. Panes opened from the tray or a deep link count as visits (upstream #4475).
 - Settings: a `settings.json` that exists but can't be read or parsed (such as a DPAPI decrypt failure or a damaged file) is no longer replaced by the defaults on the next settings change. The app runs on temporary defaults, skips its one-shot settings migrations, and refuses to save until the file loads again, so saved API keys, cookies and accounts are kept. A missing file still starts fresh (upstream v0.76.0 #4509).
