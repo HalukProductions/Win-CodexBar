@@ -641,6 +641,8 @@ PanelScaleHelper = 缩放托盘面板的宽度、文字和间距。
 WindowMinimize = 最小化
 WindowRestore = 还原
 WindowClose = 关闭
+SettingsHistoryBack = 后退
+SettingsHistoryForward = 前进
 ShowAsUsedLabel = 显示为已用
 ShowAsUsedHelper = 以已使用百分比而非剩余显示用量条。
 ShowAllTokenAccountsLabel = 显示所有令牌账户
@@ -1685,7 +1687,7 @@ AntigravityProfileHomesPickFailed = 无法打开文件夹选择器。
 # Claude optional usage rows and plan dates
 UsageItemPlanRenewalExpiry = 套餐续订 / 到期
 UsageItemHiddenByCostSummary = 费用摘要显示方式设为“隐藏”时不显示。
-PlanRenewsOn = 续订：{ "{}" }
+PlanRenewsOn = 套餐续订：{ "{}" }
 PlanExpiresOn = 套餐到期：{ "{}" }
 OpenAiLiveUsageTitle = 实时用量
 OpenAiLiveUsageToggle = 实时用量（每分钟 Token）

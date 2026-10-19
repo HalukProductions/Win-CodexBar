@@ -714,6 +714,120 @@ fn fetch_context_codex_manual_cookie_never_forces_unsupported_web() {
 }
 
 #[test]
+fn cursor_browser_cookie_sources_leave_session_choice_to_the_provider() {
+    // Cursor owns browser-session resolution, so the shell must not pin the
+    // first browser's header into the context for any browser cookie source.
+    for cookie_source in ["auto", "browser", "web"] {
+        let ctx = fetch_ctx(
+            ProviderId::Cursor,
+            CtxInput {
+                cookie_source: Some(cookie_source),
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            ctx.manual_cookie_header, None,
+            "{cookie_source}: no browser header is pre-resolved"
+        );
+        assert!(
+            !ctx.manual_cookie_missing,
+            "{cookie_source}: browser import stays allowed"
+        );
+    }
+}
+
+#[test]
+fn factory_browser_cookie_sources_leave_session_choice_to_the_provider() {
+    // Factory owns browser-session resolution, so the shell must not pin the
+    // first browser's header into the context for any browser cookie source.
+    for cookie_source in ["auto", "browser", "web"] {
+        let ctx = fetch_ctx(
+            ProviderId::Factory,
+            CtxInput {
+                cookie_source: Some(cookie_source),
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            ctx.manual_cookie_header, None,
+            "{cookie_source}: no browser header is pre-resolved"
+        );
+        assert!(
+            !ctx.manual_cookie_missing,
+            "{cookie_source}: browser import stays allowed"
+        );
+    }
+}
+
+#[test]
+fn cursor_automatic_keeps_auto_source_so_app_session_is_tried_first() {
+    // Auto keeps the app-session-first route in the provider; a pre-resolved
+    // browser header would bypass it.
+    let ctx = fetch_ctx(
+        ProviderId::Cursor,
+        CtxInput {
+            cookie_source: Some("auto"),
+            ..Default::default()
+        },
+    );
+    assert_eq!(ctx.source_mode, SourceMode::Auto);
+    assert!(ctx.manual_cookie_header.is_none());
+}
+
+#[test]
+fn cursor_stored_cookie_passes_through_unchanged() {
+    for cookie_source in ["auto", "manual"] {
+        let ctx = fetch_ctx(
+            ProviderId::Cursor,
+            CtxInput {
+                cookie_source: Some(cookie_source),
+                manual_cookie: Some("WorkosCursorSessionToken=stored-cursor"),
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            ctx.manual_cookie_header.as_deref(),
+            Some("WorkosCursorSessionToken=stored-cursor"),
+            "{cookie_source}: stored cookie is forwarded as-is"
+        );
+    }
+}
+
+#[test]
+fn factory_stored_cookie_passes_through_unchanged() {
+    for cookie_source in ["auto", "manual"] {
+        let ctx = fetch_ctx(
+            ProviderId::Factory,
+            CtxInput {
+                cookie_source: Some(cookie_source),
+                manual_cookie: Some("session=stored-factory"),
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            ctx.manual_cookie_header.as_deref(),
+            Some("session=stored-factory"),
+            "{cookie_source}: stored cookie is forwarded as-is"
+        );
+    }
+}
+
+#[test]
+fn cursor_cookie_off_forbids_browser_discovery() {
+    let ctx = fetch_ctx(
+        ProviderId::Cursor,
+        CtxInput {
+            cookie_source: Some("off"),
+            manual_cookie: Some("WorkosCursorSessionToken=stored-cursor"),
+            ..Default::default()
+        },
+    );
+    assert_eq!(ctx.source_mode, SourceMode::Cli);
+    assert!(ctx.manual_cookie_header.is_none());
+    assert!(ctx.manual_cookie_missing);
+}
+
+#[test]
 fn kimi_selected_account_forces_web_and_keeps_saved_region() {
     let mut settings = Settings::default();
     settings.set_usage_source(ProviderId::Kimi, "oauth");

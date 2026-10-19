@@ -673,6 +673,8 @@ PanelScaleHelper = Scales the tray panel width, text, and spacing.
 WindowMinimize = Minimize
 WindowRestore = Restore
 WindowClose = Close
+SettingsHistoryBack = Back
+SettingsHistoryForward = Forward
 ShowAsUsedLabel = Show as used
 ShowAsUsedHelper = Display usage bars as consumed rather than remaining.
 HighlightMenuCardsOnHoverLabel = Highlight menu cards on hover
@@ -1687,7 +1689,7 @@ AntigravityProfileHomesPickFailed = Could not open the folder picker.
 # Claude optional usage rows and plan dates
 UsageItemPlanRenewalExpiry = Plan renewal / expiry
 UsageItemHiddenByCostSummary = Hidden while Cost summary display is set to Hidden.
-PlanRenewsOn = Renews: { "{}" }
+PlanRenewsOn = Plan renews: { "{}" }
 PlanExpiresOn = Plan expires: { "{}" }
 OpenAiLiveUsageTitle = Live usage
 OpenAiLiveUsageToggle = Live usage (Tokens per minute)

@@ -673,6 +673,8 @@ PanelScaleHelper = Масштабирует ширину, текст и отст
 WindowMinimize = Свернуть
 WindowRestore = Восстановить
 WindowClose = Закрыть
+SettingsHistoryBack = Назад
+SettingsHistoryForward = Вперёд
 ShowAsUsedLabel = Показать как использовался
 ShowAsUsedHelper = Отображение полос использования как израсходованных, а не как оставшихся.
 ShowAllTokenAccountsLabel = Показать все токены-аккаунты
@@ -1685,7 +1687,7 @@ AntigravityProfileHomesPickFailed = Не удалось открыть выбо�
 # Claude optional usage rows and plan dates
 UsageItemPlanRenewalExpiry = Продление / окончание тарифа
 UsageItemHiddenByCostSummary = Скрыто, пока стиль отображения стоимости — «Скрытый».
-PlanRenewsOn = Продление: { "{}" }
+PlanRenewsOn = Продление тарифа: { "{}" }
 PlanExpiresOn = Тариф истекает: { "{}" }
 OpenAiLiveUsageTitle = Живое использование
 OpenAiLiveUsageToggle = Живое использование (токены в минуту)

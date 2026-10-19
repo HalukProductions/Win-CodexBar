@@ -77,6 +77,25 @@ WHERE hasCost
   )
 "#;
 
+/// OpenCode v2 writes new assistant turns to `session_message` and copies older turns there under the
+/// same ids. Only turns the legacy `message` table does not already hold are added, so migrated turns
+/// are counted once.
+const SESSION_MESSAGE_USAGE_SQL: &str = r#"
+SELECT
+  CAST(COALESCE(json_extract(s.data, '$.time.created'), s.time_created) AS INTEGER) AS createdMs,
+  CAST(json_extract(s.data, '$.cost') AS REAL) AS cost,
+  1 AS requestCount,
+  COALESCE(json_extract(s.data, '$.model.id'), '') AS modelID,
+  CASE WHEN json_type(s.data, '$.tokens') = 'object'
+    THEN json_extract(s.data, '$.tokens') END AS tokens
+FROM session_message s
+WHERE s.type = 'assistant'
+  AND json_valid(s.data)
+  AND json_extract(s.data, '$.model.providerID') = 'opencode-go'
+  AND json_type(s.data, '$.cost') IN ('integer', 'real')
+  AND NOT EXISTS (SELECT 1 FROM message m WHERE m.id = s.id)
+"#;
+
 #[derive(Debug, Clone)]
 pub(crate) struct UsageRow {
     created_ms: i64,
@@ -224,13 +243,18 @@ fn read_rows(db_path: &Path) -> Result<Vec<UsageRow>, ProviderError> {
     conn.busy_timeout(std::time::Duration::from_millis(250))
         .map_err(sqlite_err)?;
 
-    let sql = if has_table(&conn, "part") {
+    let legacy_sql = if has_table(&conn, "part") {
         MESSAGE_AND_PART_USAGE_SQL
     } else {
         MESSAGE_USAGE_SQL
     };
+    let sql = if has_table(&conn, "session_message") {
+        format!("{legacy_sql}\nUNION ALL\n{SESSION_MESSAGE_USAGE_SQL}")
+    } else {
+        legacy_sql.to_owned()
+    };
 
-    let mut stmt = conn.prepare(sql).map_err(sqlite_err)?;
+    let mut stmt = conn.prepare(&sql).map_err(sqlite_err)?;
     let rows = stmt
         .query_map([], |row| {
             Ok(UsageRow {

@@ -641,6 +641,8 @@ PanelScaleHelper = トレイパネルの幅、文字、余白を拡大します�
 WindowMinimize = 最小化
 WindowRestore = 元に戻す
 WindowClose = 閉じる
+SettingsHistoryBack = 戻る
+SettingsHistoryForward = 進む
 ShowAsUsedLabel = 消費済みで表示
 ShowAsUsedHelper = 使用量バーを残量ではなく消費済みで表示。
 ShowAllTokenAccountsLabel = すべてのトークンアカウントを表示
@@ -1685,7 +1687,7 @@ AntigravityProfileHomesPickFailed = フォルダーの選択画面を開けま�
 # Claude optional usage rows and plan dates
 UsageItemPlanRenewalExpiry = プランの更新日 / 有効期限
 UsageItemHiddenByCostSummary = 費用サマリー表示スタイルが「非表示」の間は表示されません。
-PlanRenewsOn = 更新日: { "{}" }
+PlanRenewsOn = プランの更新日: { "{}" }
 PlanExpiresOn = プランの有効期限: { "{}" }
 OpenAiLiveUsageTitle = ライブ使用量
 OpenAiLiveUsageToggle = ライブ使用量（毎分トークン数）

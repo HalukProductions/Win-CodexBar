@@ -22,6 +22,7 @@ export const PROOF_SCENARIO_NAMES = [
   "two-codex-accounts",
   "errors",
   "empty",
+  "claude-plan-hidden",
 ] as const;
 
 export type ProofScenarioName = (typeof PROOF_SCENARIO_NAMES)[number];
@@ -103,6 +104,13 @@ function claudeSnapshot(now: Date): ProviderUsageSnapshot {
       accountEmail: "claude.user@example.com",
       accountOrganization: "Example Studio",
       sourceLabel: "oauth",
+      // Synthetic renewal date; calendar-only, so it renders as "Plan renews: Dec 1, 2026".
+      subscription: {
+        startsAt: null,
+        expiresAt: null,
+        renewsAt: "2026-12-01T00:00:00Z",
+        renewsAtIsDateOnly: true,
+      },
     },
   );
 }
@@ -349,11 +357,26 @@ function emptyScenario(): ProofScenario {
   };
 }
 
+/** Default data with the Claude "Plan renewal / expiry" usage item hidden (`section:subscription`). */
+function claudePlanHiddenScenario(now: Date): ProofScenario {
+  const base = defaultScenario(now);
+  return {
+    ...base,
+    name: "claude-plan-hidden",
+    providers: base.providers.map((snapshot) =>
+      snapshot.providerId === "claude"
+        ? { ...snapshot, hiddenUsageItemIds: ["section:subscription"] }
+        : snapshot,
+    ),
+  };
+}
+
 const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   default: defaultScenario,
   "two-codex-accounts": twoCodexAccountsScenario,
   errors: errorsScenario,
   empty: emptyScenario,
+  "claude-plan-hidden": claudePlanHiddenScenario,
 };
 
 export function isProofScenarioName(value: string): value is ProofScenarioName {

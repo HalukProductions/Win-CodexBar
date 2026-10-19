@@ -196,7 +196,7 @@ URL parameters:
 | --- | --- | --- |
 | `window` | `main`, `settings`, `flyout`, `floatbar` | `main` |
 | `tab` | any settings tab id, or `providers:<id>` | `general` |
-| `fixture` | `default`, `two-codex-accounts`, `errors`, `empty` | `default` |
+| `fixture` | `default`, `two-codex-accounts`, `errors`, `empty`, `claude-plan-hidden` | `default` |
 | `theme` | `dark`, `light`, `auto` (overrides the fixture) | fixture value |
 
 Example: `proof.html?window=settings&tab=providers:codex&fixture=two-codex-accounts`.

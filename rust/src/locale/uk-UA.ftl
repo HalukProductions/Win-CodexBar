@@ -673,6 +673,8 @@ PanelScaleHelper = Масштабує ширину, текст і відступ
 WindowMinimize = Згорнути
 WindowRestore = Відновити
 WindowClose = Закрити
+SettingsHistoryBack = Назад
+SettingsHistoryForward = Вперед
 ShowAsUsedLabel = Показувати використане
 ShowAsUsedHelper = Показувати на смугах використаний обсяг, а не залишок.
 HighlightMenuCardsOnHoverLabel = Підсвічувати картки меню при наведенні
@@ -1687,7 +1689,7 @@ ProviderTextOfRemaining = Залишилося { "{}" } із { "{}" }
 # Claude optional usage rows and plan dates
 UsageItemPlanRenewalExpiry = Поновлення / завершення тарифу
 UsageItemHiddenByCostSummary = Приховано, поки показ вартості встановлено на «Приховано».
-PlanRenewsOn = Поновлення: { "{}" }
+PlanRenewsOn = Поновлення тарифу: { "{}" }
 PlanExpiresOn = Тариф спливає: { "{}" }
 OpenAiLiveUsageTitle = Живе використання
 OpenAiLiveUsageToggle = Живе використання (токени за хвилину)

@@ -694,6 +694,8 @@ PanelScaleHelper = Ajusta el ancho, el texto y el espaciado del panel de la band
 WindowMinimize = Minimizar
 WindowRestore = Restaurar
 WindowClose = Cerrar
+SettingsHistoryBack = Atrás
+SettingsHistoryForward = Adelante
 ShowAsUsedLabel = Mostrar como usado
 ShowAsUsedHelper = Mostrar barras de uso como consumido en lugar de restante.
 ShowAllTokenAccountsLabel = Mostrar todas las cuentas de token
@@ -1684,7 +1686,7 @@ AntigravityProfileHomesPickFailed = No se pudo abrir el selector de carpetas.
 # Claude optional usage rows and plan dates
 UsageItemPlanRenewalExpiry = Renovación / vencimiento del plan
 UsageItemHiddenByCostSummary = Oculto mientras el estilo de resumen de costos está en Oculto.
-PlanRenewsOn = Se renueva: { "{}" }
+PlanRenewsOn = El plan se renueva: { "{}" }
 PlanExpiresOn = El plan vence: { "{}" }
 OpenAiLiveUsageTitle = Uso en vivo
 OpenAiLiveUsageToggle = Uso en vivo (tokens por minuto)
