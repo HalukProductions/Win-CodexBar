@@ -386,6 +386,17 @@ export function setActiveTokenAccount(
   });
 }
 
+export function setTokenAccountClaudeConfigDir(
+  providerId: string,
+  accountId: string,
+  directory: string | null,
+): Promise<ProviderTokenAccountsBridge> {
+  return invoke<ProviderTokenAccountsBridge>("set_token_account_claude_config_dir", {
+    providerId,
+    accountId,
+    directory,
+  });
+}
 // ── Phase 5 — i18n ────────────────────────────────────────────────────
 
 export function getLocaleStrings(

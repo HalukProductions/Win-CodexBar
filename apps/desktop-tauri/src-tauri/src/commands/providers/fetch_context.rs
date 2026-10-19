@@ -143,6 +143,9 @@ pub(crate) fn build_fetch_context(
             "off" if has_kimi_code_api_key && usage_source == SourceMode::Auto => {
                 (SourceMode::Auto, None, false)
             }
+            // Cursor's Cli source still runs its browser-session loop, so Off
+            // carries the missing-cookie gate that forbids any browser read.
+            "off" if id == ProviderId::Cursor => (SourceMode::Cli, None, true),
             // Cookie-off must never scrape browser cookies (Droid/Factory). Map to
             // Cli (API-only in the provider) so Auto does not fall through to web.
             "off" => (SourceMode::Cli, None, false),

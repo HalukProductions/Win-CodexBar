@@ -14,16 +14,20 @@ use async_trait::async_trait;
 use chrono::{Duration, Utc};
 use serde::Deserialize;
 
+use crate::browser::session_scan::BrowserCookieStore;
 use crate::core::{
     FetchContext, Provider, ProviderError, ProviderFetchResult, ProviderId, RateWindow, SourceMode,
     UsageSnapshot,
 };
-use crate::providers::browser_cookie_header;
+use crate::providers::{BrowserCookieSessions, browser_cookie_sessions};
 use crate::settings::ApiKeys;
 
 /// Factory.ai host bases (bearer prefers api, cookies use app).
 const FACTORY_API_BASE: &str = "https://api.factory.ai";
 const FACTORY_APP_BASE: &str = "https://app.factory.ai";
+
+/// Browser cookie domains that can carry a Factory web session.
+const FACTORY_COOKIE_DOMAINS: &[&str] = &["app.factory.ai", "factory.ai", "auth.factory.ai"];
 
 const FACTORY_API_KEY_ENV: &str = "FACTORY_API_KEY";
 const FACTORY_CLIENT_HEADER: &str = "web-app";
@@ -378,16 +382,6 @@ impl FactoryProvider {
         Self
     }
 
-    fn get_cookies(&self, ctx: &FetchContext) -> Result<String, ProviderError> {
-        if let Some(ref manual) = ctx.manual_cookie_header {
-            let trimmed = manual.trim();
-            if !trimmed.is_empty() {
-                return Ok(trimmed.to_string());
-            }
-        }
-        browser_cookie_header(&["app.factory.ai", "factory.ai", "auth.factory.ai"])
-    }
-
     fn build_client() -> Result<reqwest::Client, ProviderError> {
         crate::core::credentialed_http_client_builder()
             .timeout(std::time::Duration::from_secs(30))
@@ -544,12 +538,45 @@ impl FactoryProvider {
         ))
     }
 
-    /// Fetch usage via web cookies (existing path).
+    /// Fetch usage via web cookies: a pasted manual header is used alone;
+    /// otherwise each browser session is tried until Factory accepts one.
     async fn fetch_via_web(&self, ctx: &FetchContext) -> Result<UsageSnapshot, ProviderError> {
-        let cookies = self.get_cookies(ctx)?;
         let client = Self::build_client()?;
-        self.fetch_auth_and_usage(&client, FACTORY_APP_BASE, Some(&cookies), None)
+        if let Some(manual) = ctx
+            .manual_cookie_header
+            .as_deref()
+            .map(str::trim)
+            .filter(|manual| !manual.is_empty())
+        {
+            return self
+                .fetch_auth_and_usage(&client, FACTORY_APP_BASE, Some(manual), None)
+                .await;
+        }
+        let sessions = browser_cookie_sessions(ctx, FACTORY_COOKIE_DOMAINS);
+        self.fetch_web_sessions(&client, FACTORY_APP_BASE, sessions)
             .await
+    }
+
+    /// Try each browser session in order. Only a rejected session
+    /// (`AuthRequired`) moves on to the next one; any other failure stops the
+    /// search. When every session is rejected, the rejection is reported.
+    async fn fetch_web_sessions<S: BrowserCookieStore>(
+        &self,
+        client: &reqwest::Client,
+        base: &str,
+        mut sessions: BrowserCookieSessions<S>,
+    ) -> Result<UsageSnapshot, ProviderError> {
+        let mut rejected = None;
+        for cookies in sessions.by_ref() {
+            match self
+                .fetch_auth_and_usage(client, base, Some(cookies.as_str()), None)
+                .await
+            {
+                Err(ProviderError::AuthRequired) => rejected = Some(ProviderError::AuthRequired),
+                result => return result,
+            }
+        }
+        Err(rejected.unwrap_or_else(|| sessions.exhaustion_error()))
     }
 
     fn usage_snapshot_from_response(usage_data: &FactoryUsageResponse) -> UsageSnapshot {
@@ -733,6 +760,12 @@ impl Provider for FactoryProvider {
 
     fn supports_cli(&self) -> bool {
         // Shell maps cookie-source "off" to Cli; Factory treats Cli as API-only.
+        true
+    }
+
+    /// The shell would import only the first browser's cookies; the provider
+    /// tries each browser so a rejected session can move on to the next one.
+    fn owns_browser_cookie_resolution(&self) -> bool {
         true
     }
 }

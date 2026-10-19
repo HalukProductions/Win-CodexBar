@@ -6,8 +6,10 @@ import {
   getTokenAccounts,
   removeTokenAccount,
   setActiveTokenAccount,
+  setTokenAccountClaudeConfigDir,
   triggerProviderLogin,
 } from "../../../lib/tauri";
+import { ClaudeConfigDirField } from "./ClaudeConfigDirField";
 
 interface Props {
   providerId: string;
@@ -111,6 +113,20 @@ export function TokenAccountsPanel({ providerId, compact = false }: Props) {
     }
   };
 
+  const handleClaudeConfigDir = async (accountId: string, directory: string | null) => {
+    if (!providerId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const next = await setTokenAccountClaudeConfigDir(providerId, accountId, directory);
+      setData(next);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleProviderLogin = async () => {
     if (!providerId) return;
     setBusy(true);
@@ -190,6 +206,14 @@ export function TokenAccountsPanel({ providerId, compact = false }: Props) {
                   </button>
                 </div>
               </div>
+              {providerId === "claude" && (
+                <ClaudeConfigDirField
+                  account={acct}
+                  disabled={busy}
+                  t={t}
+                  onChange={(directory) => handleClaudeConfigDir(acct.id, directory)}
+                />
+              )}
             </li>
           ))}
         </ul>
