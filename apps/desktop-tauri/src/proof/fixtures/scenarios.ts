@@ -6,6 +6,7 @@ import type {
   ProviderCatalogEntry,
   ProviderUsageSnapshot,
   SettingsSnapshot,
+  TokenAccountBridge,
 } from "../../types/bridge";
 import {
   PROOF_PROVIDER_CATALOG,
@@ -36,6 +37,8 @@ export interface ProofScenario {
   claudeAccounts: ClaudeAccount[];
   /** Local-log spend; providers without an entry have no local logs. */
   localSpend: LocalSpendFixture[];
+  /** Claude token accounts; absent means Claude offers no token accounts. */
+  claudeTokenAccounts?: TokenAccountBridge[];
 }
 
 export interface LocalSpendFixture {
@@ -239,6 +242,29 @@ function claudeAccounts(now: Date): ClaudeAccount[] {
   ];
 }
 
+function claudeTokenAccounts(): TokenAccountBridge[] {
+  return [
+    {
+      id: "00000000-0000-4000-8000-00000000c1a1",
+      label: "Work",
+      addedAt: "Oct 01, 2026",
+      lastUsed: null,
+      isActive: true,
+      claudeConfigDirectory: "C:\\Users\\proof\\.claude-work",
+      claudeConfigDirectoryAvailable: false,
+    },
+    {
+      id: "00000000-0000-4000-8000-00000000c1a2",
+      label: "Personal",
+      addedAt: "Oct 02, 2026",
+      lastUsed: null,
+      isActive: false,
+      claudeConfigDirectory: null,
+      claudeConfigDirectoryAvailable: false,
+    },
+  ];
+}
+
 function emptyCodexAccounts(): CodexAccountsStateBridge {
   return { accounts: [], accountOrdinals: {}, snapshots: {} };
 }
@@ -260,6 +286,7 @@ function defaultScenario(now: Date): ProofScenario {
     codexAccounts: singleCodexAccount(now),
     claudeAccounts: claudeAccounts(now),
     localSpend: [codexSpend(), claudeSpend()],
+    claudeTokenAccounts: claudeTokenAccounts(),
   };
 }
 
