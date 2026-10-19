@@ -1,14 +1,14 @@
 //! Bounded, order-preserving provider fetches for `codexbar usage` (upstream
 //! 0.76.0 #4501 `collectUsageOutputs`).
 //!
-//! Up to [`MAX_CONCURRENT_PROVIDER_FETCHES`] providers run at once. Results and
-//! diagnostics come back in selection order whatever order the fetches finish
-//! in, and a provider that fails renders its own error row without stopping
-//! the others. Credential writeback is per provider: see the audit note on
-//! [`fetch_in_selection_order`].
+//! Up to [`MAX_CONCURRENT_PROVIDER_FETCHES`] providers run at once. Results
+//! come back in selection order whatever order the fetches finish in, and a
+//! provider that fails renders its own error row without stopping the others.
+//! Diagnostics from each fetch are held until every fetch has finished. The
+//! credential writeback audit is on [`fetch_in_selection_order`].
 
 use std::future::Future;
-use std::io::Write as _;
+use std::io::Write;
 
 use futures::StreamExt;
 use tracing::instrument::WithSubscriber;
@@ -18,31 +18,67 @@ use crate::logging::{self, DiagnosticBuffer};
 /// Most provider fetches in flight for one `usage` command.
 pub(super) const MAX_CONCURRENT_PROVIDER_FETCHES: usize = 3;
 
-/// Run `fetch` for every item with at most three in flight. Each fetch's
-/// stderr diagnostics are captured and written after all fetches finish, in
-/// item order. Returns the fetch values in item order.
+/// Run `fetch` for every item with at most three in flight, and return the
+/// fetch values in item order.
 ///
-/// Writeback audit (CLI usage path, checked against origin/main 60b589ec8): the CLI has no
-/// token-account writeback. `FetchContext` has no token-updater hook, and
-/// `TokenAccountStore::save`/`save_provider` are called only from `codexbar
-/// account` commands, never from a usage fetch. Provider-owned refreshes
-/// (Claude `.credentials.json`/keyring, Gemini `oauth_creds.json`, StepFun
-/// keyring) and the per-provider burndown and cost caches each write one
-/// provider-private store. A command fetches each provider at most once, so
-/// no two concurrent fetches target the same store. `Settings::load` writes
-/// only one-shot startup migrations, which run before any fetch starts.
+/// Diagnostics: events emitted on a fetch's own future are captured and
+/// written to stderr after all fetches finish, in item order. Nothing from
+/// the fetches streams live while they run. Events from `tokio::spawn` and
+/// `spawn_blocking` tasks that a provider starts run outside the fetch future,
+/// so they go to the global subscriber, print live and are not held or
+/// reordered.
+///
+/// Writeback audit (CLI usage path, checked against origin/main 1bfe3e930):
+/// - No token-account writeback exists on this path. `FetchContext` has no
+///   token-updater hook, and `TokenAccountStore::save`/`save_provider` run only
+///   from the `codexbar account` commands (`cli/account.rs`). The usage path
+///   only loads (`cli/usage/fetch_helpers.rs`).
+/// - `Settings::load` writes one thing: the one-shot tray-pin migration, on
+///   Windows without `CODEXBAR_CONFIG` (`settings/persistence.rs:28-31,127-141`).
+///   `UsageCommand::from_args` loads settings and writes that marker before the
+///   fan-out starts. `fetch_helpers.rs:59` loads settings again for each
+///   provider, but by then the marker exists and those loads do not write. If
+///   the marker cannot be written, per-provider loads repeat the same save.
+///   Settings writes are atomic (`secure_file::write_string` ->
+///   `atomic_file::write_atomic_private`), so the file stays whole and the
+///   last identical write wins.
+/// - Provider-owned writers. Claude credential refresh and account-store writes
+///   run under `CREDENTIAL_OPERATION` (`providers/claude/accounts.rs`), which
+///   `ClaudeOAuthFetcher::fetch` holds across the whole fetch
+///   (`providers/claude/oauth/mod.rs`). That lock is the serialization for
+///   Claude credential refresh. Grok takes its own `CREDENTIAL_OPERATION`
+///   (`providers/grok/accounts/refresh.rs:22,27`) around renewal and its store
+///   write (`persist_renewed`, `:135`). Other writers are keyed per provider,
+///   such as the burndown history (`core/quota_burndown.rs:188-189`) and the
+///   cookie cache (`browser/cookie_cache.rs`). A command fetches each provider
+///   once, so no two concurrent fetches share a store file.
 pub(super) async fn fetch_in_selection_order<I, T, F, Fut>(items: &[I], fetch: F) -> Vec<T>
 where
     I: Copy,
     F: Fn(I) -> Fut,
     Fut: Future<Output = T>,
 {
+    fetch_in_selection_order_to(items, fetch, &mut std::io::stderr()).await
+}
+
+/// [`fetch_in_selection_order`] with the diagnostics replay written to `out`.
+/// Tests pass a buffer; the command passes stderr.
+pub(super) async fn fetch_in_selection_order_to<I, T, F, Fut, W>(
+    items: &[I],
+    fetch: F,
+    out: &mut W,
+) -> Vec<T>
+where
+    I: Copy,
+    F: Fn(I) -> Fut,
+    Fut: Future<Output = T>,
+    W: Write,
+{
     let captured = capture_in_selection_order(items, fetch).await;
-    let mut stderr = std::io::stderr();
     let mut values = Vec::with_capacity(captured.len());
     for (value, diagnostics) in captured {
         if !diagnostics.is_empty() {
-            let _written = stderr.write_all(diagnostics.as_bytes());
+            let _written = out.write_all(diagnostics.as_bytes());
         }
         values.push(value);
     }
@@ -84,7 +120,9 @@ mod tests {
 
     use tokio::sync::oneshot;
 
-    use super::{MAX_CONCURRENT_PROVIDER_FETCHES, capture_in_selection_order};
+    use super::{
+        MAX_CONCURRENT_PROVIDER_FETCHES, capture_in_selection_order, fetch_in_selection_order_to,
+    };
 
     /// Items 0..5. Fetches are gated so the test controls completion order:
     /// the first three start together, then 2, 1, 0 finish, and 3 and 4 start
@@ -240,6 +278,49 @@ mod tests {
                 Err("provider 1 failed".to_string()),
                 Ok("row-2".to_string()),
             ]
+        );
+    }
+
+    /// The stderr replay writes each fetch's diagnostics in item order, even
+    /// though the later fetches finish first. Each fetch yields a different
+    /// number of times, so completion order is fixed on the single-threaded
+    /// test runtime.
+    #[tokio::test]
+    async fn stderr_replay_keeps_selection_order_when_later_fetches_finish_first() {
+        const COUNT: usize = 3;
+        let items: Vec<usize> = (0..COUNT).collect();
+        let finished_order = Rc::new(RefCell::new(Vec::new()));
+        let mut out: Vec<u8> = Vec::new();
+        let values = fetch_in_selection_order_to(
+            &items,
+            |index| {
+                let finished_order = Rc::clone(&finished_order);
+                async move {
+                    for _ in 0..(COUNT - index) * 10 {
+                        tokio::task::yield_now().await;
+                    }
+                    tracing::warn!("replay diagnostic for provider {index}");
+                    finished_order.borrow_mut().push(index);
+                    index
+                }
+            },
+            &mut out,
+        )
+        .await;
+
+        assert_eq!(*finished_order.borrow(), vec![2, 1, 0]);
+        assert_eq!(values, items);
+        let text = String::from_utf8(out).expect("replay is UTF-8");
+        assert_eq!(text.matches("replay diagnostic").count(), COUNT);
+        let positions: Vec<usize> = (0..COUNT)
+            .map(|index| {
+                text.find(&format!("replay diagnostic for provider {index}"))
+                    .unwrap_or_else(|| panic!("missing diagnostic {index}: {text:?}"))
+            })
+            .collect();
+        assert!(
+            positions.windows(2).all(|pair| pair[0] < pair[1]),
+            "diagnostics out of order: {text:?}"
         );
     }
 
