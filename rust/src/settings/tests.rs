@@ -2,6 +2,7 @@ use super::*;
 
 mod language_theme;
 mod provider_configs;
+mod unreadable_file;
 
 /// Settings parsed from a document that omits every optional field.
 fn defaulted() -> Settings {
