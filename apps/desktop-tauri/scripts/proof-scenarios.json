@@ -36,6 +36,38 @@
       ]
     },
     {
+      "name": "tray-claude-reset-credits",
+      "query": "window=main&fixture=claude-reset-credits",
+      "size": [310, 1032],
+      "steps": [
+        { "click": { "selector": ".provider-grid__item", "label": "Claude" } },
+        { "expectText": ["claude.user@example.com", "Limit Reset Credits", "2 available"] },
+        { "screenshot": "tray-claude-reset-credits", "clip": "panel" }
+      ]
+    },
+    {
+      "name": "tray-claude-reset-credits-hidden",
+      "query": "window=main&fixture=claude-reset-credits-hidden",
+      "size": [310, 1032],
+      "steps": [
+        { "click": { "selector": ".provider-grid__item", "label": "Claude" } },
+        { "expectText": ["claude.user@example.com", "Plan renews: Dec 1, 2026"] },
+        { "expectNoText": ["Limit Reset Credits", "2 available"] },
+        { "screenshot": "tray-claude-reset-credits-hidden", "clip": "panel" }
+      ]
+    },
+    {
+      "name": "tray-claude-reset-credits-absent",
+      "query": "window=main&fixture=default",
+      "size": [310, 1032],
+      "steps": [
+        { "click": { "selector": ".provider-grid__item", "label": "Claude" } },
+        { "expectText": "claude.user@example.com" },
+        { "expectNoText": ["Limit Reset Credits", "2 available"] },
+        { "screenshot": "tray-claude-reset-credits-absent", "clip": "panel" }
+      ]
+    },
+    {
       "name": "tray-errors",
       "query": "window=main&fixture=errors",
       "size": [310, 1032],

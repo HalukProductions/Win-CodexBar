@@ -22,6 +22,8 @@ export const PROOF_SCENARIO_NAMES = [
   "errors",
   "empty",
   "claude-plan-hidden",
+  "claude-reset-credits",
+  "claude-reset-credits-hidden",
 ] as const;
 
 export type ProofScenarioName = (typeof PROOF_SCENARIO_NAMES)[number];
@@ -344,12 +346,43 @@ function claudePlanHiddenScenario(now: Date): ProofScenario {
   };
 }
 
+/**
+ * Default data with a saved Claude limit-reset credit (`reset-credits` inventory
+ * item, as the OAuth and Web sources produce). `hidden` adds the Claude
+ * "Limit reset credits" section to `hiddenUsageItemIds`.
+ */
+function claudeResetCreditsScenario(now: Date, hidden: boolean): ProofScenario {
+  const base = defaultScenario(now);
+  return {
+    ...base,
+    name: hidden ? "claude-reset-credits-hidden" : "claude-reset-credits",
+    providers: base.providers.map((snapshot) =>
+      snapshot.providerId === "claude"
+        ? {
+            ...snapshot,
+            inventory: [
+              {
+                id: "reset-credits",
+                title: "Limit Reset Credits",
+                availableCount: 2,
+                nextExpiresAt: isoAfter(now, 3 * DAY_MINUTES),
+              },
+            ],
+            hiddenUsageItemIds: hidden ? ["section:claude-reset-credits"] : [],
+          }
+        : snapshot,
+    ),
+  };
+}
+
 const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   default: defaultScenario,
   "two-codex-accounts": twoCodexAccountsScenario,
   errors: errorsScenario,
   empty: emptyScenario,
   "claude-plan-hidden": claudePlanHiddenScenario,
+  "claude-reset-credits": (now) => claudeResetCreditsScenario(now, false),
+  "claude-reset-credits-hidden": (now) => claudeResetCreditsScenario(now, true),
 };
 
 export function isProofScenarioName(value: string): value is ProofScenarioName {
