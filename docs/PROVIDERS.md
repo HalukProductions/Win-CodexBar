@@ -657,9 +657,11 @@ X-Secret-Key: <secret key>
   to 100%), spanning the billing period and resetting at its end. A meter with a
   zero allowance keeps its row but has no bar.
 - `plan_display_name` is shown as the plan. There is no cost summary.
-- Every non-200 response reports `Future AGI returned HTTP <status>.`; anything
-  else unexpected reports `Future AGI returned an unrecognized usage overview.`
-  Response bodies are never echoed in errors.
+- 401 and 403 report that authentication is required; 429 reports that usage
+  requests are rate limited; other non-200 responses report
+  `Future AGI returned HTTP <status>.` Anything else unexpected reports
+  `Future AGI returned an unrecognized usage overview.` Response bodies are
+  never echoed in errors.
 
 ### Aerostack
 

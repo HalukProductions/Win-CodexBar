@@ -92,6 +92,14 @@ impl FutureAgiProvider {
             .send()
             .await?;
         let status = response.status();
+        if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
+            return Err(ProviderError::AuthRequired);
+        }
+        if status == StatusCode::TOO_MANY_REQUESTS {
+            return Err(ProviderError::Other(
+                "Future AGI usage requests are rate limited (HTTP 429).".into(),
+            ));
+        }
         if status != StatusCode::OK {
             return Err(ProviderError::Other(format!(
                 "Future AGI returned HTTP {}.",
@@ -139,13 +147,18 @@ impl Provider for FutureAgiProvider {
 }
 
 fn resolve_credentials(explicit: Option<&str>) -> Result<Credentials, ProviderError> {
-    let stored = explicit.and_then(cleaned_key).or_else(|| {
-        keyring::Entry::new(CREDENTIAL_TARGET, "api_key")
-            .ok()
-            .and_then(|entry| entry.get_password().ok())
-            .as_deref()
-            .and_then(cleaned_key)
-    });
+    // The stored value keeps its raw halves: cleaning the whole string before
+    // the colon split would strip a quote pair that wrapped only one half
+    // (`"KEY":"SECRET"` would corrupt into `KEY"` and `"SECRET`).
+    let stored = explicit
+        .filter(|value| cleaned_key(value).is_some())
+        .map(str::to_string)
+        .or_else(|| {
+            keyring::Entry::new(CREDENTIAL_TARGET, "api_key")
+                .ok()
+                .and_then(|entry| entry.get_password().ok())
+                .filter(|value| cleaned_key(value).is_some())
+        });
     credentials_from(stored.as_deref(), |name| std::env::var(name).ok())
         .ok_or_else(|| ProviderError::NotInstalled(MISSING_CREDENTIALS.into()))
 }

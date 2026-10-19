@@ -203,7 +203,23 @@ async fn malformed_usage_never_becomes_zero_usage() {
 
 #[tokio::test]
 async fn http_failures_keep_their_status_without_echoing_response_bodies() {
-    for code in [401, 403, 429, 503, 400] {
+    for code in [401, 403] {
+        match fetch_with("private-response", code).await {
+            Err(ProviderError::AuthRequired) => {}
+            other => panic!("expected an auth failure for HTTP {code}, got {other:?}"),
+        }
+    }
+    match fetch_with("private-response", 429).await {
+        Err(ProviderError::Other(message)) => {
+            assert!(message.contains("rate limited"), "{message}");
+            assert!(message.contains("429"), "{message}");
+            assert!(!message.contains("private-response"));
+            assert!(!message.contains(KEY));
+            assert!(!message.contains(SECRET));
+        }
+        other => panic!("expected a rate-limit failure, got {other:?}"),
+    }
+    for code in [503, 400] {
         match fetch_with("private-response", code).await {
             Err(ProviderError::Other(message)) => {
                 assert_eq!(message, format!("Future AGI returned HTTP {code}."));
@@ -235,6 +251,45 @@ async fn oauth_source_uses_the_same_api_key_lane() {
         .await
         .unwrap();
     assert_eq!(primary_percent(&result), Some(25.0));
+}
+
+#[test]
+fn resolve_credentials_cleans_each_half_not_the_pair() {
+    // Cleaning the whole Settings value before the colon split would strip
+    // the outer quote pair and corrupt both halves; each half is cleaned on
+    // its own after splitting.
+    assert_eq!(
+        resolve_credentials(Some("\"fixture-key\":\"fixture-secret\"")).ok(),
+        pair("fixture-key", "fixture-secret")
+    );
+    assert_eq!(
+        resolve_credentials(Some(" 'fixture-key' : 'fixture-secret' ")).ok(),
+        pair("fixture-key", "fixture-secret")
+    );
+}
+
+#[tokio::test]
+async fn quoted_settings_pairs_send_clean_halves() {
+    for raw in [
+        format!("\"{KEY}\":\"{SECRET}\""),
+        format!(" '{KEY}' : '{SECRET}' "),
+    ] {
+        // The mock matches only the exact clean headers, so a successful
+        // fetch proves the halves were split before quote stripping.
+        let server = serve(FIXTURE, 200).await;
+        let result = provider_for(&server)
+            .fetch_usage(&FetchContext {
+                source_mode: SourceMode::Auto,
+                api_key: Some(raw.clone()),
+                ..FetchContext::default()
+            })
+            .await;
+        assert_eq!(
+            primary_percent(&result.unwrap_or_else(|error| panic!("{raw}: {error}"))),
+            Some(25.0),
+            "{raw}"
+        );
+    }
 }
 
 fn env(pairs: &'static [(&'static str, &'static str)]) -> impl Fn(&str) -> Option<String> {
