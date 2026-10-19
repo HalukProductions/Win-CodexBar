@@ -626,7 +626,7 @@ reported as unrecognized. Response bodies are never echoed in errors.
 
 Claude Platform is disabled by default and shows the prepaid API credits of a
 Claude Console (platform.claude.com) organization, including the monthly API
-credit that Max and Team plans include. It is separate from the Claude
+credit that Max plans include. It is separate from the Claude
 provider: it never reads Claude's cookies, OAuth credentials, plan or email.
 Sign in to platform.claude.com in your browser, and CodexBar uses that
 session's `sessionKey` cookie.
@@ -653,8 +653,9 @@ GET https://platform.claude.com/api/organizations/<uuid>/current_spend
   organization reports that, and every organization answering 403 reports that
   billing access was denied.
 - The **API credit** lane is the soonest-expiring `subscription_api_credit` grant
-  that still has credit. The **Purchased credit** lane is the first purchased
-  grant. Each lane shows used percent and a detail such as
+  that still has credit. The **Purchased credit** lane is the soonest-expiring
+  purchased grant that still has credit, falling back to the first purchased
+  grant when all are spent. Each lane shows used percent and a detail such as
   `$124.75 of $200.00 left · Expires Oct 28 (UTC)`. Expiry dates are UTC calendar
   dates; the year is added when it is not the current year.
 - Other unexpired grants appear in **Other credit grants** with their own
