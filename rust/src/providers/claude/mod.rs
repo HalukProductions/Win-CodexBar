@@ -10,6 +10,7 @@ mod cli_reset;
 mod cli_screen;
 mod cli_text;
 mod cloud_credits;
+pub mod cost_account;
 mod oauth;
 pub mod quota_history;
 mod reset_credits;
