@@ -490,9 +490,34 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-/* Centered like the macOS title; the left padding balances the controls. */
+/* The titlebar follows --app-bg, so under Light the controls' white strokes
+   (parity-settings.css) would vanish into it. */
+[data-theme="light"] .settings--sidebar .settings-titlebar {
+  border-bottom-color: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .settings--sidebar .settings-titlebar__control {
+  color: rgba(0, 0, 0, 0.72);
+}
+
+[data-theme="light"] .settings--sidebar .settings-titlebar__control:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: #000;
+}
+
+[data-theme="light"] .settings--sidebar .settings-titlebar__control--history:disabled {
+  color: rgba(0, 0, 0, 0.25);
+  background: transparent;
+}
+
+[data-theme="light"] .settings--sidebar .settings-titlebar__control--close:hover {
+  background: #e81123;
+  color: #fff;
+}
+
+/* Centered like the macOS title; Back/Forward on the left balance the
+   window controls on the right. */
 .settings--sidebar .settings-titlebar__title {
-  padding-left: 92px;
   text-align: center;
   font-size: 13px;
   font-weight: 650;

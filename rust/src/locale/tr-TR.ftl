@@ -673,6 +673,8 @@ PanelScaleHelper = Tepsi panelinin genişliğini, metnini ve boşluklarını öl
 WindowMinimize = Simge durumuna küçült
 WindowRestore = Geri yükle
 WindowClose = Kapat
+SettingsHistoryBack = Geri
+SettingsHistoryForward = İleri
 ShowAsUsedLabel = Kullanılan olarak göster
 ShowAsUsedHelper = Kullanım çubuklarını kalan yerine tüketilen olarak göster.
 ShowAllTokenAccountsLabel = Tüm token hesaplarını göster
@@ -1679,7 +1681,7 @@ AntigravityProfileHomesPickFailed = Klasör seçici açılamadı.
 # Claude optional usage rows and plan dates
 UsageItemPlanRenewalExpiry = Plan yenileme / bitiş
 UsageItemHiddenByCostSummary = Maliyet özeti görünümü Gizli olarak ayarlıyken gizlenir.
-PlanRenewsOn = Yenilenme: { "{}" }
+PlanRenewsOn = Plan yenilenir: { "{}" }
 PlanExpiresOn = Plan bitişi: { "{}" }
 OpenAiLiveUsageTitle = Canlı kullanım
 OpenAiLiveUsageToggle = Canlı kullanım (dakikadaki token)

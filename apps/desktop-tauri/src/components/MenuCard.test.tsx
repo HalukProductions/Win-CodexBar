@@ -1441,7 +1441,7 @@ describe("MenuCard", () => {
           DetailCostBalance: "Balance",
           InventoryAvailableCount: "{} available",
           IntlLocale: "en-US",
-          PlanRenewsOn: "Renews: {}",
+          PlanRenewsOn: "Plan renews: {}",
           PlanExpiresOn: "Plan expires: {}",
         }),
       );
@@ -1449,7 +1449,7 @@ describe("MenuCard", () => {
 
     it("shows the plan date under the quota rows, before saved resets and Extra usage", async () => {
       const { container } = renderCard(claude());
-      const note = await screen.findByText("Renews: Dec 1, 2026");
+      const note = await screen.findByText("Plan renews: Dec 1, 2026");
       const content = container.querySelector(".menu-card__content");
       const order = [...(content?.children ?? [])].map((el) => el.className);
       expect(order.indexOf("menu-card__metrics")).toBeLessThan(order.indexOf(note.className));
@@ -1461,18 +1461,18 @@ describe("MenuCard", () => {
     it("hides each section independently", async () => {
       const { container, unmount } = renderCard(claude(["section:subscription"]));
       expect(await screen.findByText("2 available")).toBeInTheDocument();
-      expect(screen.queryByText(/Renews:/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Plan renews:/)).not.toBeInTheDocument();
       expect(container.querySelector(".card-extra")).not.toBeNull();
       unmount();
 
       const resets = renderCard(claude(["section:claude-reset-credits"]));
-      expect(await screen.findByText("Renews: Dec 1, 2026")).toBeInTheDocument();
+      expect(await screen.findByText("Plan renews: Dec 1, 2026")).toBeInTheDocument();
       expect(screen.queryByText("2 available")).not.toBeInTheDocument();
       expect(resets.container.querySelector(".card-extra")).not.toBeNull();
       resets.unmount();
 
       const extra = renderCard(claude(["section:claude-extra-usage"]));
-      expect(await screen.findByText("Renews: Dec 1, 2026")).toBeInTheDocument();
+      expect(await screen.findByText("Plan renews: Dec 1, 2026")).toBeInTheDocument();
       expect(screen.getByText("2 available")).toBeInTheDocument();
       expect(extra.container.querySelector(".card-extra")).toBeNull();
     });
@@ -1481,14 +1481,14 @@ describe("MenuCard", () => {
       const snapshot = claude(["section:claude-extra-usage"]);
       snapshot.sourceLabel = "admin-api";
       const { container } = renderCard(snapshot);
-      await screen.findByText("Renews: Dec 1, 2026");
+      await screen.findByText("Plan renews: Dec 1, 2026");
       expect(container.querySelector(".card-extra")).not.toBeNull();
     });
 
     it("keeps the plan date off the compact Overview when quota bars are present", async () => {
       const { container } = renderCard(claude(), { compactOverview: true });
       await waitFor(() => expect(container.querySelector(".menu-metric__title")).not.toBeNull());
-      expect(screen.queryByText(/Renews:/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Plan renews:/)).not.toBeInTheDocument();
     });
   });
 
