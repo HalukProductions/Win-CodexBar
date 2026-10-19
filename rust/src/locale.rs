@@ -1095,6 +1095,8 @@ locale_keys! {
     WindowMinimize,
     WindowRestore,
     WindowClose,
+    SettingsHistoryBack,
+    SettingsHistoryForward,
     ShowAsUsedLabel,
     ShowAsUsedHelper,
     HighlightMenuCardsOnHoverLabel,
