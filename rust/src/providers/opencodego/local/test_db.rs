@@ -47,6 +47,44 @@ pub(super) fn insert_message(
     .unwrap();
 }
 
+/// Add the OpenCode v2 `session_message` table with its upstream column layout.
+pub(super) fn create_session_message_table(conn: &Connection) {
+    conn.execute_batch(
+        "CREATE TABLE session_message (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          type TEXT NOT NULL,
+          seq INTEGER NOT NULL,
+          time_created INTEGER NOT NULL,
+          time_updated INTEGER NOT NULL,
+          data TEXT NOT NULL
+        );",
+    )
+    .unwrap();
+}
+
+/// Insert one v2 `session_message` row. `tokens` is spliced in as raw JSON.
+pub(super) fn insert_session_message(
+    conn: &Connection,
+    id: &str,
+    created_ms: i64,
+    cost: f64,
+    model: &str,
+    provider_id: &str,
+    tokens: Option<&str>,
+) {
+    let tokens_json = tokens.map_or_else(String::new, |t| format!(r#","tokens":{t}"#));
+    let data = format!(
+        r#"{{"model":{{"providerID":"{provider_id}","id":"{model}"}},"cost":{cost}{tokens_json},"time":{{"created":{created_ms}}}}}"#
+    );
+    conn.execute(
+        "INSERT INTO session_message (id, session_id, type, seq, time_created, time_updated, data)
+         VALUES (?1, 'session-1', 'assistant', 0, ?2, ?2, ?3)",
+        rusqlite::params![id, created_ms, data],
+    )
+    .unwrap();
+}
+
 /// Insert a step-finish part carrying a cost, attached to `message_id`.
 pub(super) fn insert_step_finish(
     conn: &Connection,
