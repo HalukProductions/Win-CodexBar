@@ -694,6 +694,8 @@ PanelScaleHelper = 트레이 패널의 너비, 글자, 간격을 조정합니다
 WindowMinimize = 최소화
 WindowRestore = 이전 크기로 복원
 WindowClose = 닫기
+SettingsHistoryBack = 뒤로
+SettingsHistoryForward = 앞으로
 ShowAsUsedLabel = 사용된 양으로 표시
 ShowAsUsedHelper = 사용량 표시줄을 남은 양 대신 소비된 양으로 표시합니다.
 ShowAllTokenAccountsLabel = 모든 토큰 계정 표시
@@ -1678,7 +1680,7 @@ AntigravityProfileHomesPickFailed = 폴더 선택 창을 열 수 없습니다.
 # Claude optional usage rows and plan dates
 UsageItemPlanRenewalExpiry = 요금제 갱신 / 만료
 UsageItemHiddenByCostSummary = 비용 요약 표시 스타일이 숨김이면 표시되지 않습니다.
-PlanRenewsOn = 갱신: { "{}" }
+PlanRenewsOn = 요금제 갱신: { "{}" }
 PlanExpiresOn = 요금제 만료: { "{}" }
 OpenAiLiveUsageTitle = 실시간 사용량
 OpenAiLiveUsageToggle = 실시간 사용량(분당 토큰)

@@ -109,6 +109,54 @@ fn database_title_is_the_fallback_and_the_index_wins() {
 }
 
 #[test]
+fn database_titles_are_bounded_but_index_names_are_not() {
+    // Multi-byte characters check that the bound counts characters, not bytes.
+    let prompt = "é🙂".repeat(50_000);
+    let explicit_name = "n".repeat(300);
+    for schema in [
+        "CREATE TABLE threads (id TEXT PRIMARY KEY, title TEXT, agent_path TEXT)",
+        "CREATE TABLE threads (id TEXT PRIMARY KEY, title TEXT)",
+    ] {
+        let tmp = TempDir::new().unwrap();
+        let conn = Connection::open(tmp.path().join("state_5.sqlite")).unwrap();
+        conn.execute_batch(schema).unwrap();
+        for (id, title) in [
+            ("prompt", prompt.as_str()),
+            ("padded", "  Short title \n"),
+            ("named", prompt.as_str()),
+        ] {
+            conn.execute(
+                "INSERT INTO threads (id, title) VALUES (?1, ?2)",
+                (id, title),
+            )
+            .unwrap();
+        }
+        drop(conn);
+        write_index(
+            tmp.path(),
+            &format!(
+                "{{\"id\":\"named\",\"thread_name\":\"{explicit_name}\",\"updated_at\":\"now\"}}\n"
+            ),
+        );
+
+        let found = titles(
+            tmp.path(),
+            None,
+            &[
+                session("prompt", None),
+                session("padded", None),
+                session("named", None),
+            ],
+        );
+        let prompt_title = found.get("prompt").expect("prompt title");
+        assert_eq!(prompt_title.chars().count(), 256, "{schema}");
+        assert_eq!(prompt_title, &"é🙂".repeat(128), "{schema}");
+        assert_eq!(found.get("padded").map(String::as_str), Some("Short title"));
+        assert_eq!(found.get("named"), Some(&explicit_name));
+    }
+}
+
+#[test]
 fn newest_state_database_version_is_used() {
     let tmp = TempDir::new().unwrap();
     write_state(tmp.path(), "state_5.sqlite", &[("a", Some("old"))]);
