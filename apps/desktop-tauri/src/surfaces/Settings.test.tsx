@@ -400,3 +400,76 @@ describe("Settings deep links", () => {
     expect(screen.getByTestId("tab").textContent).toBe("providers:codex");
   });
 });
+
+describe("Settings back and forward", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.windowLabel = "settings";
+    mocks.shellTarget = null;
+  });
+
+  const back = () => screen.getByRole("button", { name: "SettingsHistoryBack" });
+  const forward = () => screen.getByRole("button", { name: "SettingsHistoryForward" });
+  const tab = () => screen.getByTestId("tab").textContent;
+
+  it("starts with both history buttons disabled", () => {
+    render(<Settings state={state} initialTab="about" tabRequestId={1} />);
+    expect(back()).toBeDisabled();
+    expect(forward()).toBeDisabled();
+  });
+
+  it("walks visited panes and providers", () => {
+    render(<Settings state={state} />);
+    fireEvent.click(screen.getByRole("button", { name: "TabMenuBar" }));
+    fireEvent.click(row("claude"));
+    fireEvent.click(row("grok"));
+
+    fireEvent.click(back());
+    expect(tab()).toBe("providers:claude");
+    expect(row("claude")).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(back());
+    expect(tab()).toBe("menuBar");
+    fireEvent.click(back());
+    expect(tab()).toBe("general:general");
+    expect(back()).toBeDisabled();
+
+    fireEvent.click(forward());
+    expect(tab()).toBe("menuBar");
+    fireEvent.click(screen.getByRole("button", { name: "TabAbout" }));
+    expect(forward()).toBeDisabled();
+    fireEvent.click(back());
+    expect(tab()).toBe("menuBar");
+  });
+
+  it("records a deep link as a visit", () => {
+    const { rerender } = render(<Settings state={state} initialTab="about" tabRequestId={1} />);
+    rerender(<Settings state={state} initialTab="providers:zai" tabRequestId={2} />);
+    fireEvent.keyDown(window, { key: "ArrowLeft", altKey: true });
+    expect(tab()).toBe("about");
+    fireEvent.mouseUp(window, { button: 4 });
+    expect(tab()).toBe("providers:zai");
+  });
+
+  it("clears a search that would hide the provider it returns to", () => {
+    render(<Settings state={state} />);
+    fireEvent.click(row("cline"));
+    fireEvent.click(screen.getByRole("button", { name: "TabAbout" }));
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "zai" } });
+    fireEvent.click(back());
+    expect(screen.getByRole("searchbox")).toHaveValue("");
+    expect(row("cline")).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("drives the main-window surface when it is not the detached window", () => {
+    mocks.windowLabel = "main";
+    render(<Settings state={state} />);
+    fireEvent.click(row("claude"));
+    fireEvent.click(screen.getByRole("button", { name: "TabAbout" }));
+    mocks.setSurfaceMode.mockClear();
+    fireEvent.click(back());
+    expect(mocks.setSurfaceMode).toHaveBeenCalledWith("settings", {
+      kind: "settings",
+      tab: "providers:claude",
+    });
+  });
+});

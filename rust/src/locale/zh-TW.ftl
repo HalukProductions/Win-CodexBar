@@ -641,6 +641,8 @@ PanelScaleHelper = 縮放系統匣面板的寬度、文字和間距。
 WindowMinimize = 最小化
 WindowRestore = 還原
 WindowClose = 關閉
+SettingsHistoryBack = 上一頁
+SettingsHistoryForward = 下一頁
 ShowAsUsedLabel = 顯示為已用
 ShowAsUsedHelper = 以已使用百分比而非剩餘顯示用量條。
 ShowAllTokenAccountsLabel = 顯示所有權杖賬戶
@@ -1679,7 +1681,7 @@ AntigravityProfileHomesPickFailed = 無法開啟資料夾選擇器。
 # Claude optional usage rows and plan dates
 UsageItemPlanRenewalExpiry = 方案續訂 / 到期
 UsageItemHiddenByCostSummary = 費用摘要顯示方式設為「隱藏」時不顯示。
-PlanRenewsOn = 續訂：{ "{}" }
+PlanRenewsOn = 方案續訂：{ "{}" }
 PlanExpiresOn = 方案到期：{ "{}" }
 OpenAiLiveUsageTitle = 即時用量
 OpenAiLiveUsageToggle = 即時用量（每分鐘 Token）
