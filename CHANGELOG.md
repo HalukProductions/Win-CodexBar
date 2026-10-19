@@ -9,6 +9,7 @@
 
 ## [Windows] Unreleased
 
+- Usage forecasts: an older session reset time that later moved backward no longer hides the estimated session quotas left and windows until reset for Codex and Claude. The estimator starts a new history segment at the correction and still needs three recent samples (upstream #4540).
 - OpenCode Go: include OpenCode v2 session history in local cost and token totals, without counting migrated messages twice (upstream v0.77.0 #4526).
 - Codex: session titles read from the Codex state database are capped at 256 characters when read, so a whole first prompt stored as the thread title is no longer carried into Usage & Spend session lists. Names from `session_index.jsonl` keep precedence and are not capped (upstream #4550).
 - Settings: go back and forward through visited panes and providers with the Back and Forward buttons in the Settings title bar, Alt+Left / Alt+Right, the keyboard Back/Forward keys, or the mouse side buttons. Panes opened from the tray or a deep link count as visits (upstream #4475).
