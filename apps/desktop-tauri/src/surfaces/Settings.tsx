@@ -20,6 +20,7 @@ import {
   type SettingsTabRequest,
 } from "./settings/settingsTabs";
 import { SettingsSidebar } from "./settings/SettingsSidebar";
+import { useSettingsHistory } from "./settings/useSettingsHistory";
 import GeneralTab from "./settings/tabs/GeneralTab";
 import MenuBarTab from "./settings/tabs/MenuBarTab";
 import MenuTab from "./settings/tabs/MenuTab";
@@ -157,11 +158,51 @@ export default function Settings({
     },
     [showInMainWindow],
   );
+  const history = useSettingsHistory(
+    { tab: activeTab, providerId: activeTab === "providers" ? providerId : null },
+    (pane) => {
+      if (pane.tab !== "providers" || !pane.providerId) {
+        handleSelectPane(pane.tab);
+        return;
+      }
+      handleSelectProvider(pane.providerId);
+      const target = catalog.filter((p) => p.id === pane.providerId);
+      if (filterProvidersByQuery(target, searchText).length === 0) setSearchText("");
+    },
+  );
 
   return (
     <div className="settings settings--sidebar">
       {/* custom title bar (decorations disabled for guaranteed dark theme) */}
       <div className="settings-titlebar" data-tauri-drag-region>
+        <div className="settings-titlebar__history">
+          <button
+            type="button"
+            className="settings-titlebar__control settings-titlebar__control--history"
+            onClick={history.goBack}
+            disabled={!history.canGoBack}
+            aria-label={t("SettingsHistoryBack")}
+            title={t("SettingsHistoryBack")}
+            data-testid="settings-history-back"
+          >
+            <svg aria-hidden viewBox="0 0 16 16" focusable="false">
+              <path d="M10 3.5L5.5 8l4.5 4.5" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className="settings-titlebar__control settings-titlebar__control--history"
+            onClick={history.goForward}
+            disabled={!history.canGoForward}
+            aria-label={t("SettingsHistoryForward")}
+            title={t("SettingsHistoryForward")}
+            data-testid="settings-history-forward"
+          >
+            <svg aria-hidden viewBox="0 0 16 16" focusable="false">
+              <path d="M6 3.5l4.5 4.5L6 12.5" />
+            </svg>
+          </button>
+        </div>
         <span
           className="settings-titlebar__title"
           data-tauri-drag-region

@@ -80,6 +80,25 @@
   outline-offset: -2px;
 }
 
+/* Back/Forward sit flush with the window's left edge, mirroring the
+   minimize/close pair on the right. */
+.settings-titlebar__history {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-self: stretch;
+  margin-left: -12px;
+}
+
+.settings-titlebar__control--history svg {
+  stroke-linejoin: round;
+}
+
+.settings-titlebar__control--history:disabled {
+  color: rgba(255, 255, 255, 0.3);
+  background: transparent;
+  cursor: default;
+}
+
 .settings-titlebar__control--close:hover {
   background: #e81123;
   color: #fff;
