@@ -752,7 +752,7 @@ pub fn get_api_key_providers() -> Vec<ProviderConfigInfo> {
             name: "Munito",
             api_key_env_var: Some("MUNITO_API_KEY"),
             api_key_help: Some(
-                "Key with Read account data (Admin API) permission. Or set MUNITO_API_KEY.",
+                "Key with Read account data (Admin API) permission. Or set MUNITO_API_KEY (MUNITO_ADMIN_KEY also works).",
             ),
             dashboard_url: Some("https://console.munito.ai/keys"),
         },

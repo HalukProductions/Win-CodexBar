@@ -162,7 +162,9 @@ impl Provider for MunitoProvider {
 fn status_error(status: StatusCode) -> ProviderError {
     let code = status.as_u16();
     match code {
+        401 => ProviderError::AuthRequired,
         403 => ProviderError::Other(PERMISSION_DENIED.into()),
+        429 => ProviderError::Other("Munito API requests are rate limited (HTTP 429).".into()),
         _ => ProviderError::Other(format!("Munito returned HTTP {code}.")),
     }
 }

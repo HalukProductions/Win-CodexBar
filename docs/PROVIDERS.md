@@ -659,11 +659,12 @@ and name are missing.
   window); the secondary window is this month's spend against a positive monthly
   limit. Cost uses this month's spend and limit, or today's when no month period
   is reported. With no periods, the card shows only the identity and the rows.
-- 401 and other HTTP errors report `Munito returned HTTP <status>.`; 403 reports
-  that the key needs the "Read account data" permission. Amounts must be
-  non-negative numbers or numeric strings, and `stopped_until` must be an ISO 8601
-  timestamp; anything else fails parsing. Response bodies are never echoed in
-  errors.
+- 401 reports that authentication is required; 403 reports that the key needs
+  the "Read account data" permission; 429 reports that API requests are rate
+  limited; other HTTP errors report `Munito returned HTTP <status>.` Amounts
+  must be non-negative numbers or numeric strings, and `stopped_until` must be
+  an ISO 8601 timestamp; anything else fails parsing. Response bodies are never
+  echoed in errors.
 
 ### Aerostack
 

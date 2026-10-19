@@ -354,10 +354,21 @@ async fn unusable_money_names_the_field() {
 
 #[tokio::test]
 async fn http_errors_keep_their_messages_without_echoing_private_bodies() {
+    match fetch_with("private-response", 401, ORGANIZATION_FIXTURE, 200).await {
+        Err(ProviderError::AuthRequired) => {}
+        other => panic!("expected an auth failure for HTTP 401, got {other:?}"),
+    }
+    match fetch_with("private-response", 429, ORGANIZATION_FIXTURE, 200).await {
+        Err(ProviderError::Other(message)) => {
+            assert!(message.contains("rate limited"), "{message}");
+            assert!(message.contains("429"), "{message}");
+            assert!(!message.contains("private-response"));
+            assert!(!message.contains(KEY));
+        }
+        other => panic!("expected a rate-limit failure, got {other:?}"),
+    }
     for (code, expected) in [
-        (401, "Munito returned HTTP 401."),
         (403, PERMISSION_DENIED),
-        (429, "Munito returned HTTP 429."),
         (503, "Munito returned HTTP 503."),
         (400, "Munito returned HTTP 400."),
     ] {
