@@ -180,10 +180,16 @@ pub(super) fn parse_summary(
     summary: &Map<String, Value>,
     now_ms: i64,
 ) -> Result<Option<TeamUsage>, ProviderError> {
-    if summary.get("Data") == Some(&Value::Null) {
+    // `Data: null` and `Data: {}` both mean no Team subscription; a missing
+    // or non-object `Data` is still a broken response.
+    let no_data = Map::new();
+    let data = match summary.get("Data") {
+        Some(Value::Null) => &no_data,
+        other => record(other).ok_or_else(|| fail("subscription"))?,
+    };
+    if data.is_empty() {
         return Ok(None);
     }
-    let data = record(summary.get("Data")).ok_or_else(|| fail("subscription"))?;
     let groups = data
         .get("SubscriptionGroupList")
         .and_then(Value::as_array)

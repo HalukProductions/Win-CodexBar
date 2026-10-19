@@ -538,6 +538,9 @@ impl PreferencesDocument {
         if let Some(value) = self.preferences.get(PROVIDER_QUOTA_WARNINGS) {
             apply_provider_quota_warnings(&mut next, value)?;
         }
+        // Not serialized, so the round trip above dropped it: an import onto
+        // stand-in defaults must not unlock saving over an unreadable file.
+        next.load_state = settings.load_state;
         *settings = next;
         Ok(self.preferences.len())
     }

@@ -531,6 +531,36 @@ pub struct Settings {
     /// Public only so other crates can build `Settings { .., ..Settings::default() }`.
     #[serde(skip)]
     pub legacy_usage_thresholds_pending: bool,
+
+    /// Whether these settings may be written back to `settings.json`.
+    /// Public only so other crates can build `Settings { .., ..Settings::default() }`.
+    #[serde(skip)]
+    pub load_state: SettingsLoadState,
+}
+
+/// Where a [`Settings`] value came from, as far as saving is concerned.
+///
+/// A `settings.json` that exists but cannot be read or parsed (a DPAPI
+/// decrypt failure, a truncated write, a hand edit) still holds the user's
+/// API keys, cookies and accounts. The app runs on in-memory defaults then,
+/// and [`Settings::save`] refuses to replace the file until a later load
+/// reads it successfully. The field is private so only the loader can set
+/// the blocked state.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SettingsLoadState {
+    unreadable_file: bool,
+}
+
+impl SettingsLoadState {
+    pub(crate) const UNREADABLE_FILE: Self = Self {
+        unreadable_file: true,
+    };
+
+    /// True when the settings file exists but could not be loaded, so saving
+    /// these defaults would destroy it.
+    pub fn is_unreadable_file(self) -> bool {
+        self.unreadable_file
+    }
 }
 
 fn default_window_scale_percent() -> u16 {
@@ -811,6 +841,7 @@ impl Default for Settings {
             alibaba_token_plan_region: default_alibaba_token_plan_region(),
             codex_external_oauth_sources_allowed: false,
             legacy_usage_thresholds_pending: false,
+            load_state: SettingsLoadState::default(),
             cost_summary_display_style: CostSummaryDisplayStyle::default(),
             open_codex_usage_logs_enabled: false,
             hide_native_codex_cost_when_open_codex_present: false,

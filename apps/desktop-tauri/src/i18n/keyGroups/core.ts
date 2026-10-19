@@ -818,6 +818,8 @@ export const CORE_LOCALE_KEYS = [
   "WindowMinimize",
   "WindowRestore",
   "WindowClose",
+  "SettingsHistoryBack",
+  "SettingsHistoryForward",
   "ShowAsUsedLabel",
   "ShowAsUsedHelper",
   "HighlightMenuCardsOnHoverLabel",
