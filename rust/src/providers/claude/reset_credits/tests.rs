@@ -1,4 +1,4 @@
-use super::{MAX_GRANT_RECORDS, MAX_RESETS, inventory_from_block};
+use super::{MAX_GRANT_RECORDS, MAX_RESETS, inventory_from_block, redact_usage_body};
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use serde_json::{Value, json};
 
@@ -183,5 +183,62 @@ fn ineligible_absent_or_unreadable_block_shows_nothing() {
         json!([]),
     ] {
         assert_eq!(inventory_from_block(&block, now()), None, "{block}");
+    }
+}
+
+/// Inventory read back from a stored (redacted) usage body.
+fn stored_count(block: &Value) -> Option<(u32, Option<DateTime<Utc>>)> {
+    let body = json!({ "five_hour": { "utilization": 12 }, "cedar_ember": block }).to_string();
+    let stored: Value = serde_json::from_str(&redact_usage_body(&body)).unwrap();
+    count_and_expiry(&stored["cedar_ember"])
+}
+
+#[test]
+fn redacted_body_drops_grant_handles_and_keeps_the_inventory() {
+    let block = eligible(vec![
+        grant(2, Some(DAY)),
+        with(grant(1, None), "paused", json!(true)),
+        json!("not a grant"),
+    ]);
+    let body = json!({ "five_hour": { "utilization": 12 }, "cedar_ember": block }).to_string();
+
+    let stored = redact_usage_body(&body);
+
+    for hidden in ["grant_secret", "Fixture reset", "clears", "usable_now"] {
+        assert!(!stored.contains(hidden), "{hidden} reached the stored body");
+    }
+    let stored: Value = serde_json::from_str(&stored).unwrap();
+    assert_eq!(stored["five_hour"]["utilization"], json!(12));
+    assert_eq!(stored_count(&block), count_and_expiry(&block));
+    assert_eq!(
+        count_and_expiry(&stored["cedar_ember"]).map(|(n, _)| n),
+        Some(2)
+    );
+}
+
+#[test]
+fn redaction_keeps_the_grant_record_cap_and_unreadable_blocks() {
+    for records in [MAX_GRANT_RECORDS, MAX_GRANT_RECORDS + 1] {
+        let block = eligible(
+            std::iter::once(grant(1, Some(DAY)))
+                .chain(std::iter::repeat_n(json!({}), records - 1))
+                .collect(),
+        );
+        assert_eq!(stored_count(&block), count_and_expiry(&block), "{records}");
+    }
+    for block in [
+        json!(null),
+        json!("eligible"),
+        json!({ "eligible": true, "grants": "invalid" }),
+        json!({ "eligible": false, "grants": [grant(1, Some(DAY))] }),
+    ] {
+        assert_eq!(stored_count(&block), None, "{block}");
+    }
+}
+
+#[test]
+fn bodies_without_the_block_are_stored_unchanged() {
+    for body in [r#"{"five_hour":{"utilization":12}}"#, "not json", "[1,2]"] {
+        assert_eq!(redact_usage_body(body), body);
     }
 }

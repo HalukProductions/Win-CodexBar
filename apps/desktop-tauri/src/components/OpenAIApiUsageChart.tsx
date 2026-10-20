@@ -4,6 +4,7 @@ import type {
   OpenAiApiDailyUsageSnapshot,
   OpenAiApiUsageSnapshot,
 } from "../types/bridge";
+import { dayLabel, formatUsd } from "../lib/openaiSpend";
 import { BarChart } from "./charts/BarChart";
 import { providerCostColor } from "./charts/chartPalette";
 
@@ -19,21 +20,11 @@ type T = (key: LocaleKey) => string;
 const METRICS: readonly Metric[] = ["cost", "tokens"];
 const MAX_DETAIL_ROWS = 5;
 
-const usdFormat = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 const compactFormat = new Intl.NumberFormat("en-US", {
   notation: "compact",
   maximumFractionDigits: 1,
 });
 const countFormat = new Intl.NumberFormat("en-US");
-
-function formatUsd(value: number): string {
-  if (value > 0 && value < 0.01) return "<$0.01";
-  return usdFormat.format(value);
-}
-
-function dayLabel(day: OpenAiApiDailyUsageSnapshot): string {
-  return new Date(day.startTime * 1000).toISOString().slice(0, 10);
-}
 
 function metricValue(day: OpenAiApiDailyUsageSnapshot, metric: Metric): number {
   return metric === "cost" ? day.costUsd : day.totalTokens;

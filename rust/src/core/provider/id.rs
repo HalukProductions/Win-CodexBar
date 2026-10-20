@@ -118,6 +118,8 @@ pub enum ProviderId {
     Parallel,
     Fal,
     Flora,
+    FutureAgi,
+    Munito,
 }
 
 impl ProviderId {
@@ -153,6 +155,15 @@ impl ProviderId {
         self.spec().cookie_domain
     }
 
+    /// A desktop app cookie store the user can pick as a cookie source for
+    /// this provider only. Generic browser scans never include it.
+    pub fn app_cookie_store(&self) -> Option<crate::browser::detection::BrowserType> {
+        match self {
+            ProviderId::Claude => Some(crate::browser::detection::BrowserType::ClaudeDesktop),
+            _ => None,
+        }
+    }
+
     /// Id of the longer pool that blocks this provider's shorter windows once
     /// exhausted (upstream 0.69.0 #4091). See [`crate::core::BlockedWindows`].
     pub fn blocking_quota_window_id(&self) -> Option<&'static str> {
@@ -160,6 +171,13 @@ impl ProviderId {
             ProviderId::Kimi => Some(crate::providers::kimi::MONTHLY_WINDOW_ID),
             _ => None,
         }
+    }
+
+    /// Whether this provider reports a Tokens/min rate, which offers the
+    /// Tokens/min menu bar metric (upstream 0.75.0 #4495). Shared by the
+    /// provider trait and shell code that has no provider instance.
+    pub fn reports_tokens_per_minute(self) -> bool {
+        matches!(self, ProviderId::OpenAIApi)
     }
 
     /// Parse from CLI name string
@@ -240,9 +258,18 @@ mod tests {
     use crate::core::instantiate_provider;
 
     #[test]
+    fn only_claude_offers_an_app_cookie_store() {
+        for id in ProviderId::all() {
+            let expected = (*id == ProviderId::Claude)
+                .then_some(crate::browser::detection::BrowserType::ClaudeDesktop);
+            assert_eq!(id.app_cookie_store(), expected, "{id:?}");
+        }
+    }
+
+    #[test]
     fn test_provider_id_all() {
         let all = ProviderId::all();
-        assert_eq!(all.len(), 108);
+        assert_eq!(all.len(), 110);
         assert!(all.contains(&ProviderId::Claude));
         assert!(all.contains(&ProviderId::Codex));
         assert!(all.contains(&ProviderId::Pi));

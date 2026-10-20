@@ -79,11 +79,25 @@ fn resolve_account(root: &Path, user_id: &str) -> io::Result<Option<LinkedAccoun
     }))
 }
 
+/// The Orca config folder. Under `cfg(test)` there is none, so tests never
+/// read or write the developer's real Orca store (or run its CLI); every
+/// lookup reports "not linked" and fixtures stay inside their temp folders.
+fn config_root() -> Option<PathBuf> {
+    #[cfg(test)]
+    {
+        None
+    }
+    #[cfg(not(test))]
+    {
+        dirs::config_dir()
+    }
+}
+
 fn linked_account(user_id: &str) -> io::Result<Option<LinkedAccount>> {
     if !cfg!(windows) {
         return Ok(None);
     }
-    let Some(root) = dirs::config_dir() else {
+    let Some(root) = config_root() else {
         return Ok(None);
     };
     resolve_account(&root.join("orca/grok-accounts"), user_id)
