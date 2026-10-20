@@ -263,8 +263,8 @@ fn isolated_route_prefers_account_bearer_over_cookie() {
 }
 
 #[tokio::test]
-async fn isolated_account_without_credential_fails_closed_for_cli_and_oauth() {
-    for source_mode in [SourceMode::Cli, SourceMode::OAuth] {
+async fn isolated_account_without_credential_fails_closed_for_every_explicit_source() {
+    for source_mode in [SourceMode::Cli, SourceMode::OAuth, SourceMode::Web] {
         let ctx = FetchContext {
             source_mode,
             token_account_isolated: true,

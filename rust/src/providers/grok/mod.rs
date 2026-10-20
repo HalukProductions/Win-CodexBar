@@ -263,9 +263,7 @@ impl GrokProvider {
             GrokIsolatedRoute::Cookie(cookie_header) => {
                 self.fetch_with_cookie(cookie_header, ctx).await
             }
-            GrokIsolatedRoute::Missing => Err(ProviderError::Other(
-                "This Grok account has no saved token or cookie. Add one in Settings.".to_string(),
-            )),
+            GrokIsolatedRoute::Missing => Err(isolated_account_missing_credential()),
         }
     }
 
@@ -589,6 +587,16 @@ impl Provider for GrokProvider {
     async fn fetch_usage(&self, ctx: &FetchContext) -> Result<ProviderFetchResult, ProviderError> {
         match ctx.source_mode {
             SourceMode::Auto => self.fetch_auto(ctx).await,
+            SourceMode::Web if ctx.token_account_isolated => {
+                match ctx
+                    .manual_cookie_header
+                    .as_deref()
+                    .filter(|cookie| !cookie.trim().is_empty())
+                {
+                    Some(cookie_header) => self.fetch_with_cookie(cookie_header, ctx).await,
+                    None => Err(isolated_account_missing_credential()),
+                }
+            }
             SourceMode::Web => {
                 if let Some(cookie_header) = &ctx.manual_cookie_header {
                     return self.fetch_with_cookie(cookie_header, ctx).await;
@@ -683,6 +691,12 @@ fn grok_steps_for_context(
         steps.retain(|step| matches!(step, GrokAutoStep::ApiKey | GrokAutoStep::ManualCookie));
     }
     steps
+}
+
+fn isolated_account_missing_credential() -> ProviderError {
+    ProviderError::Other(
+        "This Grok account has no saved token or cookie. Add one in Settings.".to_string(),
+    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
