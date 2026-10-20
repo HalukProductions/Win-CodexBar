@@ -27,7 +27,11 @@ describe("usage source policy", () => {
     expect(usageSourcePolicy("antigravity")?.options.map((option) => option.value)).toEqual([
       "auto",
       "cli",
+      "oauth",
     ]);
+    expect(usageSourcePolicy("antigravity")?.options[2].description).toContain(
+      "oauth_creds.json",
+    );
     expect(usageSourcePolicy("venice")?.options.map((option) => option.value)).toEqual([
       "auto",
       "oauth",

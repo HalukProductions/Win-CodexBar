@@ -1688,6 +1688,16 @@ ProviderCodexBatterySaver = OpenAI 网页省电
 ProviderCodexBatterySaverHelp = 限制 chatgpt.com 后台刷新，以减少电池和网络消耗。仪表板附加信息可能在手动刷新前保持旧数据。
 ProviderOptionNotUsedOnWindows = Windows 上尚未使用；该选择会保存，待支持后生效。
 ClaudeSwapExecutablePathHelp = cswap 可执行文件的路径 (github.com/realiti4/claude-swap)。
+ClaudeSwapSource = 来源
+ClaudeTcrHint = 显示来自 tcr 的用量；不会切换账号，因为 tcr 会为每个请求选择账号。凭据由 tcr 管理，CodexBar 不会读取。
+ClaudeTcrExecutablePath = tcr 可执行文件
+ClaudeTcrExecutablePathHelp = tcr 可执行文件的路径 (github.com/dhkts1/teamclaude-rs)。
+ClaudeTcrExecutablePathPlaceholder = ~\.cargo\bin\tcr.exe
+ClaudeTcrTitle = tcr 中的 Claude 账号
+ClaudeTcrStatusNoExecutable = 设置 tcr 可执行文件路径以列出账户。
+ClaudeTcrStatusReady = tcr 报告的外部账号。
+ClaudeTcrEmpty = tcr 未报告任何账号。
+ClaudeTcrDisabled = 已在 tcr 中禁用
 # Claude cloud credits
 ProviderLabelCloudCredits = 云端额度
 ProviderTextExpired = 已过期

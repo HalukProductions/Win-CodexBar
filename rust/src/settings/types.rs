@@ -603,6 +603,11 @@ pub struct ProviderConfig {
     /// Claude-only: path to the claude-swap (`cswap`) executable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub claude_swap_executable_path: Option<String>,
+    /// Claude-only: which tool the executable path names (`"tcr"`). Unset or
+    /// unknown reads as claude-swap, and claude-swap is stored as unset so the
+    /// file stays readable by builds without tcr.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub claude_swap_source: Option<String>,
     /// Codex/Claude-only: reopen the captured CLI session after its quota resets.
     /// Disabled by default; the desktop shell never injects a prompt.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]

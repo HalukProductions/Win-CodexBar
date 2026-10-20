@@ -194,6 +194,7 @@ fn parse_row(
     Ok(ClaudeSwapAccountRow {
         number,
         email: trimmed_non_empty(object.get("email")),
+        organization_uuid: trimmed_non_empty(object.get("organizationUuid")),
         organization_name: trimmed_non_empty(object.get("organizationName")),
         alias: non_empty_display_string(object.get("alias")),
         is_active,

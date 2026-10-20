@@ -25,7 +25,7 @@ Gemini cli=gemini display="Gemini" cookie=Some("gemini.google.com") color=#AB87E
 Antigravity cli=antigravity display="Antigravity" cookie=Some("antigravity.ai") color=#60BA7E deprecated=false blocking=None
   map=["agy", "antigravity"]
   metadata=ProviderMetadata { id: Antigravity, display_name: "Antigravity", session_label: "Claude", weekly_label: "Gemini Pro", supports_opus: true, supports_credits: false, default_enabled: false, is_primary: false, dashboard_url: None, status_page_url: None, tertiary_label_key: None }
-  sources=[Auto, Cli] oauth=false web=false cli=true
+  sources=[Auto, Cli, OAuth] oauth=true web=false cli=true
 Copilot cli=copilot display="Copilot" cookie=None color=#A855F7 deprecated=false blocking=None
   map=["copilot", "github"]
   metadata=ProviderMetadata { id: Copilot, display_name: "GitHub Copilot", session_label: "Premium", weekly_label: "Chat", supports_opus: false, supports_credits: false, default_enabled: true, is_primary: false, dashboard_url: Some("https://github.com/settings/copilot"), status_page_url: Some("https://www.githubstatus.com/"), tertiary_label_key: None }

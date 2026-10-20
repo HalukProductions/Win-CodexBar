@@ -33,9 +33,22 @@ pub(super) enum LiveFailureReason {
     /// The local language server refused or dropped the connection.
     CannotConnect,
     CliReport(CliPrintFailure),
+    /// The Google OAuth remote quota fallback failed.
+    Remote(RemoteFailureKind),
     /// Parse, port-detection and other transport failures, plus any error
     /// that was not classified where it happened.
     Unclassified,
+}
+
+/// Sanitized category of a failed remote OAuth fetch. Only sign-in guidance is
+/// specific; API, parse and transport failures can carry response bodies, so
+/// they reduce to one fixed hint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum RemoteFailureKind {
+    NotLoggedIn,
+    SessionExpired,
+    ReauthenticationRequired,
+    RequestFailed,
 }
 
 impl LiveFailureReason {
@@ -49,6 +62,18 @@ impl LiveFailureReason {
             Self::HttpStatus(status) => format!("the usage request failed (HTTP {status})"),
             Self::CannotConnect => "Could not connect to the server.".to_string(),
             Self::CliReport(failure) => failure.description(),
+            Self::Remote(kind) => match kind {
+                RemoteFailureKind::NotLoggedIn => super::remote::NOT_LOGGED_IN_MESSAGE.to_string(),
+                RemoteFailureKind::SessionExpired => {
+                    super::remote::SESSION_EXPIRED_MESSAGE.to_string()
+                }
+                RemoteFailureKind::ReauthenticationRequired => {
+                    super::remote::REAUTHENTICATION_REQUIRED_MESSAGE.to_string()
+                }
+                RemoteFailureKind::RequestFailed => {
+                    "the Antigravity API request failed".to_string()
+                }
+            },
             Self::Unclassified => GENERIC_HINT.to_string(),
         }
     }
@@ -108,6 +133,11 @@ impl LiveFailure {
             ProviderError::Other(failure.description()),
             LiveFailureReason::CliReport(failure),
         )
+    }
+
+    /// A classified remote OAuth failure.
+    pub(super) fn remote(error: ProviderError, kind: RemoteFailureKind) -> Self {
+        Self::new(error, LiveFailureReason::Remote(kind))
     }
 
     pub(super) fn is_auth_required(&self) -> bool {

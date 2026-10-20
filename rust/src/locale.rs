@@ -2071,6 +2071,16 @@ locale_keys! {
     ProviderCodexBatterySaverHelp,
     ProviderOptionNotUsedOnWindows,
     ClaudeSwapExecutablePathHelp,
+    ClaudeSwapSource,
+    ClaudeTcrHint,
+    ClaudeTcrExecutablePath,
+    ClaudeTcrExecutablePathHelp,
+    ClaudeTcrExecutablePathPlaceholder,
+    ClaudeTcrTitle,
+    ClaudeTcrStatusNoExecutable,
+    ClaudeTcrStatusReady,
+    ClaudeTcrEmpty,
+    ClaudeTcrDisabled,
 
     // Claude cloud credits (promotional balance detail row)
     ProviderLabelCloudCredits,
