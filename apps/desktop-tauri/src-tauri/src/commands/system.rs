@@ -238,10 +238,10 @@ pub fn quit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
-fn dashboard_url_for_provider(provider_id: &str) -> Option<String> {
+fn dashboard_url_for_provider(provider_id: &str, login_method: Option<&str>) -> Option<String> {
     let id = ProviderId::from_cli_name(provider_id)?;
     let settings = Settings::load();
-    provider_dashboard_url(id, &settings)
+    provider_dashboard_url(id, &settings, login_method)
 }
 
 fn status_page_url_for_provider(provider_id: &str) -> Option<String> {
@@ -267,7 +267,16 @@ pub fn open_provider_dashboard(
         codexbar::providers::helmcode::dashboard_url_for_organization(organization.as_deref())
             .to_string()
     } else {
-        dashboard_url_for_provider(&provider_id)
+        // The cached plan label picks the account-specific dashboard (for
+        // example Claude subscriptions); it is `None` before the first refresh.
+        let login_method = state.lock().ok().and_then(|guard| {
+            guard
+                .provider_cache
+                .iter()
+                .find(|snapshot| snapshot.provider_id == provider_id)
+                .and_then(|snapshot| snapshot.plan_name.clone())
+        });
+        dashboard_url_for_provider(&provider_id, login_method.as_deref())
             .ok_or_else(|| format!("No dashboard URL registered for provider '{provider_id}'"))?
     };
     open_url_in_browser(&url)
@@ -299,7 +308,7 @@ pub async fn trigger_provider_login(
 
     // For other providers, surface the dashboard URL as the login flow
     // is not yet wired through the Tauri shell.
-    if let Some(url) = dashboard_url_for_provider(&provider_id) {
+    if let Some(url) = dashboard_url_for_provider(&provider_id, None) {
         return open_url_in_browser(&url);
     }
     Err(format!(
@@ -468,7 +477,7 @@ mod tests {
     #[test]
     fn dashboard_url_resolves_from_codex_provider_metadata() {
         assert_eq!(
-            dashboard_url_for_provider("codex").as_deref(),
+            dashboard_url_for_provider("codex", None).as_deref(),
             Some("https://chatgpt.com/codex/cloud/settings/analytics#usage")
         );
     }
@@ -476,7 +485,7 @@ mod tests {
     #[test]
     fn dashboard_url_resolves_openrouter_activity() {
         assert_eq!(
-            dashboard_url_for_provider("openrouter").as_deref(),
+            dashboard_url_for_provider("openrouter", None).as_deref(),
             Some("https://openrouter.ai/activity")
         );
     }
