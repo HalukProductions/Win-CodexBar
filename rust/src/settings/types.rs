@@ -453,9 +453,15 @@ pub enum MetricPreference {
     #[serde(rename = "extraUsage", alias = "extrausage")]
     ExtraUsage,
     /// The provider's monthly plan allowance window, such as Mistral's Vibe
-    /// plan (upstream 0.70.0 #4072).
+    /// plan (upstream 0.70.0 #4072). Written camelCase like the bridge; files
+    /// saved with the old lowercase spelling still load.
+    #[serde(rename = "monthlyPlan", alias = "monthlyplan")]
     MonthlyPlan,
     Average,
+    /// The latest reported Tokens/min (upstream 0.75.0 #4495). A text metric:
+    /// the tray meter keeps the Automatic lane while the tray status shows the rate.
+    #[serde(rename = "tokensPerMinute", alias = "tokensperminute")]
+    TokensPerMinute,
 }
 
 impl MetricPreference {
@@ -471,6 +477,7 @@ impl MetricPreference {
             MetricPreference::ExtraUsage,
             MetricPreference::MonthlyPlan,
             MetricPreference::Average,
+            MetricPreference::TokensPerMinute,
         ]
     }
 
@@ -486,6 +493,7 @@ impl MetricPreference {
             MetricPreference::ExtraUsage => "Extra usage",
             MetricPreference::MonthlyPlan => "Monthly plan",
             MetricPreference::Average => "Average",
+            MetricPreference::TokensPerMinute => "Tokens/min",
         }
     }
 
@@ -501,6 +509,7 @@ impl MetricPreference {
             MetricPreference::ExtraUsage => "On-demand or extra usage budget",
             MetricPreference::MonthlyPlan => "Monthly plan allowance",
             MetricPreference::Average => "Average across metrics",
+            MetricPreference::TokensPerMinute => "Latest tokens per minute",
         }
     }
 }
