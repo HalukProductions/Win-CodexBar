@@ -436,3 +436,45 @@ fn cookie_denial_round_trips_through_settings_persistence() {
     assert_eq!(loaded.cookie_source(ProviderId::Codex), "off");
     assert!(!loaded.openai_web_extras(ProviderId::Codex));
 }
+
+/// Configs written before the account-source key read as claude-swap, the
+/// default is never serialized, and tcr survives a save/load round trip.
+#[test]
+fn claude_swap_source_defaults_to_claude_swap_and_round_trips_tcr() {
+    use crate::providers::claude::claude_swap::ClaudeSwapAccountSource;
+
+    let legacy: Settings =
+        serde_json::from_str(r#"{"provider_configs":{"claude":{"claude_swap_enabled":true}}}"#)
+            .unwrap();
+    assert_eq!(
+        legacy.claude_swap_source(),
+        ClaudeSwapAccountSource::ClaudeSwap
+    );
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("settings.json");
+    let mut settings = Settings::default();
+    settings.set_claude_swap_source(ClaudeSwapAccountSource::Tcr);
+    assert_eq!(
+        settings
+            .provider_config(ProviderId::Claude)
+            .and_then(|config| config.claude_swap_source.as_deref()),
+        Some("tcr")
+    );
+    settings.save_to_path(&path).unwrap();
+    let loaded = Settings::load_from_path(Some(&path));
+    assert_eq!(loaded.claude_swap_source(), ClaudeSwapAccountSource::Tcr);
+
+    settings.set_claude_swap_source(ClaudeSwapAccountSource::ClaudeSwap);
+    let config = serde_json::to_value(settings.provider_config(ProviderId::Claude)).unwrap();
+    assert!(config.get("claude_swap_source").is_none());
+
+    let unknown: Settings = serde_json::from_str(
+        r#"{"provider_configs":{"claude":{"claude_swap_source":"something-else"}}}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        unknown.claude_swap_source(),
+        ClaudeSwapAccountSource::ClaudeSwap
+    );
+}

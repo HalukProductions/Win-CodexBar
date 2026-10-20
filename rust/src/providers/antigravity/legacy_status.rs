@@ -305,6 +305,49 @@ pub(super) fn parse_user_status(
         .and_then(|d| d.client_model_configs)
         .unwrap_or_default();
 
+    let mut snapshot = snapshot_from_model_configs(&model_configs);
+
+    if let Some(email) = first_non_empty([user_status.email.as_deref()]) {
+        snapshot = snapshot.with_email(email);
+    }
+
+    // Add plan information from the authenticated user-status response.
+    if let Some(plan) = plan_name {
+        snapshot = snapshot.with_login_method(plan);
+    }
+
+    Ok(snapshot)
+}
+
+/// One Cloud Code model quota from the remote OAuth `fetchAvailableModels` or
+/// `retrieveUserQuota` responses.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct RemoteModelQuota {
+    pub(super) label: String,
+    pub(super) model_id: String,
+    pub(super) remaining_fraction: Option<f64>,
+    pub(super) reset_time: Option<String>,
+}
+
+/// Map remote model quotas through the same slot selection as the local
+/// `GetUserStatus` model list, so both sources render identically.
+pub(super) fn snapshot_from_model_quotas(quotas: &[RemoteModelQuota]) -> UsageSnapshot {
+    let configs = quotas
+        .iter()
+        .map(|quota| ModelConfig {
+            label: quota.label.clone(),
+            model_id: Some(quota.model_id.clone()),
+            id: None,
+            quota_info: Some(QuotaInfo {
+                remaining_fraction: quota.remaining_fraction,
+                reset_time: quota.reset_time.clone(),
+            }),
+        })
+        .collect::<Vec<_>>();
+    snapshot_from_model_configs(&configs)
+}
+
+fn snapshot_from_model_configs(model_configs: &[ModelConfig]) -> UsageSnapshot {
     let mut quota_configs = model_configs
         .iter()
         .filter(|config| config.quota_info.is_some())
@@ -374,14 +417,5 @@ pub(super) fn parse_user_status(
         );
     }
 
-    if let Some(email) = first_non_empty([user_status.email.as_deref()]) {
-        snapshot = snapshot.with_email(email);
-    }
-
-    // Add plan information from the authenticated user-status response.
-    if let Some(plan) = plan_name {
-        snapshot = snapshot.with_login_method(plan);
-    }
-
-    Ok(snapshot)
+    snapshot
 }
