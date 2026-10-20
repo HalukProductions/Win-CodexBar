@@ -9,8 +9,9 @@ use serde::Serialize;
 
 use super::{
     ClaudeSwapAccountList, ClaudeSwapAccountRow, ClaudeSwapAccountSource,
-    ClaudeSwapHistoricalUsage, ClaudeSwapScopedWindow, ClaudeSwapSpendWindow,
-    ClaudeSwapUsageMeasurement, ClaudeSwapUsageStatus, ClaudeSwapUsageWindow,
+    ClaudeSwapHistoricalUsage, ClaudeSwapScopedWindow, ClaudeSwapSessionForecastDto,
+    ClaudeSwapSpendWindow, ClaudeSwapUsageMeasurement, ClaudeSwapUsageStatus,
+    ClaudeSwapUsageWindow,
 };
 
 pub const HISTORICAL_USAGE_PROVENANCE: &str = "source_reported_last_good";
@@ -46,6 +47,9 @@ pub struct ClaudeSwapAccount {
     pub scoped: Vec<ClaudeSwapScopedWindowDto>,
     pub spend: Option<ClaudeSwapSpendWindowDto>,
     pub historical_usage: Option<ClaudeSwapHistoricalUsageDto>,
+    /// Filled by [`super::attach_session_forecasts`]; projection alone never
+    /// has the account's history.
+    pub session_equivalent_forecast: Option<ClaudeSwapSessionForecastDto>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -306,6 +310,7 @@ pub fn project_accounts(
                 scoped: row.usage.scoped.iter().map(to_scoped_window).collect(),
                 spend: to_spend(&row.usage.spend),
                 historical_usage: to_historical_usage(&row.historical_usage),
+                session_equivalent_forecast: None,
             }
         })
         .collect()

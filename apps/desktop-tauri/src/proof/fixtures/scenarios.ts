@@ -407,6 +407,16 @@ function tcrPoolAccount(
 
 function claudeSwapTcrScenario(now: Date): ProofScenario {
   const base = defaultScenario(now);
+  // Only pool-a has enough recorded history for a forecast; pool-b stays without one.
+  const forecasted = tcrPoolAccount(now, 1, "pool-a@example.com", 42, 18);
+  forecasted.sessionEquivalentForecast = {
+    estimatedWindowsToExhaustWeekly: 5,
+    windowsUntilReset: 12,
+    availableWindowsUntilReset: 10,
+    sampleCount: 3,
+    weeklyResetsAt: isoAfter(now, 4 * 24 * 60),
+    weeklyUsedPercent: 18,
+  };
   return {
     ...base,
     name: "claude-swap-tcr",
@@ -420,10 +430,7 @@ function claudeSwapTcrScenario(now: Date): ProofScenario {
       enabled: true,
       source: "tcr",
       executableConfigured: true,
-      accounts: [
-        tcrPoolAccount(now, 1, "pool-a@example.com", 42, 18),
-        tcrPoolAccount(now, 2, "pool-b@example.com", 7, 63),
-      ],
+      accounts: [forecasted, tcrPoolAccount(now, 2, "pool-b@example.com", 7, 63)],
       error: null,
     },
   };

@@ -19,6 +19,7 @@ import {
   useClaudeReconciliation,
 } from "../../../../../hooks/useClaudeReconciliation";
 import { useCurrency } from "../../../../../hooks/CurrencyProvider";
+import { formatSessionEquivalentEstimate } from "../UsageDetailsSection";
 
 interface Props {
   t: (key: LocaleKey) => string;
@@ -263,6 +264,7 @@ export function ClaudeSwapAccountsSection({
             .join(" \u00b7 ");
           const spend = spendLabel(t, account.spend, locale, formatCurrency);
           const historical = historicalLabel(t, account.historicalUsage, locale, formatCurrency);
+          const forecast = formatSessionEquivalentEstimate(account.sessionEquivalentForecast);
           return (
             <li className="credential-card" key={account.id}>
               <div className="credential-card__header">
@@ -272,6 +274,7 @@ export function ClaudeSwapAccountsSection({
                     {[session, weekly, scoped || null, spend].filter(Boolean).join(" \u00b7 ") ||
                       (!account.error ? t("ClaudeSwapUsageUnavailable") : "")}
                   </span>
+                  {forecast && <span className="credential-card__meta">{forecast}</span>}
                   {historical && <span className="credential-card__meta">{historical}</span>}
                   {account.isActive && (
                     <span className="credential-card__badge credential-card__badge--set">

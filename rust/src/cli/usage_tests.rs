@@ -48,6 +48,7 @@ fn sample_swap_account() -> ClaudeSwapAccount {
         is_disabled: false,
         spend: None,
         historical_usage: None,
+        session_equivalent_forecast: None,
     }
 }
 

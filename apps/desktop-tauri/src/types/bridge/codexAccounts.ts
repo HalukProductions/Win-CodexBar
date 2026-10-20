@@ -1,4 +1,8 @@
-import type { CostSnapshotBridge, SubscriptionMetadataSnapshot } from "./usage";
+import type {
+  CostSnapshotBridge,
+  SessionEquivalentForecastSnapshot,
+  SubscriptionMetadataSnapshot,
+} from "./usage";
 
 // ── Codex multi-account (ADR 0003) ───────────────────────────────────
 
@@ -166,6 +170,8 @@ export interface ClaudeSwapAccount {
   scoped: ClaudeSwapScopedWindow[];
   spend: ClaudeSwapSpendWindow | null;
   historicalUsage: ClaudeSwapHistoricalUsage | null;
+  /** Forecast from this account's own recorded history; absent on older shells. */
+  sessionEquivalentForecast?: SessionEquivalentForecastSnapshot | null;
 }
 
 /** External claude-swap adapter state for the Claude accounts settings section. */

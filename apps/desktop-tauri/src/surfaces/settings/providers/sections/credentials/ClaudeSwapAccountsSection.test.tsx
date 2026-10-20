@@ -110,6 +110,28 @@ describe("ClaudeSwapAccountsSection", () => {
     expect(mocks.claudeSwapAccountsList).toHaveBeenCalledTimes(2);
   });
 
+  it("shows each card's own session forecast and none where history is missing", async () => {
+    const forecasted: ClaudeSwapAccount = {
+      ...active,
+      sessionEquivalentForecast: {
+        estimatedWindowsToExhaustWeekly: 3.04,
+        windowsUntilReset: 12,
+        availableWindowsUntilReset: 10,
+        sampleCount: 3,
+        weeklyResetsAt: "2026-09-19T00:00:00Z",
+        weeklyUsedPercent: 30,
+      },
+    };
+    const fresh: ClaudeSwapAccount = { ...switchable, sessionEquivalentForecast: null };
+    mocks.claudeSwapAccountsList.mockResolvedValue(enabledState([forecasted, fresh]));
+    render(<ClaudeSwapAccountsSection t={t} enabled executablePath="C:/tools/cswap.exe" />);
+    const estimate = await screen.findByText("Estimated: 3 session quotas left");
+    expect(estimate.closest("li")?.textContent).toContain("work@example.com");
+    const other = screen.getByText("personal@example.com").closest("li");
+    expect(other?.textContent).not.toContain("Estimated:");
+    expect(screen.getAllByText(/Estimated:/)).toHaveLength(1);
+  });
+
   it("names tcr in the title, status and empty copy", async () => {
     mocks.claudeSwapAccountsList.mockResolvedValue({
       enabled: true, source: "tcr", executableConfigured: false, accounts: [], error: null,

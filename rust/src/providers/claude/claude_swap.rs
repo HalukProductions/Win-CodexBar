@@ -15,9 +15,11 @@
 //! Responsibilities are split into sibling modules so each can be tested in
 //! isolation: [`sanitize`] owns hostile-text handling, [`runner`] owns the
 //! bounded subprocess, [`parser`] owns schema-v1 validation, [`source`] owns
-//! the per-tool argument arrays and labels, and [`projection`] owns the
-//! display-only snapshot.
+//! the per-tool argument arrays and labels, [`projection`] owns the
+//! display-only snapshot, and [`forecast`] owns the per-account history key
+//! and session forecast.
 
+mod forecast;
 mod parser;
 mod projection;
 mod runner;
@@ -27,6 +29,10 @@ mod source;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
+pub use forecast::{
+    ClaudeSwapForecastSample, ClaudeSwapSessionForecastDto, HISTORY_ACCOUNT_KEY_PREFIX,
+    attach_session_forecasts, forecast_sample, history_account_key, record_and_forecast,
+};
 pub use parser::parse_account_list;
 pub use projection::{
     ClaudeSwapAccount, ClaudeSwapAccountAction, ClaudeSwapHistoricalUsageDto,
@@ -166,7 +172,10 @@ pub struct ClaudeSwapHistoricalUsage {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClaudeSwapAccountRow {
     pub number: u32,
+    /// Sensitive; only its history digest is ever persisted, never the raw email.
     pub email: String,
+    /// History scope only; never displayed, logged or persisted raw.
+    pub organization_uuid: String,
     pub organization_name: String,
     pub alias: Option<String>,
     pub is_active: bool,

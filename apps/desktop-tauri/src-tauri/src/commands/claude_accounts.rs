@@ -38,6 +38,7 @@ struct ClaudeSwapConfig {
     executable_path: String,
     source: ClaudeSwapAccountSource,
     hide_personal_info: bool,
+    weekly_progress_work_days: Option<u8>,
 }
 
 impl ClaudeSwapConfig {
@@ -48,6 +49,7 @@ impl ClaudeSwapConfig {
             executable_path: settings.claude_swap_executable_path().to_string(),
             source: settings.claude_swap_source(),
             hide_personal_info: settings.hide_personal_info,
+            weekly_progress_work_days: settings.weekly_progress_work_days,
         }
     }
 
@@ -80,17 +82,21 @@ fn claude_swap_accounts_state() -> ClaudeSwapAccountsState {
         };
     }
     match claude_swap::read_account_list(&config.executable_path, config.source) {
-        Ok(list) => ClaudeSwapAccountsState {
-            enabled,
-            source: config.source,
-            executable_configured,
-            accounts: claude_swap::project_accounts(
-                &list,
-                config.source,
-                config.hide_personal_info,
-            ),
-            error: None,
-        },
+        Ok(list) => {
+            let mut accounts =
+                claude_swap::project_accounts(&list, config.source, config.hide_personal_info);
+            let now = chrono::Utc::now();
+            claude_swap::attach_session_forecasts(&list, &mut accounts, now, |sample| {
+                claude_swap::record_and_forecast(sample, now, config.weekly_progress_work_days)
+            });
+            ClaudeSwapAccountsState {
+                enabled,
+                source: config.source,
+                executable_configured,
+                accounts,
+                error: None,
+            }
+        }
         // Adapter failures are isolated from ambient Claude usage: the last
         // built-in account list still renders and the error is surfaced inline.
         Err(error) => ClaudeSwapAccountsState {

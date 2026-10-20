@@ -145,7 +145,7 @@
       "query": "window=settings&tab=providers:claude&fixture=claude-swap-tcr&theme=dark",
       "size": [880, 900],
       "steps": [
-        { "expectText": ["Claude accounts in tcr", "External accounts reported by tcr.", "pool-a@example.com", "pool-b@example.com"] },
+        { "expectText": ["Claude accounts in tcr", "External accounts reported by tcr.", "pool-a@example.com", "pool-b@example.com", "Estimated: 5 session quotas left"] },
         { "expectText": ["tcr executable", "Path to the tcr executable (github.com/dhkts1/teamclaude-rs).", "it does not switch accounts"] },
         { "expectField": { "label": "Source", "value": "tcr", "options": ["claude-swap", "tcr"] } },
         { "expectNoText": ["Switch via claude-swap", "Re-authenticate via claude-swap", "claude-swap accounts"] },
