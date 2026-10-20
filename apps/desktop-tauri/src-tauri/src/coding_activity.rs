@@ -9,7 +9,7 @@
 //! Consent is the Settings Adaptive toggle itself.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
@@ -121,10 +121,18 @@ fn windows_agent_running() -> bool {
 /// future-dated file keeps the same timestamp and cannot manufacture newer activity.
 static FUTURE_MTIME_CLAMP: Mutex<Option<SystemTime>> = Mutex::new(None);
 
-/// Directory entries inspected per check, shared across today's and yesterday's directories.
-const ROLLOUT_ENTRY_BUDGET: usize = 512;
-/// Rollout files considered per check (upstream `maxCodexRolloutCount`).
+/// Directory entries listed per day directory. Today and yesterday each get their own budget,
+/// so a full today folder cannot starve yesterday. The budget applies to listing, not to
+/// file reads: rollout metadata comes from the directory enumeration on Windows.
+const ROLLOUT_ENTRY_BUDGET_PER_DAY: usize = 256;
+/// Newest rollout candidates kept per check (upstream `maxCodexRolloutCount`).
 const ROLLOUT_CANDIDATE_CAP: usize = 128;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RolloutCandidate {
+    path: PathBuf,
+    modified: SystemTime,
+}
 
 /// Age of the newest Codex rollout modification time among today's and yesterday's
 /// `YYYY/MM/DD` session directories, if that age is under `window`.
@@ -145,19 +153,37 @@ fn rollout_activity_age_in(
     window: Duration,
     clamp: &mut Option<SystemTime>,
 ) -> Option<Duration> {
-    let yesterday = today.pred_opt()?;
-    let mut entries_left = ROLLOUT_ENTRY_BUDGET;
-    let mut candidates_left = ROLLOUT_CANDIDATE_CAP;
-    let mut newest: Option<SystemTime> = None;
-    'days: for day in [today, yesterday] {
+    // Newest first, so the first candidate is the activity time.
+    let newest = rollout_candidates_in(sessions_root, today, now, clamp)
+        .first()?
+        .modified;
+    let age = now.duration_since(newest).unwrap_or(Duration::ZERO);
+    (age < window).then_some(age)
+}
+
+/// Rollout files in today's and yesterday's day directories, newest first, at most
+/// `ROLLOUT_CANDIDATE_CAP`. Every matching file in each listed directory is collected before
+/// sorting, so the cap keeps the newest files, not the first ones in listing order.
+///
+/// A day directory with more than `ROLLOUT_ENTRY_BUDGET_PER_DAY` entries is cut short, and on
+/// NTFS the listing is in name order. Rollout names start with a timestamp, so the newest files
+/// are the last ones listed and may fall past that budget. A day that large loses its newest
+/// files from this signal only; the process check and the normal Adaptive cadence still apply.
+fn rollout_candidates_in(
+    sessions_root: &Path,
+    today: NaiveDate,
+    now: SystemTime,
+    clamp: &mut Option<SystemTime>,
+) -> Vec<RolloutCandidate> {
+    let Some(yesterday) = today.pred_opt() else {
+        return Vec::new();
+    };
+    let mut candidates = Vec::new();
+    for day in [today, yesterday] {
         let Ok(entries) = fs::read_dir(day_directory(sessions_root, day)) else {
             continue;
         };
-        for entry in entries {
-            if entries_left == 0 || candidates_left == 0 {
-                break 'days;
-            }
-            entries_left -= 1;
+        for entry in entries.take(ROLLOUT_ENTRY_BUDGET_PER_DAY) {
             let Ok(entry) = entry else { continue };
             let file_name = entry.file_name();
             let Some(name) = file_name.to_str() else {
@@ -175,13 +201,15 @@ fn rollout_activity_age_in(
             let Ok(modified) = metadata.modified() else {
                 continue;
             };
-            candidates_left -= 1;
-            let activity = clamp_future_mtime(modified, now, clamp);
-            newest = Some(newest.map_or(activity, |current| current.max(activity)));
+            candidates.push(RolloutCandidate {
+                path: entry.path(),
+                modified: clamp_future_mtime(modified, now, clamp),
+            });
         }
     }
-    let age = now.duration_since(newest?).unwrap_or(Duration::ZERO);
-    (age < window).then_some(age)
+    candidates.sort_by_key(|candidate| std::cmp::Reverse(candidate.modified));
+    candidates.truncate(ROLLOUT_CANDIDATE_CAP);
+    candidates
 }
 
 /// `<root>/YYYY/MM/DD`, the layout Codex uses for rollout files.
@@ -214,13 +242,19 @@ fn clamp_future_mtime(
 mod tests {
     use super::*;
     use std::fs::File;
-    use std::path::PathBuf;
 
-    /// Per-test directory under the system temp dir. Files are overwritten on each run and
-    /// never deleted, per the repo's no-deletion policy.
+    /// Per-test directory under the system temp dir, unique per process run (pid and
+    /// nanoseconds), so runs never reuse each other's files. Nothing is deleted, per the
+    /// repo's no-deletion policy; old run directories stay under
+    /// `%TEMP%\codexbar-rollout-activity-tests`.
     fn test_root(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default();
         let root = std::env::temp_dir()
             .join("codexbar-rollout-activity-tests")
+            .join(format!("{}-{nanos}", std::process::id()))
             .join(name);
         fs::create_dir_all(&root).expect("create test root");
         root
@@ -335,6 +369,67 @@ mod tests {
         assert_eq!(
             rollout_activity_age_in(&root, today, SystemTime::now(), WINDOW, &mut None),
             None
+        );
+    }
+
+    #[test]
+    fn candidate_cap_keeps_the_freshest_even_when_listed_last() {
+        let root = test_root("cap-freshest-last");
+        let today = Local::now().date_naive();
+        let now = SystemTime::now();
+        // 150 files, more than the 128 cap. Names are zero-padded, so the freshest file
+        // (highest mtime) is the last one in name order.
+        for i in 0..150u64 {
+            write_rollout(
+                &root,
+                today,
+                &format!("rollout-{i:04}.jsonl"),
+                now - Duration::from_secs(150 - i),
+            );
+        }
+
+        let candidates = rollout_candidates_in(&root, today, now, &mut None);
+        assert_eq!(candidates.len(), ROLLOUT_CANDIDATE_CAP);
+        assert_eq!(
+            candidates[0].path.file_name().and_then(|n| n.to_str()),
+            Some("rollout-0149.jsonl")
+        );
+        assert!(
+            candidates
+                .windows(2)
+                .all(|pair| pair[0].modified >= pair[1].modified)
+        );
+        assert_eq!(
+            rollout_activity_age_in(&root, today, now, WINDOW, &mut None),
+            Some(Duration::from_secs(1))
+        );
+    }
+
+    #[test]
+    fn full_today_directory_does_not_starve_yesterday() {
+        let root = test_root("full-today-yesterday");
+        let today = Local::now().date_naive();
+        let yesterday = today.pred_opt().expect("yesterday");
+        let now = SystemTime::now();
+        // More stale files than today's per-day budget.
+        for i in 0..(ROLLOUT_ENTRY_BUDGET_PER_DAY + 44) {
+            write_rollout(
+                &root,
+                today,
+                &format!("rollout-{i:04}.jsonl"),
+                now - Duration::from_secs(60 * 60),
+            );
+        }
+        write_rollout(
+            &root,
+            yesterday,
+            "rollout-yesterday-fresh.jsonl",
+            now - Duration::from_secs(60),
+        );
+
+        assert_eq!(
+            rollout_activity_age_in(&root, today, now, WINDOW, &mut None),
+            Some(Duration::from_secs(60))
         );
     }
 

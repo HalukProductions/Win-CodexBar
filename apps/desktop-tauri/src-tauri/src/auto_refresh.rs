@@ -108,11 +108,21 @@ pub fn install(app: tauri::AppHandle) {
                 } else if !settings
                     .low_power_mode_preference
                     .resolve(system_battery_saver_enabled())
-                    && let Some(age) = crate::coding_activity::codex_rollout_recently_modified(
-                        CODING_ACTIVITY_THRESHOLD,
-                    )
                 {
-                    note_coding_activity_age(age);
+                    // The rollout walk touches the disk, so it runs off the async runtime.
+                    match tokio::task::spawn_blocking(|| {
+                        crate::coding_activity::codex_rollout_recently_modified(
+                            CODING_ACTIVITY_THRESHOLD,
+                        )
+                    })
+                    .await
+                    {
+                        Ok(Some(age)) => note_coding_activity_age(age),
+                        Ok(None) => {}
+                        Err(error) => {
+                            tracing::warn!("Codex rollout activity scan failed: {error}");
+                        }
+                    }
                 }
             }
             tokio::time::sleep(AUTO_REFRESH_POLL_INTERVAL).await;
