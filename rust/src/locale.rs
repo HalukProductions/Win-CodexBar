@@ -755,6 +755,8 @@ locale_keys! {
     SectionLocalIntegrations,
     PowerToysPipeLabel,
     PowerToysPipeHelper,
+    ShareUsageWithCliLabel,
+    ShareUsageWithCliHelper,
     HooksEnableLabel,
     HooksEnableSubtitle,
     HooksTrustWarning,

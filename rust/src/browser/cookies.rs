@@ -381,6 +381,7 @@ impl CookieExtractor {
                 CryptUnprotectData(&input_blob, None, None, None, None, 0, &mut output_blob);
 
             if result.is_err() {
+                crate::cli_usage_cache::note_dpapi_decrypt_failure();
                 return Err(CookieError::Dpapi(format!(
                     "CryptUnprotectData failed: {:?}",
                     result

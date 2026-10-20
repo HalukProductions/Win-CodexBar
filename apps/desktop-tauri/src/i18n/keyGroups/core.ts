@@ -500,6 +500,8 @@ export const CORE_LOCALE_KEYS = [
   "SectionLocalIntegrations",
   "PowerToysPipeLabel",
   "PowerToysPipeHelper",
+  "ShareUsageWithCliLabel",
+  "ShareUsageWithCliHelper",
   "HooksEnableLabel",
   "HooksEnableSubtitle",
   "HooksTrustWarning",

@@ -304,6 +304,8 @@ export interface SettingsSnapshot {
   /** Keep the tray panel above other windows after it loses focus. */
   trayPanelAlwaysOnTop: boolean;
   powertoysStatusPipeEnabled: boolean;
+  /** Write the usage cache the `codexbar` CLI falls back to. Machine-local. */
+  shareUsageWithCli: boolean;
   claudeAvoidKeychainPrompts: boolean;
   /** Opt-in external claude-swap (`cswap`) account import (Claude only). */
   claudeSwapEnabled?: boolean;
@@ -464,6 +466,7 @@ export interface SettingsUpdate {
   trayScalePercent?: number;
   trayPanelAlwaysOnTop?: boolean;
   powertoysStatusPipeEnabled?: boolean;
+  shareUsageWithCli?: boolean;
   claudeAvoidKeychainPrompts?: boolean;
   claudeAllowReadingClaudeCodeCredentials?: boolean;
   claudeSwapEnabled?: boolean;

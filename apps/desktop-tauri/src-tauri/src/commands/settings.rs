@@ -80,6 +80,7 @@ pub struct SettingsUpdate {
     pub tray_scale_percent: Option<u16>,
     pub tray_panel_always_on_top: Option<bool>,
     pub powertoys_status_pipe_enabled: Option<bool>,
+    pub share_usage_with_cli: Option<bool>,
     pub claude_avoid_keychain_prompts: Option<bool>,
     pub claude_allow_reading_claude_code_credentials: Option<bool>,
     pub claude_swap_enabled: Option<bool>,
@@ -544,6 +545,9 @@ impl SettingsUpdate {
         if let Some(v) = self.powertoys_status_pipe_enabled {
             settings.powertoys_status_pipe_enabled = v;
         }
+        if let Some(v) = self.share_usage_with_cli {
+            settings.share_usage_with_cli = v;
+        }
         if let Some(v) = self.claude_avoid_keychain_prompts {
             settings.set_claude_avoid_keychain_prompts(v);
         }
@@ -777,6 +781,7 @@ pub async fn update_settings(
     let stay_awake_changed = patch.stay_awake_enabled.is_some();
     let tray_promotion_changed = patch.changes_tray_promotion();
     let tray_panel_always_on_top_changed = patch.tray_panel_always_on_top.is_some();
+    let share_usage_with_cli_changed = patch.share_usage_with_cli.is_some();
     let previous_promoted = settings.promote_tray_icon;
     let previous_language = settings.ui_language;
     let previous_limit_reset = settings.limit_reset_notifications_enabled;
@@ -805,6 +810,12 @@ pub async fn update_settings(
     }
     if clear_local_usage_cache {
         crate::commands::clear_provider_local_usage_cache();
+    }
+    if share_usage_with_cli_changed {
+        crate::commands::cli_usage_cache::publish(
+            &app.state::<Mutex<AppState>>(),
+            settings.share_usage_with_cli,
+        );
     }
 
     if refresh_provider_data {

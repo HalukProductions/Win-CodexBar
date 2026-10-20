@@ -226,6 +226,12 @@ struct UsageCommand {
     /// `CLIRenderer.computePace(weeklyWorkDays:)`).
     weekly_work_days: Option<u8>,
     ctx: FetchContext,
+    /// The user shares the app's usage with the CLI
+    /// ([crate::cli_usage_cache::cli_opted_in]).
+    app_cache_opted_in: bool,
+    /// The app's usage cache; None under CODEXBAR_CONFIG, whose settings
+    /// the app never sees, and in tests.
+    app_cache_path: Option<std::path::PathBuf>,
 }
 
 impl UsageCommand {
@@ -233,6 +239,13 @@ impl UsageCommand {
         let settings = Settings::load();
         let mut command = Self::from_args_with(args, || settings.get_enabled_provider_ids())?;
         command.weekly_work_days = settings.weekly_progress_work_days;
+        command.app_cache_opted_in = crate::cli_usage_cache::cli_opted_in(
+            !settings.load_state.is_unreadable_file(),
+            settings.share_usage_with_cli,
+        );
+        if crate::settings::settings_file_override().is_none() {
+            command.app_cache_path = crate::cli_usage_cache::default_path();
+        }
         Ok(command)
     }
 
@@ -266,7 +279,21 @@ impl UsageCommand {
             all_accounts: args.all_accounts,
             weekly_work_days: None,
             ctx: build_usage_fetch_context(&args, source_mode),
+            app_cache_opted_in: false,
+            app_cache_path: None,
         })
+    }
+
+    /// Fallback gate for a failed fetch, read after the fetch so a DPAPI
+    /// failure during it counts.
+    fn app_cache_gate(&self) -> crate::cli_usage_cache::FallbackGate {
+        crate::cli_usage_cache::FallbackGate {
+            opted_in: self.app_cache_opted_in,
+            default_account_fetch: self.ctx.source_mode == SourceMode::Auto
+                && self.account.is_none()
+                && !self.all_accounts,
+            dpapi_failure_observed: crate::cli_usage_cache::dpapi_decrypt_failure_observed(),
+        }
     }
 
     fn log(&self) {

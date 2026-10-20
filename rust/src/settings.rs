@@ -408,6 +408,12 @@ pub struct Settings {
     #[serde(default)]
     pub powertoys_status_pipe_enabled: bool,
 
+    /// Write a usage cache that the `codexbar` CLI falls back to when it
+    /// cannot decrypt its own credentials (upstream `shareUsageWithCLI`).
+    /// Off by default; machine-local.
+    #[serde(default)]
+    pub share_usage_with_cli: bool,
+
     /// Show the always-on-top floating capacity bar.
     #[serde(default)]
     pub float_bar_enabled: bool,
@@ -824,6 +830,7 @@ impl Default for Settings {
             tray_scale_percent: default_tray_scale_percent(),
             tray_panel_always_on_top: false,
             powertoys_status_pipe_enabled: false,
+            share_usage_with_cli: false,
             float_bar_enabled: false,
             float_bar_opacity: default_float_bar_opacity(),
             float_bar_scale: default_float_bar_scale(),
