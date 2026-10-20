@@ -61,6 +61,8 @@ codexbar usage --brief
 
 The global options are `-v`/`--verbose`, `--json-output` (JSON logs on stderr) and `--no-color`.
 
+`usage` fetches up to three providers at the same time. Rows and text sections come out in the order the providers were selected, whichever fetch finishes first. Diagnostics logged on each provider's fetch are held and printed to stderr in selection order after all fetches finish, not streamed live. Log lines from background tasks a provider spawns are not captured and are not reordered. One provider's failure becomes its own error row and does not stop the others (upstream v0.76.0 #4501).
+
 Which providers `usage` fetches without `-p`:
 
 - If exactly Codex and Claude are enabled, it fetches them as `both`.

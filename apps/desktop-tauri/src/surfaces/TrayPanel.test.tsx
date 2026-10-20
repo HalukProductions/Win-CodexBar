@@ -521,7 +521,10 @@ describe("TrayPanel provider grid", () => {
     await act(async () => emitEvent("settings-changed", null));
     await waitFor(() => expect(shown()).toBe(true));
     await waitFor(() => expect(tauriMocks.getProviderChartData).toHaveBeenCalledTimes(3));
-    expect(tauriMocks.getUsageSpendSummary.mock.calls.length).toBe(summaryCalls + 1);
+    // Once for Overview spend, once for the Codex card's Conversations list.
+    await waitFor(() =>
+      expect(tauriMocks.getUsageSpendSummary.mock.calls.length).toBe(summaryCalls + 2),
+    );
   });
 
   it("dismisses the tray panel on unmodified Escape", async () => {

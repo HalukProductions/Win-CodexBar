@@ -41,6 +41,9 @@ pub struct ProviderDetail {
     /// allowance (upstream 0.70.0 #4072). Offers the Monthly Plan metric in
     /// the settings metric picker.
     pub monthly_plan_window_id: Option<&'static str>,
+    /// Offers the Tokens/min metric in the settings metric picker (upstream
+    /// 0.75.0 #4495).
+    pub tokens_per_minute_metric: bool,
     /// Metric picker label for the primary lane when it is not a session
     /// window (upstream `menuBarLayoutPrimaryLabel`).
     pub primary_metric_label: Option<&'static str>,
@@ -119,7 +122,8 @@ pub(crate) fn build_provider_detail(
     let provider = instantiate_provider(id);
     let metadata = provider.metadata();
     let resume_supported = auto_resume_supported(id);
-    let dashboard_url = provider_dashboard_url(id, &settings);
+    // The cached plan label is merged in `get_provider_detail`.
+    let dashboard_url = provider_dashboard_url(id, &settings, None);
 
     let detail = ProviderDetail {
         id: id.cli_name().to_string(),
@@ -143,6 +147,7 @@ pub(crate) fn build_provider_detail(
         tertiary: None,
         tertiary_label_key: metadata.tertiary_label_key,
         monthly_plan_window_id: provider.monthly_plan_window_id(),
+        tokens_per_minute_metric: provider.reports_tokens_per_minute(),
         primary_metric_label: provider.menu_bar_primary_label(),
         extra_rate_windows: Vec::new(),
         usage_items: Vec::new(),
@@ -201,6 +206,8 @@ pub fn get_provider_detail(
         detail.email = snapshot.account_email.clone();
         detail.plan = snapshot.plan_name.clone();
         detail.organization = snapshot.account_organization.clone();
+        detail.dashboard_url =
+            provider_dashboard_url(parsed_provider_id, &settings, snapshot.plan_name.as_deref());
         if parsed_provider_id == ProviderId::Helmcode {
             detail.dashboard_url = Some(
                 codexbar::providers::helmcode::dashboard_url_for_organization(

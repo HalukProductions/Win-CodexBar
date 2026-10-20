@@ -8,6 +8,8 @@
     "dev": "vite",
     "dev:proof": "vite --mode proof",
     "check-locale": "node scripts/check-locale-drift.mjs",
+    "notices": "node scripts/third-party-notices.mjs",
+    "notices:check": "node scripts/third-party-notices.mjs --check",
     "lint": "oxlint src",
     "prebuild": "pnpm run check-locale",
     "build": "tsc --noEmit && vite build",

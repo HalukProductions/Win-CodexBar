@@ -1361,3 +1361,114 @@ fn estimated_marker_skips_an_informational_headline() {
         "No usage yet"
     );
 }
+
+fn openai_api_throughput(latest: Option<u64>) -> crate::commands::ProviderThroughputSnapshot {
+    crate::commands::ProviderThroughputSnapshot {
+        minutes: Vec::new(),
+        frontier: latest.map(|_| 1_700_000_000),
+        latest_tokens_per_minute: latest,
+        peak_tokens_per_minute: latest.unwrap_or(0),
+        peak_at: None,
+        five_minute_average_tokens_per_minute: 0.0,
+        models: Vec::new(),
+        window_minutes: 60,
+        fetched_at: 1_700_000_060,
+        project_id: None,
+    }
+}
+
+#[test]
+fn tokens_per_minute_metric_labels_status_with_the_latest_rate() {
+    let mut settings = Settings {
+        tray_icon_mode: TrayIconMode::PerProvider,
+        show_as_used: true,
+        ..Settings::default()
+    };
+    settings.set_provider_metric(ProviderId::OpenAIApi, MetricPreference::TokensPerMinute);
+    let mut openai = fake_snapshot("openaiapi", "OpenAI API", 40.0);
+    openai.throughput = Some(openai_api_throughput(Some(49_000_000)));
+    let snapshots = vec![openai.clone(), fake_snapshot("codex", "Codex", 30.0)];
+
+    let plan = TrayPresentationPlan::resolve(&settings, &snapshots, None);
+    let labels = plan.status_labels(Language::English);
+
+    assert!(
+        labels.contains(&("openaiapi".to_string(), "OpenAI API 49M/min".to_string())),
+        "{labels:?}"
+    );
+    // Other providers keep their usage label; the meter keeps a usage lane.
+    assert!(
+        labels.contains(&("codex".to_string(), "Codex 30%".to_string())),
+        "{labels:?}"
+    );
+
+    openai.throughput = Some(openai_api_throughput(Some(0)));
+    assert_eq!(
+        tokens_per_minute_status(&openai, &settings, Language::English).as_deref(),
+        Some("0/min")
+    );
+}
+
+#[test]
+fn tokens_per_minute_metric_without_reported_minutes_is_unavailable() {
+    let mut settings = Settings::default();
+    settings.set_provider_metric(ProviderId::OpenAIApi, MetricPreference::TokensPerMinute);
+    let mut openai = fake_snapshot("openaiapi", "OpenAI API", 40.0);
+
+    assert_eq!(
+        tokens_per_minute_status(&openai, &settings, Language::English).as_deref(),
+        Some("Tokens/min unavailable")
+    );
+    openai.throughput = Some(openai_api_throughput(None));
+    assert_eq!(
+        tokens_per_minute_status(&openai, &settings, Language::English).as_deref(),
+        Some("Tokens/min unavailable")
+    );
+
+    // Any other metric leaves the usage label alone.
+    let automatic = Settings::default();
+    openai.throughput = Some(openai_api_throughput(Some(1_500)));
+    assert_eq!(
+        tokens_per_minute_status(&openai, &automatic, Language::English),
+        None
+    );
+}
+
+#[test]
+fn tokens_per_minute_metric_on_a_provider_without_a_rate_falls_back() {
+    // A saved Tokens/min value must not leak onto a provider that cannot
+    // report a rate: the row keeps the Automatic usage label instead.
+    let mut settings = Settings::default();
+    settings.set_provider_metric(ProviderId::Codex, MetricPreference::TokensPerMinute);
+    let mut codex = fake_snapshot("codex", "Codex", 30.0);
+    codex.throughput = Some(openai_api_throughput(Some(12_000)));
+    assert_eq!(
+        tokens_per_minute_status(&codex, &settings, Language::English),
+        None
+    );
+}
+
+#[test]
+fn tokens_per_minute_metric_keeps_the_automatic_icon_lane() {
+    let mut settings = Settings {
+        tray_icon_mode: TrayIconMode::Single,
+        show_as_used: true,
+        ..Settings::default()
+    };
+    let mut openai = fake_snapshot("openaiapi", "OpenAI API", 40.0);
+    openai.throughput = Some(openai_api_throughput(Some(12_000)));
+    let snapshots = vec![openai];
+    let automatic_icon = TrayPresentationPlan::resolve(&settings, &snapshots, None).icon;
+
+    settings.set_provider_metric(ProviderId::OpenAIApi, MetricPreference::TokensPerMinute);
+    let plan = TrayPresentationPlan::resolve(&settings, &snapshots, None);
+
+    assert_eq!(plan.icon, automatic_icon);
+    assert_eq!(
+        plan.status_labels(Language::English),
+        vec![(
+            "status_summary".to_string(),
+            "OpenAI API 12K/min".to_string()
+        )]
+    );
+}

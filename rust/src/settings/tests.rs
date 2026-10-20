@@ -1,6 +1,7 @@
 use super::*;
 
 mod language_theme;
+mod metric_preference;
 mod provider_configs;
 mod unreadable_file;
 
@@ -770,6 +771,14 @@ fn parallel_cookie_source_defaults_to_automatic_session_import() {
     assert_eq!(settings.cookie_source(ProviderId::Parallel), "auto");
     settings.set_cookie_source(ProviderId::Parallel, "off");
     assert_eq!(settings.cookie_source(ProviderId::Parallel), "off");
+}
+
+#[test]
+fn claude_platform_cookie_source_defaults_to_automatic_session_import() {
+    let mut settings = Settings::default();
+    assert_eq!(settings.cookie_source(ProviderId::ClaudePlatform), "auto");
+    settings.set_cookie_source(ProviderId::ClaudePlatform, "manual");
+    assert_eq!(settings.cookie_source(ProviderId::ClaudePlatform), "manual");
 }
 
 #[test]

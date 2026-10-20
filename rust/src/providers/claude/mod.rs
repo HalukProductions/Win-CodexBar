@@ -186,6 +186,38 @@ impl Default for ClaudeProvider {
     }
 }
 
+/// Consumer usage page for recognized Claude subscriptions (upstream #4503).
+/// Default and API accounts use the spec's Platform usage link instead.
+const CLAUDE_SUBSCRIPTION_DASHBOARD_URL: &str = "https://claude.ai/settings/usage";
+
+/// Upstream `ClaudePlan.isSubscriptionLoginMethod`: the plan is resolved by
+/// `ClaudePlan.fromCompatibilityLoginMethod`, which checks the label's words in
+/// a fixed priority order (Max, Pro, Team, Enterprise, Ultra); the first word
+/// in that order that appears decides. Max, Pro, Team and Ultra count as a
+/// subscription; Enterprise alone, API and other labels do not.
+fn is_subscription_login_method(login_method: Option<&str>) -> bool {
+    let Some(login_method) = login_method else {
+        return false;
+    };
+    let words: Vec<String> = login_method
+        .to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .map(str::to_string)
+        .collect();
+    const PLAN_WORDS: [(&str, bool); 5] = [
+        ("max", true),
+        ("pro", true),
+        ("team", true),
+        ("enterprise", false),
+        ("ultra", true),
+    ];
+    PLAN_WORDS
+        .iter()
+        .find(|(plan, _)| words.iter().any(|word| word == plan))
+        .is_some_and(|(_, counts_as_subscription)| *counts_as_subscription)
+}
+
 fn claude_plan_label(tier: &str) -> String {
     let normalized = tier.to_lowercase();
     if normalized.contains("claude_max_5x") || normalized.contains("claude_max_5") {
@@ -330,6 +362,14 @@ fn last_good_failure_policy_for_error(error: &str) -> LastGoodFailurePolicy {
 impl Provider for ClaudeProvider {
     fn manual_cookie_precedes_token_account(&self) -> bool {
         true
+    }
+
+    fn dashboard_url_for_login_method(&self, login_method: Option<&str>) -> Option<&'static str> {
+        if is_subscription_login_method(login_method) {
+            Some(CLAUDE_SUBSCRIPTION_DASHBOARD_URL)
+        } else {
+            self.metadata().dashboard_url
+        }
     }
 
     fn automatic_metric_prioritizes_exhausted_window(&self) -> bool {

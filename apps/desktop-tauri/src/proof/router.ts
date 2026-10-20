@@ -85,7 +85,6 @@ export const INERT_ACTIONS = [
   "set_openrouter_management_api_key",
   "set_provider_auto_resume_after_quota_reset",
   "set_provider_azure_api_version",
-  "set_provider_cookie_source",
   "set_provider_gateway_url",
   "set_provider_optional_details",
   "set_provider_region",
@@ -161,6 +160,9 @@ export function createProofRouter(
   let settings: SettingsSnapshot = { ...scenario.settings };
   let claudeTokenAccounts: TokenAccountBridge[] | null =
     scenario.claudeTokenAccounts?.map((account) => ({ ...account })) ?? null;
+  // Cookie-source picks persist for the session, as the real bridge persists
+  // them to settings; `get_provider_detail` then reports the chosen source.
+  const cookieSources = new Map<string, string>();
   const warned = new Set<string>();
 
   const bootstrap = (): BootstrapState => ({
@@ -228,7 +230,7 @@ export function createProofRouter(
     refresh_providers_if_stale: () => null,
     get_current_surface_state: surfaceState,
     set_surface_mode: (args) => args.mode ?? "trayPanel",
-    get_locale_strings: () => englishLocaleStrings(),
+    get_locale_strings: () => englishLocaleStrings(current().localeOverrides),
     set_ui_language: () => null,
     get_available_languages: () => PROOF_LANGUAGES,
     get_currency_rates: (args) =>
@@ -249,7 +251,15 @@ export function createProofRouter(
       apiKeys: "Windows Credential Manager",
       tokenAccounts: "Windows Credential Manager",
     }),
-    get_provider_detail: (args) => providerDetail(current(), stringArg(args, "providerId")),
+    get_provider_detail: (args) => {
+      const detail = providerDetail(current(), stringArg(args, "providerId"));
+      const cookieSource = cookieSources.get(detail.id);
+      return cookieSource === undefined ? detail : { ...detail, cookieSource };
+    },
+    set_provider_cookie_source: (args) => {
+      cookieSources.set(stringArg(args, "providerId"), stringArg(args, "source"));
+      return null;
+    },
     get_provider_chart_data: (args) =>
       providerChartData(current(), stringArg(args, "providerId"), now),
     get_provider_local_usage_summary: (args) =>

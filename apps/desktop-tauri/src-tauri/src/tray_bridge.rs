@@ -413,7 +413,12 @@ pub fn update_tray_icon_and_tooltip(
     let icon = Image::new_owned(rgba, w, h);
     let _ = tray.set_icon(Some(icon));
 
-    let tooltip = build_tooltip(snapshots, settings.ui_language, settings.hide_personal_info);
+    let tooltip = build_tooltip(
+        snapshots,
+        &settings,
+        settings.ui_language,
+        settings.hide_personal_info,
+    );
     let tooltip = crate::status_poller::with_incident_lines(app, &settings, tooltip);
     let _ = tray.set_tooltip(Some(tooltip));
 }
@@ -421,6 +426,7 @@ pub fn update_tray_icon_and_tooltip(
 /// Build a compact multi-line tooltip string from provider snapshots.
 fn build_tooltip(
     snapshots: &[crate::commands::ProviderUsageSnapshot],
+    settings: &Settings,
     lang: codexbar::settings::Language,
     hide_personal_info: bool,
 ) -> String {
@@ -443,7 +449,8 @@ fn build_tooltip(
             let short = truncate_tooltip_text(&err, 36);
             format!("{}: {} ({})", s.display_name, error_label, short)
         } else {
-            let label = headline_status_label(s, lang);
+            let label = crate::tray_presentation::tokens_per_minute_status(s, settings, lang)
+                .unwrap_or_else(|| headline_status_label(s, lang));
             format!("{}: {}", s.display_name, truncate_tooltip_text(&label, 42))
         };
         lines.push(status);
@@ -643,6 +650,7 @@ mod tests {
 
         let tooltip = build_tooltip(
             &[claude, codex],
+            &Settings::default(),
             codexbar::settings::Language::English,
             false,
         );
@@ -661,13 +669,44 @@ mod tests {
 
         let lang = codexbar::settings::Language::English;
         assert_eq!(
-            build_tooltip(&[estimated], lang, false),
+            build_tooltip(&[estimated], &Settings::default(), lang, false),
             "CodexBar\nOpenCode Go: ~95%"
         );
         assert_eq!(
-            build_tooltip(&[exact], lang, false),
+            build_tooltip(&[exact], &Settings::default(), lang, false),
             "CodexBar\nOpenCode Go: 95%"
         );
+    }
+
+    #[test]
+    fn tooltip_shows_tokens_per_minute_when_selected() {
+        let mut settings = Settings::default();
+        settings.set_provider_metric(
+            codexbar::core::ProviderId::OpenAIApi,
+            codexbar::settings::MetricPreference::TokensPerMinute,
+        );
+        let mut openai = fake_snapshot("openaiapi", "OpenAI API", 40.0);
+        openai.throughput = Some(crate::commands::ProviderThroughputSnapshot {
+            minutes: Vec::new(),
+            frontier: Some(1_700_000_000),
+            latest_tokens_per_minute: Some(1_500_000),
+            peak_tokens_per_minute: 1_500_000,
+            peak_at: None,
+            five_minute_average_tokens_per_minute: 0.0,
+            models: Vec::new(),
+            window_minutes: 60,
+            fetched_at: 1_700_000_060,
+            project_id: None,
+        });
+
+        let tooltip = build_tooltip(
+            &[openai, fake_snapshot("codex", "Codex", 8.0)],
+            &settings,
+            codexbar::settings::Language::English,
+            false,
+        );
+
+        assert_eq!(tooltip, "CodexBar\nOpenAI API: 1.5M/min\nCodex: 8%");
     }
 
     #[test]
@@ -680,7 +719,12 @@ mod tests {
         codex.primary.reset_description = Some("No active 5h session".to_string());
         codex.secondary.as_mut().unwrap().reset_description = Some("3d 17h".to_string());
 
-        let tooltip = build_tooltip(&[codex], codexbar::settings::Language::English, false);
+        let tooltip = build_tooltip(
+            &[codex],
+            &Settings::default(),
+            codexbar::settings::Language::English,
+            false,
+        );
 
         assert_eq!(tooltip, "CodexBar\nCodex: 16% • Resets in 3d 17h");
     }
@@ -691,7 +735,12 @@ mod tests {
         claude.primary.reset_description =
             Some("resets in Jun 10 at 3:00PM with extra noisy suffix".to_string());
 
-        let tooltip = build_tooltip(&[claude], codexbar::settings::Language::English, false);
+        let tooltip = build_tooltip(
+            &[claude],
+            &Settings::default(),
+            codexbar::settings::Language::English,
+            false,
+        );
 
         let line = tooltip.lines().nth(1).expect("provider tooltip line");
         assert!(line.starts_with("Claude: 13% • Resets in Jun 10 at 3:00PM"));
@@ -706,12 +755,18 @@ mod tests {
 
         let shown = build_tooltip(
             &[codex.clone()],
+            &Settings::default(),
             codexbar::settings::Language::English,
             false,
         );
         assert!(shown.contains("proof@example.com"), "{shown}");
 
-        let hidden = build_tooltip(&[codex], codexbar::settings::Language::English, true);
+        let hidden = build_tooltip(
+            &[codex],
+            &Settings::default(),
+            codexbar::settings::Language::English,
+            true,
+        );
         assert!(hidden.contains("session expired"), "{hidden}");
         assert!(!hidden.contains('@'), "{hidden}");
         assert!(!hidden.contains("example.com"), "{hidden}");
@@ -722,7 +777,12 @@ mod tests {
         let mut claude = fake_snapshot("claude", "Claude", 13.0);
         claude.error = Some("network timeout".to_string());
 
-        let tooltip = build_tooltip(&[claude], codexbar::settings::Language::Japanese, false);
+        let tooltip = build_tooltip(
+            &[claude],
+            &Settings::default(),
+            codexbar::settings::Language::Japanese,
+            false,
+        );
 
         assert!(tooltip.contains("エラー"), "{tooltip}");
         assert!(!tooltip.contains(": error ("), "{tooltip}");
@@ -736,11 +796,13 @@ mod tests {
 
         let english_tooltip = build_tooltip(
             &[claude.clone()],
+            &Settings::default(),
             codexbar::settings::Language::English,
             false,
         );
         let japanese_tooltip = build_tooltip(
             &[claude.clone()],
+            &Settings::default(),
             codexbar::settings::Language::Japanese,
             false,
         );

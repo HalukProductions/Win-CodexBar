@@ -118,7 +118,9 @@ pub enum ProviderId {
     Parallel,
     Fal,
     Flora,
+    FutureAgi,
     Munito,
+    ClaudePlatform,
 }
 
 impl ProviderId {
@@ -170,6 +172,13 @@ impl ProviderId {
             ProviderId::Kimi => Some(crate::providers::kimi::MONTHLY_WINDOW_ID),
             _ => None,
         }
+    }
+
+    /// Whether this provider reports a Tokens/min rate, which offers the
+    /// Tokens/min menu bar metric (upstream 0.75.0 #4495). Shared by the
+    /// provider trait and shell code that has no provider instance.
+    pub fn reports_tokens_per_minute(self) -> bool {
+        matches!(self, ProviderId::OpenAIApi)
     }
 
     /// Parse from CLI name string
@@ -261,7 +270,7 @@ mod tests {
     #[test]
     fn test_provider_id_all() {
         let all = ProviderId::all();
-        assert_eq!(all.len(), 109);
+        assert_eq!(all.len(), 111);
         assert!(all.contains(&ProviderId::Claude));
         assert!(all.contains(&ProviderId::Codex));
         assert!(all.contains(&ProviderId::Pi));

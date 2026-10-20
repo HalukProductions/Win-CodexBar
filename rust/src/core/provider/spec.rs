@@ -137,11 +137,11 @@ const fn spec(
     }
 }
 
-const COUNT: usize = 109;
+const COUNT: usize = 111;
 
 pub(crate) static ALL: [ProviderId; COUNT] = {
     // Indexing SPECS by discriminant relies on rows following declaration order.
-    assert!(P::Munito as usize + 1 == COUNT);
+    assert!(P::ClaudePlatform as usize + 1 == COUNT);
     let mut ids = [P::Codex; COUNT];
     let mut i = 0;
     while i < COUNT {
@@ -169,7 +169,7 @@ pub(crate) static SPECS: [ProviderSpec; COUNT] = [
         .credits()
         .default_enabled()
         .primary()
-        .dashboard("https://claude.ai/settings/usage")
+        .dashboard("https://platform.claude.com/usage")
         .status("https://status.claude.com/")
         .aliases(&["anthropic"]),
     spec(P::Pi, "pi", "Pi", "#7C3AED")
@@ -747,7 +747,23 @@ pub(crate) static SPECS: [ProviderSpec; COUNT] = [
     spec(P::Flora, "flora", "FLORA", "#111111")
         .labels("Balance", "Balance")
         .dashboard("https://app.flora.ai"),
+    spec(P::FutureAgi, "futureagi", "Future AGI", "#7857FC")
+        .labels("AI credits", "Gateway requests")
+        .dashboard("https://app.futureagi.com/dashboard/settings/usage-summary")
+        .parse_aliases(&["future agi"]),
     spec(P::Munito, "munito", "Munito", "#702CF6")
         .labels("Today", "This month")
         .dashboard("https://console.munito.ai"),
+    spec(
+        P::ClaudePlatform,
+        "claudeplatform",
+        "Claude Platform",
+        "#CC7C5E",
+    )
+    .labels("API credit", "Purchased credit")
+    .cookie("platform.claude.com")
+    .dashboard("https://platform.claude.com/settings/billing")
+    .status("https://status.claude.com/")
+    .aliases(&["claude-platform"])
+    .parse_aliases(&["claude platform"]),
 ];
