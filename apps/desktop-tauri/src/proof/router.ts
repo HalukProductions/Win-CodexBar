@@ -313,13 +313,14 @@ export function createProofRouter(
     get_api_key_providers: () => [],
     has_openrouter_management_api_key: () => false,
     get_manual_cookies: () => [],
-    list_detected_browsers: (args) => [
-      { browserType: "edge", displayName: "Microsoft Edge", profileCount: 1 },
-      { browserType: "chrome", displayName: "Google Chrome", profileCount: 2 },
-      ...(stringArg(args, "providerId") === "claude"
-        ? [{ browserType: "claude-desktop", displayName: "Claude desktop app", profileCount: 1 }]
-        : []),
-    ],
+    list_detected_browsers: (args) =>
+      scenario.detectedBrowsers ?? [
+        { browserType: "edge", displayName: "Microsoft Edge", profileCount: 1 },
+        { browserType: "chrome", displayName: "Google Chrome", profileCount: 2 },
+        ...(stringArg(args, "providerId") === "claude"
+          ? [{ browserType: "claude-desktop", displayName: "Claude desktop app", profileCount: 1 }]
+          : []),
+      ],
     get_token_account_providers: () =>
       claudeTokenAccounts ? [tokenAccountSupport("claude")] : [],
     get_token_accounts: (args) => tokenAccounts(stringArg(args, "providerId")),
