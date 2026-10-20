@@ -35,6 +35,7 @@ mod tests {
                 providers,
                 costs: HashMap::new(),
                 claude_accounts: None,
+                provider_accounts: std::collections::HashMap::new(),
                 generated_at: DateTime::parse_from_rfc3339("2026-08-08T01:02:03Z")
                     .unwrap()
                     .with_timezone(&Utc),
@@ -46,6 +47,7 @@ mod tests {
             version: Some("0.48.0-test".to_string()),
             usage_bars_show_used,
             weekly_work_days: None,
+            all_accounts: false,
         }
     }
 
@@ -552,6 +554,133 @@ mod tests {
             json.get("updated_at").is_none(),
             "snake_case updated_at must not appear on the v1 wire"
         );
+    }
+
+    fn codex_envelope(fetch: Result<ProviderFetchResult, String>) -> ProviderFetchEnvelope {
+        ProviderFetchEnvelope {
+            id: "codex".to_string(),
+            display_name: "Codex".to_string(),
+            session_label: "Session".to_string(),
+            weekly_label: "Weekly".to_string(),
+            fetch,
+        }
+    }
+
+    fn two_codex_accounts() -> ClaudeAccountsInput {
+        ClaudeAccountsInput {
+            accounts: Ok(vec![
+                AccountFetchEnvelope {
+                    id: "a1".to_string(),
+                    label: "work@corp.example".to_string(),
+                    active: true,
+                    fetch: Ok(fetch_result(20.0, Some("work@corp.example"), Some("Pro"))),
+                },
+                AccountFetchEnvelope {
+                    id: "a2".to_string(),
+                    label: "Side".to_string(),
+                    active: false,
+                    fetch: Err("Side: detailed provider failure".to_string()),
+                },
+            ]),
+        }
+    }
+
+    #[test]
+    fn all_accounts_private_by_default_hides_labels_identity_and_errors() {
+        let mut input = input(
+            vec![
+                codex_envelope(Ok(fetch_result(5.0, Some("me@example.com"), Some("Pro")))),
+                codex_envelope(Ok(fetch_result(6.0, None, None))),
+            ],
+            DashboardIdentity::None,
+        );
+        input.all_accounts = true;
+        input
+            .collection
+            .provider_accounts
+            .insert("codex".to_string(), two_codex_accounts());
+        let json = serde_json::to_value(build_snapshot(&input)).unwrap();
+        let row = &json["providers"][0];
+        assert!(row["identity"].is_null());
+        let accounts = row["accounts"].as_array().unwrap();
+        assert_eq!(accounts.len(), 2);
+        assert_eq!(accounts[0]["label"], "Account 1");
+        assert_eq!(accounts[0]["active"], true);
+        assert!(accounts[0]["identity"].is_null());
+        assert_eq!(accounts[1]["label"], "Account 2");
+        assert_eq!(accounts[1]["error"], "Account usage unavailable");
+        assert!(
+            json["providers"][1].get("accounts").is_none(),
+            "accounts attach to the first row only"
+        );
+    }
+
+    #[test]
+    fn all_accounts_with_full_identity_keeps_labels_and_errors() {
+        let mut input = input(
+            vec![codex_envelope(Ok(fetch_result(5.0, None, None)))],
+            DashboardIdentity::Full,
+        );
+        input.all_accounts = true;
+        input
+            .collection
+            .provider_accounts
+            .insert("codex".to_string(), two_codex_accounts());
+        let json = serde_json::to_value(build_snapshot(&input)).unwrap();
+        let accounts = json["providers"][0]["accounts"].as_array().unwrap();
+        assert_eq!(accounts[0]["label"], "work@corp.example");
+        assert_eq!(accounts[0]["identity"]["accountEmail"], "work@corp.example");
+        assert_eq!(accounts[1]["error"], "Side: detailed provider failure");
+    }
+
+    #[test]
+    fn all_accounts_redacted_keeps_domains_but_hides_labels() {
+        let mut input = input(
+            vec![codex_envelope(Err("raw provider failure".to_string()))],
+            DashboardIdentity::Redacted,
+        );
+        input.all_accounts = true;
+        input
+            .collection
+            .provider_accounts
+            .insert("codex".to_string(), two_codex_accounts());
+        let json = serde_json::to_value(build_snapshot(&input)).unwrap();
+        let row = &json["providers"][0];
+        assert_eq!(row["error"]["message"], "Account usage unavailable");
+        let accounts = row["accounts"].as_array().unwrap();
+        assert_eq!(accounts[0]["label"], "Account 1");
+        assert_eq!(
+            accounts[0]["identity"]["accountEmail"],
+            "redacted@corp.example"
+        );
+    }
+
+    #[test]
+    fn all_accounts_private_hides_account_list_errors() {
+        let mut input = input(
+            vec![provider_envelope(Ok(fetch_result(3.0, None, None)))],
+            DashboardIdentity::None,
+        );
+        input.all_accounts = true;
+        input.collection.claude_accounts = Some(ClaudeAccountsInput {
+            accounts: Err("token store unreadable".to_string()),
+        });
+        let row = &serde_json::to_value(build_snapshot(&input)).unwrap()["providers"][0];
+        assert_eq!(row["accountsError"], "Account list unavailable");
+    }
+
+    #[test]
+    fn provider_accounts_are_ignored_without_a_matching_row() {
+        let mut input = input(
+            vec![provider_envelope(Ok(fetch_result(3.0, None, None)))],
+            DashboardIdentity::Redacted,
+        );
+        input
+            .collection
+            .provider_accounts
+            .insert("codex".to_string(), two_codex_accounts());
+        let row = &serde_json::to_value(build_snapshot(&input)).unwrap()["providers"][0];
+        assert!(row.get("accounts").is_none());
     }
 
     #[test]

@@ -240,6 +240,15 @@ The desktop app can run the same server for you from Settings > Advanced > HTTP 
 
 `--identity redacted|full` sets how much account identity the snapshot shows. Without it, each request follows the app's Hide Personal Info setting.
 
+`--all-accounts` adds a row for every configured token account to the dashboard snapshot, for each provider that supports token accounts. It only changes the dashboard snapshot; `/usage` and `/metrics` stay the same. With `--all-accounts` and no `--identity`, the snapshot hides account identity: account rows are labelled `Account 1`, `Account 2` and so on, and their errors read `Account usage unavailable` or `Account list unavailable`. Pass `--identity full` to show the real labels and error text.
+
+```powershell
+codexbar serve --all-accounts
+codexbar serve --all-accounts --identity full
+```
+
+Windows difference: upstream also lists visible Codex managed profiles. Windows lists only configured token accounts, and fetches them at the same time rather than one after another.
+
 ### Provider icons
 
 The dashboard shows each provider's brand icon from the embedded `/icons/` route. The icons are copies of the upstream `ProviderIcon-*.svg` files. #828 added icons for ClawRouter, IBM Bob, Langdock, LithosAI, MuseAI, Synthetic and WorkBuddy. A provider with no embedded icon shows a neutral dot. Icons that use `currentColor` render dark inside the page's `<img>` tags, as upstream does.

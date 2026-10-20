@@ -14,7 +14,10 @@ use std::time::Duration;
 use chrono::Utc;
 
 use crate::cli::fetch_context::populate_api_region_from_settings;
-use crate::core::{CostScanOptions, FetchContext, ProviderId, instantiate_provider};
+use crate::cli::usage::project_token_account;
+use crate::core::{
+    CostScanOptions, FetchContext, ProviderId, TokenAccountSupport, instantiate_provider,
+};
 use crate::cost_scanner::{self, CostScanner};
 use crate::settings::Settings;
 use crate::spend_contract::build_local_spend_contract_from_summary;
@@ -50,6 +53,9 @@ pub struct SnapshotProducer {
     /// Outer per-provider fetch envelope; `None` relies on provider-internal
     /// `web_timeout` alone (`--timeout 0` in the dashboard command).
     pub fetch_timeout: Option<Duration>,
+    /// `serve --all-accounts`: add every configured token account as account
+    /// rows, private by default (upstream 0.74 #3890).
+    pub all_accounts: bool,
 }
 
 impl SnapshotProducer {
@@ -59,7 +65,13 @@ impl SnapshotProducer {
             identity,
             version: env!("CARGO_PKG_VERSION").to_string(),
             fetch_timeout: Some(PROVIDER_FETCH_TIMEOUT),
+            all_accounts: false,
         }
+    }
+
+    pub fn with_all_accounts(mut self, all_accounts: bool) -> Self {
+        self.all_accounts = all_accounts;
+        self
     }
 
     pub fn with_fetch_timeout(mut self, timeout: Option<Duration>) -> Self {
@@ -79,13 +91,11 @@ impl SnapshotProducer {
 
     async fn collect_artifacts_inner(&self) -> Result<SnapshotArtifacts<MetricsSnapshot>, String> {
         let settings = Settings::load();
-        // Resolve identity: explicit --identity flag wins; otherwise follow
-        // the app's hide_personal_info setting (upstream 0.50.1 #2960).
-        let identity = self.identity.unwrap_or(if settings.hide_personal_info {
-            DashboardIdentity::Redacted
-        } else {
-            DashboardIdentity::Full
-        });
+        let identity = resolve_identity(
+            self.identity,
+            settings.hide_personal_info,
+            self.all_accounts,
+        );
         let provider_ids: Vec<ProviderId> = settings.get_enabled_provider_ids();
 
         // Concurrent, individually bounded provider fetches; order restored by index.
@@ -118,6 +128,11 @@ impl SnapshotProducer {
         let costs = collect_costs(provider_ids.contains(&ProviderId::Pi)).await;
         let claude_accounts =
             collect_claude_accounts(provider_ids.contains(&ProviderId::Claude), &settings).await;
+        let provider_accounts = if self.all_accounts {
+            collect_provider_token_accounts(&provider_ids, &settings).await
+        } else {
+            HashMap::new()
+        };
 
         let order: Vec<String> = provider_ids
             .iter()
@@ -128,6 +143,7 @@ impl SnapshotProducer {
             providers,
             costs,
             claude_accounts,
+            provider_accounts,
             generated_at: Utc::now(),
             refresh_seconds: self.refresh_seconds,
             order,
@@ -141,9 +157,31 @@ impl SnapshotProducer {
                 version: Some(self.version.clone()),
                 usage_bars_show_used: Some(settings.show_as_used),
                 weekly_work_days: settings.weekly_progress_work_days,
+                all_accounts: self.all_accounts,
             }),
             sidecar: Some(metrics),
         })
+    }
+}
+
+/// Identity for one snapshot build: an explicit `--identity` wins; expanded
+/// `--all-accounts` snapshots are private without it; ordinary snapshots
+/// follow the app's hide_personal_info setting (upstream 0.50.1 #2960,
+/// `resolveDashboardIdentityMode`).
+fn resolve_identity(
+    configured: Option<DashboardIdentity>,
+    hide_personal_info: bool,
+    all_accounts: bool,
+) -> DashboardIdentity {
+    if let Some(configured) = configured {
+        return configured;
+    }
+    if all_accounts {
+        DashboardIdentity::None
+    } else if hide_personal_info {
+        DashboardIdentity::Redacted
+    } else {
+        DashboardIdentity::Full
     }
 }
 
@@ -321,6 +359,84 @@ async fn collect_claude_accounts(
     })
 }
 
+/// Providers whose configured token accounts `--all-accounts` expands.
+/// Claude keeps its own section ([`collect_claude_accounts`]).
+fn token_account_providers(provider_ids: &[ProviderId]) -> Vec<ProviderId> {
+    provider_ids
+        .iter()
+        .copied()
+        .filter(|id| *id != ProviderId::Claude && TokenAccountSupport::is_supported(*id))
+        .collect()
+}
+
+/// `--all-accounts` rows for every enabled provider with configured token
+/// accounts, fetched through the same account projection `codexbar usage
+/// --account` uses. Providers without accounts get no section.
+async fn collect_provider_token_accounts(
+    provider_ids: &[ProviderId],
+    settings: &Settings,
+) -> HashMap<String, ClaudeAccountsInput> {
+    let store = crate::core::TokenAccountStore::new();
+    let mut sections = HashMap::new();
+    for provider_id in token_account_providers(provider_ids) {
+        let data = match store.load_provider(provider_id) {
+            Ok(data) => data,
+            Err(error) => {
+                sections.insert(
+                    provider_id.cli_name().to_string(),
+                    ClaudeAccountsInput {
+                        accounts: Err(format!("token accounts unavailable: {error}")),
+                    },
+                );
+                continue;
+            }
+        };
+        if data.accounts.is_empty() {
+            continue;
+        }
+        let active_index = data.active_account().map(|active| active.id);
+        let mut set = tokio::task::JoinSet::new();
+        for (index, account) in data.accounts.iter().cloned().enumerate() {
+            let mut ctx = FetchContext::default();
+            populate_api_region_from_settings(provider_id, settings, &mut ctx);
+            project_token_account(provider_id, &account, &mut ctx);
+            set.spawn(async move {
+                let fetch = bounded_fetch(
+                    provider_id,
+                    ctx,
+                    Some(&account.label),
+                    Some(ACCOUNT_FETCH_TIMEOUT),
+                )
+                .await;
+                (
+                    index,
+                    AccountFetchEnvelope {
+                        id: account.id.to_string(),
+                        label: account.label.clone(),
+                        active: active_index == Some(account.id),
+                        fetch,
+                    },
+                )
+            });
+        }
+        let mut indexed = Vec::new();
+        while let Some(joined) = set.join_next().await {
+            if let Ok(item) = joined {
+                indexed.push(item);
+            }
+        }
+        indexed.sort_by_key(|(index, _)| *index);
+        let accounts: Vec<AccountFetchEnvelope> = indexed.into_iter().map(|(_, row)| row).collect();
+        sections.insert(
+            provider_id.cli_name().to_string(),
+            ClaudeAccountsInput {
+                accounts: Ok(accounts),
+            },
+        );
+    }
+    sections
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -338,5 +454,35 @@ mod tests {
         let producer = SnapshotProducer::new(60, None);
         assert_eq!(producer.identity, None);
         assert_eq!(producer.refresh_seconds, 60);
+        assert!(!producer.all_accounts);
+        assert!(producer.with_all_accounts(true).all_accounts);
+    }
+
+    #[test]
+    fn identity_resolution_matches_upstream_order() {
+        use DashboardIdentity::{Full, None as Private, Redacted};
+        assert_eq!(resolve_identity(Some(Full), true, true), Full);
+        assert_eq!(resolve_identity(Some(Redacted), false, true), Redacted);
+        assert_eq!(resolve_identity(None, false, true), Private);
+        assert_eq!(resolve_identity(None, true, false), Redacted);
+        assert_eq!(resolve_identity(None, false, false), Full);
+    }
+
+    #[test]
+    fn token_account_expansion_skips_claude_and_unsupported_providers() {
+        let unsupported = ProviderId::all()
+            .iter()
+            .copied()
+            .find(|id| !TokenAccountSupport::is_supported(*id))
+            .expect("some provider has no token-account support");
+        let supported = ProviderId::all()
+            .iter()
+            .copied()
+            .find(|id| *id != ProviderId::Claude && TokenAccountSupport::is_supported(*id))
+            .expect("some non-Claude provider supports token accounts");
+        assert_eq!(
+            token_account_providers(&[ProviderId::Claude, unsupported, supported]),
+            vec![supported]
+        );
     }
 }
