@@ -137,11 +137,11 @@ const fn spec(
     }
 }
 
-const COUNT: usize = 108;
+const COUNT: usize = 109;
 
 pub(crate) static ALL: [ProviderId; COUNT] = {
     // Indexing SPECS by discriminant relies on rows following declaration order.
-    assert!(P::Flora as usize + 1 == COUNT);
+    assert!(P::Munito as usize + 1 == COUNT);
     let mut ids = [P::Codex; COUNT];
     let mut i = 0;
     while i < COUNT {
@@ -747,4 +747,7 @@ pub(crate) static SPECS: [ProviderSpec; COUNT] = [
     spec(P::Flora, "flora", "FLORA", "#111111")
         .labels("Balance", "Balance")
         .dashboard("https://app.flora.ai"),
+    spec(P::Munito, "munito", "Munito", "#702CF6")
+        .labels("Today", "This month")
+        .dashboard("https://console.munito.ai"),
 ];

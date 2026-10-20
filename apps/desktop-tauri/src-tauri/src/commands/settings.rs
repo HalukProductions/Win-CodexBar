@@ -84,6 +84,7 @@ pub struct SettingsUpdate {
     pub claude_allow_reading_claude_code_credentials: Option<bool>,
     pub claude_swap_enabled: Option<bool>,
     pub claude_swap_executable_path: Option<String>,
+    pub claude_desktop_cookies_enabled: Option<bool>,
     pub codex_spark_usage_visible: Option<bool>,
     pub codex_openai_web_extras: Option<bool>,
     pub codex_historical_tracking: Option<bool>,
@@ -550,6 +551,9 @@ impl SettingsUpdate {
         }
         if let Some(v) = self.claude_swap_enabled {
             settings.set_claude_swap_enabled(v);
+        }
+        if let Some(v) = self.claude_desktop_cookies_enabled {
+            settings.set_claude_desktop_cookies_enabled(v);
         }
         if let Some(v) = self.claude_swap_executable_path.clone() {
             settings.set_claude_swap_executable_path(v);
