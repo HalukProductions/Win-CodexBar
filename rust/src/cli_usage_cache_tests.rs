@@ -55,6 +55,65 @@ fn round_trip_keeps_windows_and_drops_identity() {
 }
 
 #[test]
+fn spend_descriptions_never_reach_the_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(CACHE_FILE_NAME);
+    let fetched = now() - Duration::seconds(60);
+    let resets = Utc.with_ymd_and_hms(2026, 11, 1, 0, 0, 0).unwrap();
+    // Bedrock/OpenRouter shape: quota windows whose reset_description holds a
+    // dollar amount ("Monthly spend $X", "$X remaining").
+    let mut usage = UsageSnapshot::new(RateWindow::with_details(
+        42.0,
+        Some(300),
+        Some(resets),
+        Some("Monthly spend $12.34".to_string()),
+    ))
+    .with_secondary(RateWindow::with_details(
+        10.0,
+        Some(10080),
+        None,
+        Some("$56.78 remaining".to_string()),
+    ))
+    .with_extra_rate_window(
+        "credits",
+        "Credits",
+        RateWindow::with_details(5.0, None, None, Some("Credits $9.01 left".to_string())),
+    );
+    usage.updated_at = fetched;
+    let entry = Entry::new(ProviderId::OpenRouter, &usage).unwrap();
+    publish(&path, Some(vec![entry])).unwrap();
+
+    let raw = std::fs::read_to_string(&path).unwrap();
+    assert!(!raw.contains('$'), "cost leaked into cache: {raw}");
+    assert!(
+        !raw.contains("reset_description"),
+        "spend wording leaked into cache: {raw}"
+    );
+
+    // The reset time survives, and reading the file back re-strips (it has
+    // nothing left to strip) without breaking the hit.
+    let cache = CliUsageCache::load(&path).expect("cache loads");
+    let hit = cache.hit(ProviderId::OpenRouter, now()).expect("fresh hit");
+    assert_eq!(hit.usage.primary.resets_at, Some(resets));
+    assert_eq!(hit.usage.primary.used_percent, 42.0);
+    assert!(hit.usage.primary.reset_description.is_none());
+    assert!(
+        hit.usage
+            .secondary
+            .as_ref()
+            .unwrap()
+            .reset_description
+            .is_none()
+    );
+    assert!(
+        hit.usage.extra_rate_windows[0]
+            .window
+            .reset_description
+            .is_none()
+    );
+}
+
+#[test]
 fn file_shape_is_stable() {
     let fetched = Utc.with_ymd_and_hms(2026, 10, 20, 11, 58, 30).unwrap();
     let mut usage = UsageSnapshot::new(RateWindow::with_details(42.0, Some(300), None, None));

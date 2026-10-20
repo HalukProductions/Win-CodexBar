@@ -22,7 +22,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::core::{ProviderError, ProviderId, UsageSnapshot};
+use crate::core::{NamedRateWindow, ProviderError, ProviderId, RateWindow, UsageSnapshot};
 
 /// File name inside the CodexBar config directory.
 pub const CACHE_FILE_NAME: &str = "cli-usage-cache.json";
@@ -84,14 +84,31 @@ impl Entry {
 }
 
 /// The rate windows and fetch time of `usage`, without identity fields.
+///
+/// `reset_description` is stripped from every copied window: providers reuse
+/// it for dollar amounts on default-account fetches (Bedrock "Monthly spend
+/// $X", OpenRouter "$X remaining", Claude admin-API extra windows), and this
+/// file promises no costs. Reset times survive through `resets_at`.
 fn figures(usage: &UsageSnapshot) -> UsageSnapshot {
-    let mut figures = UsageSnapshot::new(usage.primary.clone());
+    fn without_description(window: &RateWindow) -> RateWindow {
+        let mut window = window.clone();
+        window.reset_description = None;
+        window
+    }
+    let mut figures = UsageSnapshot::new(without_description(&usage.primary));
     figures.primary_label = usage.primary_label.clone();
-    figures.secondary = usage.secondary.clone();
+    figures.secondary = usage.secondary.as_ref().map(without_description);
     figures.secondary_label = usage.secondary_label.clone();
-    figures.model_specific = usage.model_specific.clone();
-    figures.tertiary = usage.tertiary.clone();
-    figures.extra_rate_windows = usage.extra_rate_windows.clone();
+    figures.model_specific = usage.model_specific.as_ref().map(without_description);
+    figures.tertiary = usage.tertiary.as_ref().map(without_description);
+    figures.extra_rate_windows = usage
+        .extra_rate_windows
+        .iter()
+        .map(|named| NamedRateWindow {
+            window: without_description(&named.window),
+            ..named.clone()
+        })
+        .collect();
     figures.updated_at = usage.updated_at;
     figures
 }

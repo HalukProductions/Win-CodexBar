@@ -1019,6 +1019,10 @@ mod app_cache_fallback {
             .await
             .expect("sharing on falls back");
         assert_eq!(served.result.source_label, "codexbar-app");
+        assert!(
+            !served.result.pace_authoritative,
+            "stale cached rows must not feed pace advice"
+        );
         assert!((30..=40).contains(&served.age_seconds));
 
         let timeout: anyhow::Error = ProviderError::Timeout.into();

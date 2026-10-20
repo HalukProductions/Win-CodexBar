@@ -81,7 +81,10 @@ pub(super) async fn app_cache_fallback(
         None
     };
     Some(AppCacheFallback {
-        result: ProviderFetchResult::new(hit.usage, cli_usage_cache::SOURCE_LABEL),
+        // Cached rows can be up to MAXIMUM_AGE_SECONDS old, so they must not
+        // feed pace or run-out advice.
+        result: ProviderFetchResult::new(hit.usage, cli_usage_cache::SOURCE_LABEL)
+            .with_non_authoritative_pace(),
         age_seconds: hit.age_seconds,
         status,
     })
