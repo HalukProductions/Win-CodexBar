@@ -64,7 +64,7 @@ The float bar is an optional always-on-top strip. `floatbar/` owns it. Its windo
 
 A full provider refresh also starts a status poll (`status_poller.rs`) while `status_checks_enabled` is on (the auto-resume probe does not). The poller fetches the status page of each enabled provider that has one, keeps the results in `AppState.provider_statuses`, and sends `provider-statuses-updated` with the full list when a status changes. The React hook `useProviderStatuses` reads it, and the tray tooltip adds a line per incident. See [PROVIDERS.md](./PROVIDERS.md#status-pages).
 
-`auto_refresh.rs` starts refreshes on a timer. The adaptive mode also checks for running coding agents (`coding_activity.rs`).
+`auto_refresh.rs` starts refreshes on a timer. The adaptive mode also checks for running coding agents (`coding_activity.rs`). Without a running agent process, a Codex rollout modified recently counts as coding activity: `coding_activity.rs` reads the modification times of today's and yesterday's `rollout-*.jsonl` files under the Codex sessions directory. It reads no file contents, caps the entries it inspects, and ignores future mtimes after pinning them to the first value seen. The signal is skipped under Low Power Mode.
 
 ### Settings
 
