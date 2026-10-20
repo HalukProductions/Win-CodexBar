@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const tauriMocks = vi.hoisted(() => ({
@@ -65,15 +65,13 @@ describe("CookieSection browser detection", () => {
     renderSection();
 
     await waitFor(() =>
+      expect(tauriMocks.listDetectedBrowsers).toHaveBeenCalledTimes(1),
+    );
+    await waitFor(() =>
       expect(
         screen.getByPlaceholderText("BrowserCookiePlaceholderDefault"),
       ).toBeInTheDocument(),
     );
-    // Let the rejected lookup's catch handler run before asserting.
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-    expect(tauriMocks.listDetectedBrowsers).toHaveBeenCalledTimes(1);
     expect(
       screen.queryByText("NoBrowsersDetectedHint"),
     ).not.toBeInTheDocument();
