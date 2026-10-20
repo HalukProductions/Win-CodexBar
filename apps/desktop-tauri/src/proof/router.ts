@@ -3,6 +3,8 @@ import { version as appVersion } from "../../package.json";
 import type {
   BootstrapState,
   CurrentSurfaceState,
+  HttpServerConfig,
+  HttpServerSnapshot,
   SettingsSnapshot,
   SettingsUpdate,
   TokenAccountBridge,
@@ -162,6 +164,33 @@ export function createProofRouter(
   let claudeTokenAccounts: TokenAccountBridge[] | null =
     scenario.claudeTokenAccounts?.map((account) => ({ ...account })) ?? null;
   const warned = new Set<string>();
+  let httpServer: HttpServerSnapshot = {
+    config: {
+      enabled: false,
+      host: "127.0.0.1",
+      port: 8080,
+      token: "",
+      refreshIntervalSecs: 60,
+      requestTimeoutSecs: 30,
+      identity: "redacted",
+      allowPlainHttp: false,
+    },
+    status: { state: "stopped" },
+  };
+  // Mirrors only the token rule of the shell's validation; enough for scenarios.
+  const applyHttpServer = (config: HttpServerConfig): HttpServerSnapshot => {
+    if (config.enabled && config.token.trim() === "") {
+      return { ...httpServer, status: { state: "invalid", code: "invalidToken" } };
+    }
+    const host = config.host.trim() === "localhost" ? "127.0.0.1" : config.host.trim();
+    httpServer = {
+      config,
+      status: config.enabled
+        ? { state: "running", url: `http://${host}:${config.port}/` }
+        : { state: "stopped" },
+    };
+    return httpServer;
+  };
 
   const bootstrap = (): BootstrapState => ({
     contractVersion: "v1",
@@ -239,6 +268,9 @@ export function createProofRouter(
     get_app_info: () => proofAppInfo(appVersion),
     get_deepseek_pricing_status: () => null,
     get_stay_awake_status: () => false,
+    get_http_server_state: () => httpServer,
+    apply_http_server_config: (args) =>
+      applyHttpServer(argsRecord(args.config) as unknown as HttpServerConfig),
     get_system_accent_color: () => "#4c8bf5",
     // A fixed 1080p desktop minus the taskbar: headless browsers report a
     // small `screen`, which would cap the tray panel's auto-fit height.

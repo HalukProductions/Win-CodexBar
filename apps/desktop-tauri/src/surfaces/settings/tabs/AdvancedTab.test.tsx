@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const tauriMocks = vi.hoisted(() => ({
   getSafeDiagnostics: vi.fn(),
+  getHttpServerState: vi.fn(() => new Promise(() => {})),
+  applyHttpServerConfig: vi.fn(),
   registerGlobalShortcut: vi.fn().mockResolvedValue(undefined),
   unregisterGlobalShortcut: vi.fn().mockResolvedValue(undefined),
 }));

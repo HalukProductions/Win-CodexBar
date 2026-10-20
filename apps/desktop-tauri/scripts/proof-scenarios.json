@@ -141,6 +141,23 @@
       ]
     },
     {
+      "name": "settings-advanced-http-server",
+      "query": "window=settings&tab=advanced&theme=dark",
+      "size": [880, 620],
+      "steps": [
+        { "expectText": ["HTTP server", "Enable HTTP server", "Stopped"] },
+        { "click": { "selector": "input", "label": "Enable HTTP server" } },
+        { "click": { "selector": "button", "label": "Apply" } },
+        { "expectCall": { "cmd": "apply_http_server_config", "args": { "config": { "enabled": true, "host": "127.0.0.1", "port": 8080, "token": "", "refreshIntervalSecs": 60, "requestTimeoutSecs": 30, "identity": "redacted", "allowPlainHttp": false } } } },
+        { "expectText": "Generate a token or enter a nonempty token without spaces." },
+        { "screenshot": "settings-advanced-http-server-invalid" },
+        { "click": { "selector": "button", "label": "Generate" } },
+        { "click": { "selector": "button", "label": "Apply" } },
+        { "expectText": ["Running", "http://127.0.0.1:8080/"] },
+        { "screenshot": "settings-advanced-http-server-running" }
+      ]
+    },
+    {
       "name": "floatbar",
       "query": "window=floatbar",
       "size": [520, 120],
