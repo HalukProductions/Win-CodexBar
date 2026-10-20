@@ -6,6 +6,7 @@ import type {
   CodexWorkspacesSessionUsage,
   ProviderCatalogEntry,
   ProviderUsageSnapshot,
+  QuotaWindowHistoryBridge,
   SettingsSnapshot,
   TokenAccountBridge,
 } from "../../types/bridge";
@@ -29,6 +30,7 @@ export const PROOF_SCENARIO_NAMES = [
   "codex-conversations-private",
   "claude-reset-credits",
   "claude-reset-credits-hidden",
+  "kpi-long-titles",
   "claudeplatform",
 ] as const;
 
@@ -46,6 +48,10 @@ export interface ProofScenario {
   localSpend: LocalSpendFixture[];
   /** Claude token accounts; absent means Claude offers no token accounts. */
   claudeTokenAccounts?: TokenAccountBridge[];
+  /** Quota-window history served with chart data; absent means none. */
+  quotaWindowHistory?: QuotaWindowHistoryBridge[];
+  /** Synthetic replacements for single locale keys; absent means the shipped English strings. */
+  localeOverrides?: Record<string, string>;
   /** Local Codex conversations in the Usage & Spend contract, unmasked. */
   codexConversations?: CodexWorkspacesSessionUsage[];
 }
@@ -555,6 +561,43 @@ function claudeResetCreditsScenario(now: Date, hidden: boolean): ProofScenario {
   };
 }
 
+/**
+ * Default data plus an estimated current quota window for Claude. The inline
+ * dashboard then shows the "Est. ..." current-window KPI titles in the narrow
+ * two-column grid. The title is replaced with a long synthetic string, as a
+ * long translation would be, so the proof can check that KPI titles wrap.
+ */
+function kpiLongTitlesScenario(now: Date): ProofScenario {
+  const base = defaultScenario(now);
+  return {
+    ...base,
+    name: "kpi-long-titles",
+    localeOverrides: {
+      PanelCurrentWindowTokens: "aktuelles Zeitfenster, Tokens insgesamt (geschaetzt)",
+    },
+    quotaWindowHistory: [
+      {
+        providerId: "claude",
+        accountScope: null,
+        historyCoverageEstablished: true,
+        windows: [
+          {
+            offset: 0,
+            start: isoBefore(now, 2 * 60),
+            end: isoAfter(now, 3 * 60),
+            totalTokens: 184_000,
+            totalCostUsd: 1.42,
+            tokensAreComplete: true,
+            costIsComplete: true,
+            entryCount: 9,
+            boundariesAreEstimated: true,
+          },
+        ],
+      },
+    ],
+  };
+}
+
 function claudePlatformScenario(now: Date): ProofScenario {
   return {
     name: "claudeplatform",
@@ -578,6 +621,7 @@ const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   "codex-conversations-private": codexConversationsPrivateScenario,
   "claude-reset-credits": (now) => claudeResetCreditsScenario(now, false),
   "claude-reset-credits-hidden": (now) => claudeResetCreditsScenario(now, true),
+  "kpi-long-titles": kpiLongTitlesScenario,
   claudeplatform: claudePlatformScenario,
 };
 
