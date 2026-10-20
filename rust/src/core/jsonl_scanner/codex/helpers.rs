@@ -338,11 +338,9 @@ pub(super) fn parse_codex_fast_event(line: &str) -> Option<CodexFastEvent<'_>> {
 }
 
 pub(super) fn is_candidate_codex_line(line: &str) -> bool {
-    if !line.contains("\"type\":\"event_msg\"")
-        && !line.contains("\"type\":\"turn_context\"")
-        && !line.contains("\"turn_context\"")
-        && !line.contains("\"event_msg\"")
-    {
+    // `"type":"event_msg"` and `"type":"turn_context"` contain `"event_msg"` and
+    // `"turn_context"`, so those two checks cannot succeed where the bare values fail.
+    if !line.contains("\"turn_context\"") && !line.contains("\"event_msg\"") {
         return false;
     }
 
