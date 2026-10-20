@@ -47,9 +47,11 @@ Manual cookies are stored in `manual_cookies.json` in the CodexBar config folder
 | Arc | Same as Chrome | Same as Chrome |
 | Opera | Same as Chrome | Same as Chrome |
 | Opera GX | Same as Chrome | Same as Chrome |
-| Firefox | Unencrypted SQLite | Works |
+| Opera Neon | Same as Chrome | Same as Chrome |
+| Aside | Same as Chrome | Same as Chrome |
+| Firefox (Release, Beta, Developer Edition, Nightly) | Unencrypted SQLite | Works |
 
-Each Chrome channel, Chromium, Edge, Brave, Arc, Opera and Opera GX is a separate choice. Each one reads only its own `User Data` profiles, except Opera and Opera GX, which keep a single profile at `%APPDATA%\Opera Software\Opera Stable` and `%APPDATA%\Opera Software\Opera GX Stable`. Firefox reads the profiles under `%APPDATA%\Mozilla\Firefox\Profiles`.
+Each Chrome channel, Chromium, Edge, Brave, Arc, Opera, Opera GX, Opera Neon and Aside is a separate choice. Each one reads only its own `User Data` profiles (Aside's are under `%LOCALAPPDATA%\Aside\User Data`), except Opera, Opera GX and Opera Neon, which keep a single profile at `%APPDATA%\Opera Software\Opera Stable`, `%APPDATA%\Opera Software\Opera GX Stable` and `%APPDATA%\Opera Software\Opera Neon Stable`. Firefox reads every profile under `%APPDATA%\Mozilla\Firefox\Profiles`. All Firefox channels share that folder, so Beta (`*.default-beta`), Developer Edition (`*.dev-edition-default`) and Nightly (`*.default-nightly`) profiles are read through the one Firefox choice.
 
 ## App-Bound Encryption
 
@@ -73,7 +75,7 @@ When the Kimi cookie source is Automatic, CodexBar also reads `access_token` fro
 - Local storage is not App-Bound encrypted, so this can work when cookie decryption is blocked.
 - CodexBar uses only unexpired JWTs with three segments. It never reads refresh tokens.
 - A manual cookie always wins. Cookie source **Manual** or **Off** skips this step.
-- CodexBar scans only the `Default` and `Profile N` profiles. It doesn't read Firefox local storage.
+- CodexBar scans every detected Chromium profile: `Default` and `Profile N`, or the browser root for Opera, Opera GX and Opera Neon. It doesn't read Firefox local storage.
 
 If the token has expired, open Kimi in the browser to renew the session.
 

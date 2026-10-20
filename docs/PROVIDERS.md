@@ -69,7 +69,7 @@ Some providers refill on a billing date instead of on a fixed session or week. T
 | Grok | a window labelled weekly whose reset falls inside it | no |
 | Z.ai | the 43200-minute MCP window | yes |
 | Amp | a window with a length whose reset text starts with "renews in " | no |
-| Alibaba, Alibaba Token Plan, Command Code, Doubao, MiMo, StepFun, Notion, Ollama, OpenCode Go | exactly 43200 minutes | yes |
+| Alibaba, Alibaba Token Plan, Command Code, Doubao, Kiro, MiMo, StepFun, Notion, Ollama, OpenCode Go | exactly 43200 minutes, or the calendar month ending at the reset | yes |
 
 Every other provider is `UNSUPPORTED` and keeps only the session and weekly pace.
 
@@ -826,7 +826,7 @@ Origin: https://app.cosmicjs.com
 
 ## Window lengths that match the Mac
 
-These providers set window lengths the same way the Mac app does, so their rows get pace and the tray tint can score them:
+These providers set window lengths so their rows get the same pace as in the Mac app, and the tray tint can score them. Where the stored length differs from the Mac's, the row says so:
 
 | Provider | Window | Length |
 | --- | --- | --- |
@@ -837,6 +837,7 @@ These providers set window lengths the same way the Mac app does, so their rows 
 | Grok | Credits proxy period | Kept after the period ends. An ended period has no pace. |
 | Z.ai | `TIME_LIMIT` windows | From the unit: 1 = 1440, 3 = 60, 5 = 1, 6 = 10080 minutes per unit. The monthly MCP marker keeps the 30-day sentinel. |
 | Notion | Billing lane | Labelled "Monthly". Other monthly lanes keep the "30-Day" label. |
+| Kiro | Plan credits lane | The real calendar month ending at the reset (CLI `resets on MM/DD` or the API `nextDateReset`), 28 to 31 days. The Mac stores the 43200-minute sentinel and resolves it to the same month, so the pace is identical. No reset means no length and no pace; an expired reset gives no pace. Bonus and overage lanes get no pace. |
 
 ## See what is enabled
 
