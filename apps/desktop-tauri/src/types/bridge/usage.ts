@@ -216,6 +216,12 @@ export interface ProviderUsageSnapshot {
   sourceLabel: string;
   /** Backend proof of a live successful Claude CLI quota fetch; only true is proof. */
   hasSuccessfulClaudeCliQuota?: boolean;
+  /**
+   * The quota percentages are a local estimate (upstream
+   * `dataConfidence == .estimated`). Sent only when true; the tray prefixes
+   * estimated percentages with `~`.
+   */
+  quotaEstimated?: boolean;
   updatedAt: string;
   error: string | null;
   errorState: ProviderStateKind;

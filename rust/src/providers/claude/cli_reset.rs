@@ -83,10 +83,11 @@ pub(super) fn extract_cli_scoped_weekly_limits(
             continue;
         }
         let id = format!(
-            "claude-weekly-scoped-{}",
+            "{}{}",
+            super::scoped_weekly::SCOPED_WEEKLY_ID_PREFIX,
             slug_claude_model(title.trim_end_matches(" only").trim())
         );
-        if id == "claude-weekly-scoped-"
+        if id == super::scoped_weekly::SCOPED_WEEKLY_ID_PREFIX
             || limits.iter().any(|limit: &NamedRateWindow| limit.id == id)
         {
             continue;

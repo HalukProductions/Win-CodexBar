@@ -168,6 +168,59 @@ fn parses_current_snake_case_oauth_usage_response() {
     assert_eq!(scoped.window.used_percent, 7.0);
 }
 
+/// Upstream #4126: an account with only model-scoped weekly limits keeps the
+/// session placeholder and no weekly lane, and every scoped window carries the
+/// id prefix that Automatic falls back to.
+#[test]
+fn scoped_only_oauth_response_exposes_the_automatic_fallback_windows() {
+    use crate::core::Provider;
+
+    let usage = snapshot(
+        r#"{
+            "five_hour": null,
+            "seven_day": null,
+            "limits": [
+                {
+                    "kind": "weekly_scoped",
+                    "group": "weekly",
+                    "percent": 12,
+                    "resets_at": "2026-05-29T10:00:00Z",
+                    "scope": {"model": {"id": "fable", "display_name": "Fable"}}
+                },
+                {
+                    "kind": "weekly_scoped",
+                    "group": "weekly",
+                    "percent": 40,
+                    "resets_at": "2026-05-29T10:00:00Z",
+                    "scope": {"model": {"id": "sonnet", "display_name": "Sonnet"}}
+                }
+            ]
+        }"#,
+        &test_credentials("token"),
+    );
+
+    assert!(usage.primary.is_informational);
+    assert!(usage.secondary.is_none());
+    assert!(usage.model_specific.is_none());
+    assert!(usage.tertiary.is_none());
+    let prefix = crate::providers::claude::ClaudeProvider::new()
+        .automatic_metric_absent_core_window_prefix()
+        .expect("Claude declares a scoped fallback prefix");
+    let scoped = usage
+        .extra_rate_windows
+        .iter()
+        .filter(|window| window.id.starts_with(prefix))
+        .map(|window| (window.id.as_str(), window.window.used_percent))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        scoped,
+        vec![
+            ("claude-weekly-scoped-fable", 12.0),
+            ("claude-weekly-scoped-sonnet", 40.0)
+        ]
+    );
+}
+
 #[test]
 fn spend_only_oauth_response_projects_the_monthly_cap_into_one_meter() {
     use chrono::{Datelike, Timelike};

@@ -23,6 +23,8 @@ fn local_fetch_result_keeps_estimate_source_and_reset_windows() {
         result.source_label,
         super::super::LOCAL_ESTIMATE_SOURCE_LABEL
     );
+    assert!(result.quota_estimated);
+    assert!(!result.pace_authoritative);
     assert_eq!(result.usage.primary.used_percent, 12.0);
     assert_eq!(result.usage.secondary.as_ref().unwrap().used_percent, 23.0);
     assert_eq!(result.usage.tertiary.as_ref().unwrap().used_percent, 34.0);
