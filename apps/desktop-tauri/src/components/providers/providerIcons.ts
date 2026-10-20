@@ -12,6 +12,7 @@ import atlascloud from "./icons/ProviderIcon-atlascloud.svg?raw";
 import augment from "./icons/ProviderIcon-augment.svg?raw";
 import bedrock from "./icons/ProviderIcon-bedrock.svg?raw";
 import claude from "./icons/ProviderIcon-claude.svg?raw";
+import claudeplatform from "./icons/ProviderIcon-claudeplatform.svg?raw";
 import codebuff from "./icons/ProviderIcon-codebuff.svg?raw";
 import coderabbit from "./icons/ProviderIcon-coderabbit.svg?raw";
 import codex from "./icons/ProviderIcon-codex.svg?raw";
@@ -128,6 +129,7 @@ const RAW: Record<string, string> = {
   augment: tint(augment),
   bedrock: tint(bedrock),
   claude: tint(claude),
+  claudeplatform: tint(claudeplatform),
   codebuff: tint(codebuff),
   coderabbit: tint(coderabbit),
   codex: tint(codex),
@@ -224,6 +226,7 @@ export const PROVIDER_ICON_REGISTRY: Record<string, ProviderIcon> = {
   aerostack:   { id: "aerostack",   brandColor: "#6366F1", fallbackLetter: "◆", svgPath: RAW.aerostack },
   augment:     { id: "augment",     brandColor: "#1aa049", fallbackLetter: "A", svgPath: RAW.augment },
   claude:      { id: "claude",      brandColor: "#cc7c5e", fallbackLetter: "◈", svgPath: RAW.claude },
+  claudeplatform: { id: "claudeplatform", brandColor: "#cc7c5e", fallbackLetter: "◈", svgPath: RAW.claudeplatform },
   pi:          { id: "pi",          brandColor: "#7c3aed", fallbackLetter: "P" },
   codebuff:    { id: "codebuff",    brandColor: "#00ff95", fallbackLetter: "B", svgPath: RAW.codebuff },
   coderabbit:  { id: "coderabbit",  brandColor: "#ff5c35", fallbackLetter: "C", svgPath: RAW.coderabbit },

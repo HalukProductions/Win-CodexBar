@@ -299,6 +299,7 @@ fn cookie_source_provider(provider_id: &str) -> Option<codexbar::core::ProviderI
         "tinyapi" => ProviderId::TinyApi,
         "xapi" => ProviderId::Xapi,
         "parallel" => ProviderId::Parallel,
+        "claudeplatform" => ProviderId::ClaudePlatform,
         _ => return None,
     })
 }
@@ -971,6 +972,13 @@ pub fn cookie_source_options_for(provider_id: &str, lang: Language) -> Vec<Cooki
         // Upstream's Parallel picker (Chrome only there); this port offers the
         // shared browser order: automatic browser import, a pasted header, or off.
         "parallel" => vec![
+            cookie_option(lang, "auto", None),
+            cookie_option(lang, "manual", None),
+            cookie_option(lang, "off", None),
+        ],
+        // Upstream's Claude Platform picker: automatic browser import, a
+        // pasted platform.claude.com header, or off.
+        "claudeplatform" => vec![
             cookie_option(lang, "auto", None),
             cookie_option(lang, "manual", None),
             cookie_option(lang, "off", None),

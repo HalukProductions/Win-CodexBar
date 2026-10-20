@@ -208,6 +208,24 @@
       ]
     },
     {
+      "name": "settings-claudeplatform-cookie-source",
+      "query": "window=settings&tab=providers:claudeplatform&fixture=claudeplatform&theme=dark",
+      "size": [880, 620],
+      "steps": [
+        { "expectText": ["Claude Platform", "Cookie source", "Automatic", "Manual", "Off"] },
+        { "expectSelector": "[data-provider-id=\"claudeplatform\"] .provider-icon--svg svg" },
+        { "screenshot": "settings-claudeplatform" },
+        { "click": { "selector": "button", "label": "Manual", "near": "Cookie source" } },
+        { "expectCall": { "cmd": "set_provider_cookie_source", "args": { "providerId": "claudeplatform", "source": "manual" } } },
+        { "click": { "selector": "button", "label": "Off", "near": "Cookie source" } },
+        { "expectCall": { "cmd": "set_provider_cookie_source", "args": { "providerId": "claudeplatform", "source": "off" } } },
+        { "click": { "selector": "button", "label": "Automatic", "near": "Cookie source" } },
+        { "expectCall": { "cmd": "set_provider_cookie_source", "args": { "providerId": "claudeplatform", "source": "auto" } } },
+        { "expectSelector": ".provider-detail-cookie-source .provider-detail-segmented__option.is-active" },
+        { "screenshot": "settings-claudeplatform-cookie-source" }
+      ]
+    },
+    {
       "name": "settings-menu-work-days",
       "query": "window=settings&tab=menu&theme=dark",
       "size": [880, 620],

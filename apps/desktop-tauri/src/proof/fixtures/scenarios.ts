@@ -31,6 +31,7 @@ export const PROOF_SCENARIO_NAMES = [
   "claude-reset-credits",
   "claude-reset-credits-hidden",
   "kpi-long-titles",
+  "claudeplatform",
 ] as const;
 
 export type ProofScenarioName = (typeof PROOF_SCENARIO_NAMES)[number];
@@ -176,6 +177,25 @@ function copilotSnapshot(now: Date): ProviderUsageSnapshot {
       planName: "Business",
       accountEmail: "copilot.user@example.com",
       sourceLabel: "api",
+    },
+  );
+}
+
+/** Console prepaid credits; siloed from Claude: no plan or email, ever. */
+function claudePlatformSnapshot(now: Date): ProviderUsageSnapshot {
+  return providerSnapshot(
+    {
+      providerId: "claudeplatform",
+      displayName: "Claude Platform",
+      primary: rateWindow(now, 38, MONTH_MINUTES, 21 * DAY_MINUTES),
+      primaryLabel: "API credit",
+      updatedAt: isoBefore(now, 2),
+    },
+    {
+      secondary: rateWindow(now, 12, MONTH_MINUTES, 45 * DAY_MINUTES),
+      secondaryLabel: "Purchased credit",
+      accountOrganization: "Example Studio",
+      sourceLabel: "web",
     },
   );
 }
@@ -578,6 +598,18 @@ function kpiLongTitlesScenario(now: Date): ProofScenario {
   };
 }
 
+function claudePlatformScenario(now: Date): ProofScenario {
+  return {
+    name: "claudeplatform",
+    settings: baseSettings({ enabledProviders: ["claudeplatform"] }),
+    catalog: PROOF_PROVIDER_CATALOG,
+    providers: [claudePlatformSnapshot(now)],
+    codexAccounts: emptyCodexAccounts(),
+    claudeAccounts: [],
+    localSpend: [],
+  };
+}
+
 const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   default: defaultScenario,
   "two-codex-accounts": twoCodexAccountsScenario,
@@ -590,6 +622,7 @@ const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   "claude-reset-credits": (now) => claudeResetCreditsScenario(now, false),
   "claude-reset-credits-hidden": (now) => claudeResetCreditsScenario(now, true),
   "kpi-long-titles": kpiLongTitlesScenario,
+  claudeplatform: claudePlatformScenario,
 };
 
 export function isProofScenarioName(value: string): value is ProofScenarioName {

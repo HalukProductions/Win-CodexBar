@@ -707,6 +707,55 @@ and name are missing.
   an ISO 8601 timestamp; anything else fails parsing. Response bodies are never
   echoed in errors.
 
+### Claude Platform
+
+Claude Platform is disabled by default and shows the prepaid API credits of a
+Claude Console (platform.claude.com) organization, including the monthly API
+credit that Max plans include. It is separate from the Claude
+provider: it never reads Claude's cookies, OAuth credentials, plan or email.
+Sign in to platform.claude.com in your browser, and CodexBar uses that
+session's `sessionKey` cookie.
+
+- **Automatic:** A previously imported Cookie header is used on its own.
+  Otherwise CodexBar tries each detected browser holding a platform.claude.com
+  `sessionKey`. If the Console rejects a session (401 or 403), it moves to the
+  next browser. No session means sign in to platform.claude.com.
+- **Manual:** Paste the Cookie header from a platform.claude.com request. It
+  must contain `sessionKey`. Manual mode does not fall back to browser sessions.
+- **Off:** Cookies are disabled.
+
+The provider makes up to three read-only requests:
+
+```text
+GET https://platform.claude.com/api/organizations
+GET https://platform.claude.com/api/organizations/<uuid>/prepaid/credits
+GET https://platform.claude.com/api/organizations/<uuid>/current_spend
+```
+
+- Only organizations whose `capabilities` include `api` are used; Claude.ai chat
+  organizations are skipped. The first API organization whose billing the member
+  can read wins (a 403 moves to the next one). An account without an API
+  organization reports that, and every organization answering 403 reports that
+  billing access was denied.
+- The **API credit** lane is the soonest-expiring `subscription_api_credit` grant
+  that still has credit. The **Purchased credit** lane is the soonest-expiring
+  purchased grant that still has credit, falling back to the first purchased
+  grant when all are spent. Each lane shows used percent and a detail such as
+  `$124.75 of $200.00 left · Expires Oct 28 (UTC)`. Expiry dates are UTC calendar
+  dates; the year is added when it is not the current year.
+- Other unexpired grants appear in **Other credit grants** with their own
+  progress. Expired grants (expiry at or before now) are dropped. A malformed
+  expiry is treated as unknown.
+- The credit balance shows in the card's Credits block as prepaid credits.
+  Amounts use the reported currency and credit exponent (0 to 4, default 2).
+- **Billing → This month (UTC)** shows month-to-date spend. Spend is optional:
+  any failure shows "Spend: Unavailable" and keeps the balance.
+- The provider reports identity as "Console session" and the Console
+  organization name. It never reports an email.
+- A missing, non-integer, or out-of-range balance fails parsing instead of
+  showing $0. 429 reports rate limiting and 5xx reports the Console as
+  unavailable. Response bodies are never echoed in errors.
+
 ### Aerostack
 
 Aerostack is disabled by default. In Settings → Providers → Aerostack, enter an
@@ -807,7 +856,7 @@ The status source per provider is set by `status_source` in `rust/src/status/mod
 
 | Source | Providers |
 | --- | --- |
-| Statuspage (`/api/v2/status.json`) | Claude, Codex and OpenAI API (status.openai.com), Copilot (githubstatus.com), Cursor, Factory, Augment, Hugging Face, ZoomMate (zoomstatus.com) |
+| Statuspage (`/api/v2/status.json`) | Claude and Claude Platform (status.claude.com), Codex and OpenAI API (status.openai.com), Copilot (githubstatus.com), Cursor, Factory, Augment, Hugging Face, ZoomMate (zoomstatus.com) |
 | Google Workspace incident feed | Gemini, Antigravity |
 
 Other providers have no status source, so they keep the fetch-status dot and never add an incident line.

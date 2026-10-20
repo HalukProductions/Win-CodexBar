@@ -438,3 +438,7 @@ Munito cli=munito display="Munito" cookie=None color=#702CF6 deprecated=false bl
   map=["munito"]
   metadata=ProviderMetadata { id: Munito, display_name: "Munito", session_label: "Today", weekly_label: "This month", supports_opus: false, supports_credits: false, default_enabled: false, is_primary: false, dashboard_url: Some("https://console.munito.ai"), status_page_url: None, tertiary_label_key: None }
   sources=[Auto, OAuth] oauth=false web=false cli=false
+ClaudePlatform cli=claudeplatform display="Claude Platform" cookie=Some("platform.claude.com") color=#CC7C5E deprecated=false blocking=None
+  map=["claude-platform", "claudeplatform"]
+  metadata=ProviderMetadata { id: ClaudePlatform, display_name: "Claude Platform", session_label: "API credit", weekly_label: "Purchased credit", supports_opus: false, supports_credits: false, default_enabled: false, is_primary: false, dashboard_url: Some("https://platform.claude.com/settings/billing"), status_page_url: Some("https://status.claude.com/"), tertiary_label_key: None }
+  sources=[Auto, Web] oauth=false web=true cli=false
