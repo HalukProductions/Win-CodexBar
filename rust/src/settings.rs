@@ -939,7 +939,7 @@ impl Settings {
     pub fn get_provider_metric(&self, id: ProviderId) -> MetricPreference {
         self.provider_metrics
             .get(id.cli_name())
-            .copied()
+            .cloned()
             .unwrap_or_default()
     }
 

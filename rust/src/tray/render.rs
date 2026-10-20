@@ -10,6 +10,11 @@ use super::icon::UsageLevel;
 /// Side length of the generated tray icon in pixels.
 pub const TRAY_ICON_SIZE: u32 = 32;
 
+/// Meter percent for a metric with no reading. Bars draw only their empty
+/// track and the percent icon draws a gray dash, so an unknown value never
+/// reads as a real 0% or as an exhausted quota.
+pub const UNKNOWN_PERCENT: f64 = f64::NAN;
+
 /// Optional pace tint for a tray icon's usage indicator.
 ///
 /// The upstream pace treatment uses green when usage is behind the expected
@@ -133,7 +138,11 @@ fn draw_bar_row(
         clippy::cast_possible_truncation,
         reason = "percent is clamped to 0..=100 and scaled to a 24-pixel meter"
     )]
-    let fill = ((percent.clamp(0.0, 100.0) / 100.0) * bar_width as f64) as u32;
+    let fill = if percent.is_nan() {
+        0
+    } else {
+        ((percent.clamp(0.0, 100.0) / 100.0) * bar_width as f64) as u32
+    };
     let fill_end = (BAR_LEFT + fill).min(BAR_RIGHT);
     let color = usage_color(percent, has_error, pace_color, provider_tint);
 
@@ -369,6 +378,15 @@ fn render_percent_icon(
     const SZ: u32 = TRAY_ICON_SIZE;
     let mut img = new_icon_canvas(has_error);
 
+    if percent.is_nan() {
+        let (r, g, b) = UsageLevel::Unknown.color();
+        let scale = 3u32;
+        let start_x = (SZ.saturating_sub(3 * scale)) / 2;
+        let start_y = (SZ.saturating_sub(5 * scale)) / 2;
+        draw_glyph(&mut img, '-', start_x, start_y, scale, Rgba([r, g, b, 255]));
+        return (img.into_raw(), SZ, SZ);
+    }
+
     // percent clamped to 0–100 before rounding, so the cast to u32 cannot truncate.
     #[allow(
         clippy::cast_possible_truncation,
@@ -448,6 +466,7 @@ fn glyph_rows(ch: char) -> Option<[u8; 5]> {
         '9' => [0b111, 0b101, 0b111, 0b001, 0b111],
         '%' => [0b101, 0b001, 0b010, 0b100, 0b101],
         '~' => [0b000, 0b110, 0b011, 0b000, 0b000],
+        '-' => [0b000, 0b000, 0b111, 0b000, 0b000],
         _ => return None,
     })
 }
@@ -865,5 +884,40 @@ mod tests {
         let (plain, _, _) = render_stacked_bar_icon_rgba(100.0, 100.0, false);
         let (none, _, _) = render_stacked_bar_icon_rgba_tinted(100.0, 100.0, false, None, None);
         assert_eq!(plain, none);
+    }
+
+    #[test]
+    fn unknown_percent_draws_a_gray_dash_instead_of_zero() {
+        let (unknown, width, _) = render_percent_icon_rgba(UNKNOWN_PERCENT, false);
+        let (zero, _, _) = render_percent_icon_rgba(0.0, false);
+        assert_ne!(unknown, zero);
+        let gray = UsageLevel::Unknown.color();
+        let pixels = unknown
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|px| [px[0], px[1], px[2]] == [gray.0, gray.1, gray.2])
+            .count();
+        // A 3x1 glyph row at scale 3 is a 9x3 block.
+        assert_eq!(pixels, 27);
+        let centre = ((16 * width + 16) * 4) as usize;
+        assert_eq!(&unknown[centre..centre + 3], &[gray.0, gray.1, gray.2]);
+        let (tinted, _, _) = render_estimated_percent_icon_rgba_tinted(
+            UNKNOWN_PERCENT,
+            false,
+            Some(TrayPaceColor::Ahead),
+            Some(TEAL),
+        );
+        assert_eq!(tinted, unknown);
+    }
+
+    #[test]
+    fn unknown_percent_bar_is_an_empty_track() {
+        let (unknown, _, _) = render_bar_icon_rgba(UNKNOWN_PERCENT, None, false);
+        let (empty, _, _) = render_bar_icon_rgba(0.0, None, false);
+        assert_eq!(unknown, empty);
+        let (unknown_pair, _, _) = render_bar_icon_rgba(UNKNOWN_PERCENT, Some(40.0), false);
+        let (empty_pair, _, _) = render_bar_icon_rgba(0.0, Some(40.0), false);
+        assert_eq!(unknown_pair, empty_pair);
     }
 }

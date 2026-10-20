@@ -172,6 +172,17 @@ fn preferred_window(
     now: DateTime<Utc>,
 ) -> Option<RateWindowSnapshot> {
     match preference {
+        // Upstream 0.73.0 (#4269): a declared allowance with no reading shows
+        // as unknown instead of borrowing another lane. An id the provider
+        // does not declare falls through like any unavailable choice.
+        MetricPreference::NamedExtra(id) => {
+            let declared = provider?.named_extra_metric(&id)?;
+            Some(
+                plan_window(snapshot, declared.id)
+                    .cloned()
+                    .unwrap_or_else(unknown_window),
+            )
+        }
         MetricPreference::Automatic => automatic_window(snapshot, provider, now),
         // A missing session is represented by an informational zero-percent
         // placeholder. Fall through to Automatic instead of displaying it.
@@ -218,6 +229,29 @@ pub(crate) fn monthly_plan_window(
     provider: Option<ProviderId>,
 ) -> Option<&RateWindowSnapshot> {
     plan_window(snapshot, provider.and_then(monthly_plan_window_id)?)
+}
+
+/// Whether the selected metric is a declared named extra allowance that the
+/// snapshot has no reading for, so the meter must show it as unknown.
+pub(crate) fn selected_named_extra_is_unknown(
+    snapshot: &ProviderUsageSnapshot,
+    settings: &Settings,
+) -> bool {
+    let Some(provider) = ProviderId::from_cli_name(&snapshot.provider_id) else {
+        return false;
+    };
+    settings
+        .get_provider_metric(provider)
+        .named_extra_id()
+        .and_then(|id| provider.named_extra_metric(id))
+        .is_some_and(|declared| plan_window(snapshot, declared.id).is_none())
+}
+
+fn unknown_window() -> RateWindowSnapshot {
+    RateWindowSnapshot {
+        is_informational: true,
+        ..Default::default()
+    }
 }
 
 fn monthly_plan_window_id(provider: ProviderId) -> Option<&'static str> {

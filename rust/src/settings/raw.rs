@@ -37,12 +37,45 @@ pub(crate) fn normalize_merged_overview_selection(ids: Vec<String>) -> Vec<Strin
     ids
 }
 
+/// Raw `provider_metrics` values, keeping every string so one unknown metric
+/// (a newer build's key, a hand-edited `extra:`) never fails the whole file.
+/// Non-string values are skipped here; unknown strings are dropped with a
+/// warning in [`canonicalize_provider_metrics`].
+fn deserialize_metric_keys<'de, D>(deserializer: D) -> Result<HashMap<String, String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum MetricValue {
+        Key(String),
+        Other(IgnoredAny),
+    }
+
+    let raw = Option::<HashMap<String, MetricValue>>::deserialize(deserializer)?;
+    Ok(raw
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|(provider, value)| match value {
+            MetricValue::Key(key) => Some((provider, key)),
+            MetricValue::Other(_) => {
+                tracing::warn!(provider = %provider, "ignoring non-string menu bar metric");
+                None
+            }
+        })
+        .collect())
+}
+
 fn canonicalize_provider_metrics(
-    metrics: HashMap<String, MetricPreference>,
+    metrics: HashMap<String, String>,
 ) -> HashMap<String, MetricPreference> {
     let mut entries = metrics
         .into_iter()
-        .filter_map(|(raw, preference)| {
+        .filter_map(|(raw, key)| {
+            let Some(preference) = MetricPreference::from_key(&key) else {
+                tracing::warn!(provider = %raw, metric = %key, "ignoring unknown menu bar metric");
+                return None;
+            };
             let canonical = canonical_provider_id(&raw)?;
             let canonical_spelling = raw.eq_ignore_ascii_case(&canonical);
             Some((canonical, canonical_spelling, raw, preference))
@@ -253,7 +286,8 @@ pub(super) struct RawSettings {
     disable_keychain_access: bool,
     hide_personal_info: bool,
     update_channel: UpdateChannel,
-    provider_metrics: HashMap<String, MetricPreference>,
+    #[serde(deserialize_with = "deserialize_metric_keys")]
+    provider_metrics: HashMap<String, String>,
     provider_order: Vec<String>,
     #[serde(default = "default_global_shortcut")]
     global_shortcut: String,
@@ -427,7 +461,11 @@ impl Default for RawSettings {
             disable_keychain_access: s.disable_keychain_access,
             hide_personal_info: s.hide_personal_info,
             update_channel: s.update_channel,
-            provider_metrics: s.provider_metrics,
+            provider_metrics: s
+                .provider_metrics
+                .into_iter()
+                .map(|(provider, metric)| (provider, metric.key().into_owned()))
+                .collect(),
             provider_order: s.provider_order,
             global_shortcut: s.global_shortcut,
             switcher_shortcuts: s.switcher_shortcuts,

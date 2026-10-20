@@ -1514,3 +1514,167 @@ fn tokens_per_minute_metric_keeps_the_automatic_icon_lane() {
         )]
     );
 }
+
+fn grok_bot_cursor(used_percent: Option<f64>) -> ProviderUsageSnapshot {
+    let mut cursor = fake_snapshot("cursor", "Cursor", 30.0);
+    cursor.extra_rate_windows = used_percent
+        .map(|used| crate::commands::NamedRateWindowSnapshot {
+            id: "cursor-grok-bot".to_string(),
+            title: "Grok Bot".to_string(),
+            window: RateWindowSnapshot {
+                used_percent: used,
+                remaining_percent: 100.0 - used,
+                ..Default::default()
+            },
+            fallback_lane: false,
+            icon_fallback: None,
+        })
+        .into_iter()
+        .collect();
+    cursor
+}
+
+#[test]
+fn named_extra_metric_labels_status_and_meter_with_the_allowance() {
+    let mut settings = Settings {
+        tray_icon_mode: TrayIconMode::PerProvider,
+        show_as_used: true,
+        ..Settings::default()
+    };
+    settings.set_provider_metric(
+        ProviderId::Cursor,
+        MetricPreference::NamedExtra("cursor-grok-bot".to_string()),
+    );
+    let snapshots = vec![
+        grok_bot_cursor(Some(42.0)),
+        fake_snapshot("codex", "Codex", 30.0),
+    ];
+
+    let labels =
+        TrayPresentationPlan::resolve(&settings, &snapshots, None).status_labels(Language::English);
+    assert!(
+        labels.contains(&("cursor".to_string(), "Cursor Grok Bot 42%".to_string())),
+        "{labels:?}"
+    );
+    assert!(
+        labels.contains(&("codex".to_string(), "Codex 30%".to_string())),
+        "{labels:?}"
+    );
+    assert_eq!(selected_tray_percents(&snapshots[0], &settings).0, 42.0);
+
+    // A real 0% stays 0%, distinct from an unknown reading.
+    let zero = grok_bot_cursor(Some(0.0));
+    let preference = settings.get_provider_metric(ProviderId::Cursor);
+    assert_eq!(
+        named_extra_status(&zero, &preference, Language::English).as_deref(),
+        Some("Grok Bot 0%")
+    );
+}
+
+#[test]
+fn named_extra_metric_without_a_reading_shows_a_labeled_dash() {
+    let mut settings = Settings {
+        show_as_used: true,
+        ..Settings::default()
+    };
+    let preference = MetricPreference::NamedExtra("cursor-grok-bot".to_string());
+    settings.set_provider_metric(ProviderId::Cursor, preference.clone());
+    let missing = grok_bot_cursor(None);
+
+    assert_eq!(
+        named_extra_status(&missing, &preference, Language::English).as_deref(),
+        Some("Grok Bot \u{2013}")
+    );
+    // The meter is unknown instead of borrowing the 30% core lane.
+    assert!(selected_tray_percents(&missing, &settings).0.is_nan());
+}
+
+#[test]
+fn named_extra_metric_without_a_reading_renders_an_unknown_icon_in_both_directions() {
+    for show_as_used in [true, false] {
+        let mut settings = Settings {
+            show_as_used,
+            menu_bar_icon_style: codexbar::settings::MenuBarIconStyle::Percent,
+            ..Settings::default()
+        };
+        settings.set_provider_metric(
+            ProviderId::Cursor,
+            MetricPreference::NamedExtra("cursor-grok-bot".to_string()),
+        );
+        let snapshots = vec![grok_bot_cursor(None)];
+
+        let (percent_icon, _, _) =
+            TrayPresentationPlan::resolve(&settings, &snapshots, None).render_icon();
+        let unknown =
+            codexbar::tray::render_percent_icon_rgba(codexbar::tray::UNKNOWN_PERCENT, false).0;
+        assert_eq!(percent_icon, unknown, "show_as_used={show_as_used}");
+        assert_ne!(
+            percent_icon,
+            codexbar::tray::render_percent_icon_rgba(0.0, false).0,
+            "show_as_used={show_as_used}"
+        );
+
+        settings.menu_bar_icon_style = codexbar::settings::MenuBarIconStyle::Bars;
+        let (bar_icon, _, _) =
+            TrayPresentationPlan::resolve(&settings, &snapshots, None).render_icon();
+        let (selected, companion) = selected_tray_percents(&snapshots[0], &settings);
+        assert!(selected.is_nan(), "show_as_used={show_as_used}");
+        assert_eq!(
+            bar_icon,
+            codexbar::tray::render_bar_icon_rgba(codexbar::tray::UNKNOWN_PERCENT, companion, false)
+                .0,
+            "show_as_used={show_as_used}"
+        );
+
+        // A real 0% used still renders as a reading in both directions.
+        let zero = vec![grok_bot_cursor(Some(0.0))];
+        settings.menu_bar_icon_style = codexbar::settings::MenuBarIconStyle::Percent;
+        let (zero_icon, _, _) = TrayPresentationPlan::resolve(&settings, &zero, None).render_icon();
+        let expected = if show_as_used { 0.0 } else { 100.0 };
+        assert_eq!(
+            zero_icon,
+            codexbar::tray::render_percent_icon_rgba(expected, false).0,
+            "show_as_used={show_as_used}"
+        );
+    }
+}
+
+#[test]
+fn named_extra_metric_marks_an_estimated_reading_but_not_a_dash() {
+    let preference = MetricPreference::NamedExtra("cursor-grok-bot".to_string());
+    let mut estimated = grok_bot_cursor(Some(42.0));
+    estimated.quota_estimated = true;
+    assert_eq!(
+        named_extra_status(&estimated, &preference, Language::English).as_deref(),
+        Some("Grok Bot ~42%")
+    );
+
+    let mut missing = grok_bot_cursor(None);
+    missing.quota_estimated = true;
+    assert_eq!(
+        named_extra_status(&missing, &preference, Language::English).as_deref(),
+        Some("Grok Bot \u{2013}")
+    );
+}
+
+#[test]
+fn named_extra_metric_never_labels_another_provider_or_an_unknown_id() {
+    let grok = MetricPreference::NamedExtra("cursor-grok-bot".to_string());
+    let mut codex = grok_bot_cursor(Some(42.0));
+    codex.provider_id = "codex".to_string();
+    assert_eq!(named_extra_status(&codex, &grok, Language::English), None);
+
+    let retired = MetricPreference::NamedExtra("cursor-retired-window".to_string());
+    assert_eq!(
+        named_extra_status(&grok_bot_cursor(Some(42.0)), &retired, Language::English),
+        None
+    );
+    assert_eq!(
+        named_extra_status(
+            &grok_bot_cursor(Some(42.0)),
+            &MetricPreference::Automatic,
+            Language::English
+        ),
+        None
+    );
+}

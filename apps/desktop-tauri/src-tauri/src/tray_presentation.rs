@@ -485,13 +485,27 @@ fn provider_status_label(
         );
     }
 
-    let label = tokens_per_minute_status(snapshot, settings, language)
-        .or_else(|| balance_status_label(snapshot))
-        .unwrap_or_else(|| headline_status_label(snapshot, language));
+    let label = metric_status_label(snapshot, settings, language);
     (
         snapshot.provider_id.clone(),
         format!("{} {}", snapshot.display_name, label),
     )
+}
+
+/// Status text for the provider's chosen menu bar metric, shared by the tray
+/// status row and the tray tooltip so both read the same allowance.
+pub(crate) fn metric_status_label(
+    snapshot: &ProviderUsageSnapshot,
+    settings: &Settings,
+    language: Language,
+) -> String {
+    let preference = ProviderId::from_cli_name(&snapshot.provider_id)
+        .map(|id| settings.get_provider_metric(id))
+        .unwrap_or_default();
+    named_extra_status(snapshot, &preference, language)
+        .or_else(|| tokens_per_minute_status(snapshot, settings, language))
+        .or_else(|| balance_status_label(snapshot))
+        .unwrap_or_else(|| headline_status_label(snapshot, language))
 }
 
 /// Compact status text for [`headline_window`]. A locally estimated quota
@@ -507,6 +521,41 @@ pub(crate) fn headline_status_label(
     } else {
         label
     }
+}
+
+/// Tray status text for a named extra allowance metric (upstream 0.73.0
+/// #4269): the allowance's own label before its reading, and an en dash when
+/// the snapshot has no reading, so a real 0% never reads as unknown. `None`
+/// when the metric is not a named extra this provider declares. A known
+/// reading on a locally estimated quota gets the same `~` as the headline.
+pub(crate) fn named_extra_status(
+    snapshot: &ProviderUsageSnapshot,
+    preference: &MetricPreference,
+    language: Language,
+) -> Option<String> {
+    let provider = ProviderId::from_cli_name(&snapshot.provider_id)?;
+    let declared = provider.named_extra_metric(preference.named_extra_id()?)?;
+    let extra = snapshot
+        .extra_rate_windows
+        .iter()
+        .find(|extra| extra.id == declared.id);
+    let title = extra
+        .map(|extra| extra.title.as_str())
+        .filter(|title| !title.trim().is_empty())
+        .unwrap_or(declared.label);
+    let reading = extra
+        .map(|extra| &extra.window)
+        .filter(|window| !window.is_informational)
+        .map(|window| {
+            let label = crate::commands::compact_tray_status_label(window, language);
+            if snapshot.quota_estimated {
+                format!("~{label}")
+            } else {
+                label
+            }
+        })
+        .unwrap_or_else(|| "\u{2013}".to_string());
+    Some(format!("{title} {reading}"))
 }
 
 /// Tray status text for the Tokens/min metric: the latest reported minute
@@ -673,8 +722,13 @@ fn selected_tray_percents_at(
 ) -> (f64, Option<f64>) {
     let (selected, companion) =
         crate::usage_metric::selected_usage_icon_windows_at(snapshot, settings, now);
+    let primary = if crate::usage_metric::selected_named_extra_is_unknown(snapshot, settings) {
+        codexbar::tray::UNKNOWN_PERCENT
+    } else {
+        display_metric_percent(&selected, settings.show_as_used)
+    };
     (
-        display_metric_percent(&selected, settings.show_as_used),
+        primary,
         companion
             .as_ref()
             .map(|window| display_metric_percent(window, settings.show_as_used)),

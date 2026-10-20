@@ -208,6 +208,24 @@
       ]
     },
     {
+      "name": "settings-cursor-named-extra-metric",
+      "query": "window=settings&tab=providers:cursor&theme=dark",
+      "size": [880, 620],
+      "steps": [
+        { "expectText": ["Cursor", "Menu and floating bar metric", "Grok Bot"] },
+        { "expectField": { "label": "Menu and floating bar metric", "value": "automatic" } },
+        { "select": { "label": "Menu and floating bar metric", "value": "extra:cursor-grok-bot" } },
+        { "expectCall": { "cmd": "update_settings", "args": { "patch": { "providerMetrics": { "cursor": "extra:cursor-grok-bot" } } } } },
+        { "expectField": { "label": "Menu and floating bar metric", "value": "extra:cursor-grok-bot" } },
+        { "click": { "selector": ".settings-field__label", "label": "Menu and floating bar metric" } },
+        { "screenshot": "settings-cursor-named-extra-metric" },
+        { "click": { "selector": ".providers-sidebar__name", "label": "Codex" } },
+        { "expectText": "dev@example.com" },
+        { "expectNoText": "Grok Bot" },
+        { "screenshot": "settings-codex-no-named-extra-metric" }
+      ]
+    },
+    {
       "name": "settings-claudeplatform-cookie-source",
       "query": "window=settings&tab=providers:claudeplatform&fixture=claudeplatform&theme=dark",
       "size": [880, 620],

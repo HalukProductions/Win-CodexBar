@@ -8,6 +8,8 @@ use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
 const BASE_URL: &str = "https://cursor.com";
+pub(super) const GROK_BOT_WINDOW_ID: &str = "cursor-grok-bot";
+pub(super) const GROK_BOT_TITLE: &str = "Grok Bot";
 
 #[derive(Debug)]
 pub struct CursorUsageResult {
@@ -505,8 +507,8 @@ impl SandUsageStatus {
             (minutes > 0).then_some(minutes_u32)
         });
         Some(NamedRateWindow::new(
-            "cursor-grok-bot",
-            "Grok Bot",
+            GROK_BOT_WINDOW_ID,
+            GROK_BOT_TITLE,
             RateWindow::with_details(used, minutes, reset, None),
         ))
     }

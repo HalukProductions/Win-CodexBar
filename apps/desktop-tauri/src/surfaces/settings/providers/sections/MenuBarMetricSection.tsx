@@ -130,15 +130,29 @@ function metricOptions(
   if (provider.tokensPerMinuteMetric) {
     options.push({ value: "tokensPerMinute", label: t("MetricTokensPerMinute") });
   }
+  // Upstream 0.73.0 (#4269): provider-declared named allowances, offered
+  // before the first refresh. The live window title wins over the declared one.
+  for (const named of provider.namedExtraMetrics ?? []) {
+    const live = provider.extraRateWindows.find((extra) => extra.id === named.id);
+    options.push({
+      value: `extra:${named.id}`,
+      label: live?.title.trim() || named.label,
+    });
+  }
   if (!options.some((option) => option.value === selected)) {
     const labelKey = SAVED_ONLY_LABEL_KEYS[selected];
     options.push({
       value: selected,
-      label: labelKey ? t(labelKey) : selected,
+      label: labelKey ? t(labelKey) : savedOnlyLabel(selected),
     });
   }
 
   return options;
+}
+
+/** A retired named allowance keeps its window id visible, not the storage prefix. */
+function savedOnlyLabel(selected: MetricPreference): string {
+  return selected.startsWith("extra:") ? selected.slice("extra:".length) : selected;
 }
 
 /** Labels for saved choices the provider no longer offers. */

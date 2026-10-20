@@ -440,8 +440,8 @@ impl TrayIconMode {
 }
 
 /// Metric preference for display in tray and UI
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(try_from = "String", into = "String")]
 pub enum MetricPreference {
     #[default]
     Automatic,
@@ -450,35 +450,100 @@ pub enum MetricPreference {
     Model,
     Tertiary,
     Credits,
-    #[serde(rename = "extraUsage", alias = "extrausage")]
     ExtraUsage,
     /// The provider's monthly plan allowance window, such as Mistral's Vibe
     /// plan (upstream 0.70.0 #4072). Written camelCase like the bridge; files
     /// saved with the old lowercase spelling still load.
-    #[serde(rename = "monthlyPlan", alias = "monthlyplan")]
     MonthlyPlan,
     Average,
     /// The latest reported Tokens/min (upstream 0.75.0 #4495). A text metric:
     /// the tray meter keeps the Automatic lane while the tray status shows the rate.
-    #[serde(rename = "tokensPerMinute", alias = "tokensperminute")]
     TokensPerMinute,
+    /// One provider-declared named extra allowance, keyed by its extra rate
+    /// window id (upstream 0.73.0 #4269). Persisted as `extra:<window id>`.
+    /// The id is kept even when the provider no longer declares it, so a
+    /// saved choice survives a provider that temporarily stops offering it.
+    NamedExtra(String),
 }
 
+const NAMED_EXTRA_KEY_PREFIX: &str = "extra:";
+
+static ALL_STANDARD_METRICS: [MetricPreference; 10] = [
+    MetricPreference::Automatic,
+    MetricPreference::Session,
+    MetricPreference::Weekly,
+    MetricPreference::Model,
+    MetricPreference::Tertiary,
+    MetricPreference::Credits,
+    MetricPreference::ExtraUsage,
+    MetricPreference::MonthlyPlan,
+    MetricPreference::Average,
+    MetricPreference::TokensPerMinute,
+];
+
 impl MetricPreference {
-    /// Get all available metric preferences
+    /// Every provider-independent metric preference. Named extra allowances
+    /// are declared per provider and are not listed here.
     pub fn all() -> &'static [MetricPreference] {
-        &[
-            MetricPreference::Automatic,
-            MetricPreference::Session,
-            MetricPreference::Weekly,
-            MetricPreference::Model,
-            MetricPreference::Tertiary,
-            MetricPreference::Credits,
-            MetricPreference::ExtraUsage,
-            MetricPreference::MonthlyPlan,
-            MetricPreference::Average,
-            MetricPreference::TokensPerMinute,
-        ]
+        &ALL_STANDARD_METRICS
+    }
+
+    /// The persisted and bridge spelling (`automatic`, `extraUsage`,
+    /// `extra:<window id>`, ...).
+    pub fn key(&self) -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed(match self {
+            MetricPreference::Automatic => "automatic",
+            MetricPreference::Session => "session",
+            MetricPreference::Weekly => "weekly",
+            MetricPreference::Model => "model",
+            MetricPreference::Tertiary => "tertiary",
+            MetricPreference::Credits => "credits",
+            MetricPreference::ExtraUsage => "extraUsage",
+            MetricPreference::MonthlyPlan => "monthlyPlan",
+            MetricPreference::Average => "average",
+            MetricPreference::TokensPerMinute => "tokensPerMinute",
+            MetricPreference::NamedExtra(id) => {
+                return std::borrow::Cow::Owned(format!("{NAMED_EXTRA_KEY_PREFIX}{id}"));
+            }
+        })
+    }
+
+    /// Parse [`Self::key`], also accepting the legacy lowercase spellings.
+    pub fn from_key(key: &str) -> Option<Self> {
+        if let Some(id) = key.strip_prefix(NAMED_EXTRA_KEY_PREFIX) {
+            let id = id.trim();
+            return (!id.is_empty()).then(|| MetricPreference::NamedExtra(id.to_string()));
+        }
+        Some(match key {
+            "automatic" => MetricPreference::Automatic,
+            "session" => MetricPreference::Session,
+            "weekly" => MetricPreference::Weekly,
+            "model" => MetricPreference::Model,
+            "tertiary" => MetricPreference::Tertiary,
+            "credits" => MetricPreference::Credits,
+            "extraUsage" | "extrausage" => MetricPreference::ExtraUsage,
+            "monthlyPlan" | "monthlyplan" => MetricPreference::MonthlyPlan,
+            "average" => MetricPreference::Average,
+            "tokensPerMinute" | "tokensperminute" => MetricPreference::TokensPerMinute,
+            _ => return None,
+        })
+    }
+
+    /// Whether `provider` can take this choice: a named extra only for the
+    /// provider that declares that window id; every other metric always.
+    pub fn is_declared_for(&self, provider: ProviderId) -> bool {
+        match self {
+            MetricPreference::NamedExtra(id) => provider.named_extra_metric(id).is_some(),
+            _ => true,
+        }
+    }
+
+    /// The selected named extra window id, when this is a named extra choice.
+    pub fn named_extra_id(&self) -> Option<&str> {
+        match self {
+            MetricPreference::NamedExtra(id) => Some(id),
+            _ => None,
+        }
     }
 
     /// Get the display name for this metric
@@ -494,6 +559,7 @@ impl MetricPreference {
             MetricPreference::MonthlyPlan => "Monthly plan",
             MetricPreference::Average => "Average",
             MetricPreference::TokensPerMinute => "Tokens/min",
+            MetricPreference::NamedExtra(_) => "Named allowance",
         }
     }
 
@@ -510,7 +576,22 @@ impl MetricPreference {
             MetricPreference::MonthlyPlan => "Monthly plan allowance",
             MetricPreference::Average => "Average across metrics",
             MetricPreference::TokensPerMinute => "Latest tokens per minute",
+            MetricPreference::NamedExtra(_) => "A provider-named extra allowance",
         }
+    }
+}
+
+impl TryFrom<String> for MetricPreference {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::from_key(&value).ok_or_else(|| format!("unknown metric preference `{value}`"))
+    }
+}
+
+impl From<MetricPreference> for String {
+    fn from(value: MetricPreference) -> Self {
+        value.key().into_owned()
     }
 }
 

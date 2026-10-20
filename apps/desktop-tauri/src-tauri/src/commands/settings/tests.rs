@@ -20,6 +20,40 @@ fn preferred_currency_patch_accepts_supported_codes_and_rejects_unknown_codes() 
 }
 
 #[test]
+fn provider_metrics_patch_keeps_only_declared_named_extras() {
+    let mut settings = Settings::default();
+    SettingsUpdate {
+        provider_metrics: Some(
+            [
+                ("cursor", "extra:cursor-grok-bot"),
+                ("codex", "extra:cursor-grok-bot"),
+                ("claude", "extra:retired"),
+                ("notaprovider", "extra:cursor-grok-bot"),
+                ("gemini", "weekly"),
+            ]
+            .into_iter()
+            .map(|(provider, metric)| (provider.to_string(), metric.to_string()))
+            .collect(),
+        ),
+        ..SettingsUpdate::default()
+    }
+    .apply_to(&mut settings)
+    .expect("metric patch applies");
+
+    assert_eq!(
+        settings.provider_metrics.get("cursor"),
+        Some(&MetricPreference::NamedExtra("cursor-grok-bot".to_string()))
+    );
+    assert_eq!(
+        settings.provider_metrics.get("gemini"),
+        Some(&MetricPreference::Weekly)
+    );
+    assert!(!settings.provider_metrics.contains_key("codex"));
+    assert!(!settings.provider_metrics.contains_key("claude"));
+    assert!(!settings.provider_metrics.contains_key("notaprovider"));
+}
+
+#[test]
 fn only_data_affecting_settings_refresh_providers() {
     assert!(
         SettingsUpdate {

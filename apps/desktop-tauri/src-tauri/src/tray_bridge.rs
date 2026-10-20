@@ -12,7 +12,7 @@ use tauri::{AppHandle, Manager};
 use crate::shell;
 use crate::state::{AppState, TrayAnchor};
 use crate::tray_menu::{MenuState, TrayMenuEntry, build_tray_menu_with};
-use crate::tray_presentation::{TrayPresentationPlan, headline_status_label};
+use crate::tray_presentation::TrayPresentationPlan;
 
 #[derive(Debug, Clone, Copy)]
 struct MonitorScaleInfo {
@@ -449,9 +449,7 @@ fn build_tooltip(
             let short = truncate_tooltip_text(&err, 36);
             format!("{}: {} ({})", s.display_name, error_label, short)
         } else {
-            let label = crate::tray_presentation::tokens_per_minute_status(s, settings, lang)
-                .or_else(|| crate::tray_presentation::balance_status_label(s))
-                .unwrap_or_else(|| headline_status_label(s, lang));
+            let label = crate::tray_presentation::metric_status_label(s, settings, lang);
             format!("{}: {}", s.display_name, truncate_tooltip_text(&label, 42))
         };
         lines.push(status);
@@ -676,6 +674,37 @@ mod tests {
         assert_eq!(
             build_tooltip(&[exact], &Settings::default(), lang, false),
             "CodexBar\nOpenCode Go: 95%"
+        );
+    }
+
+    #[test]
+    fn tooltip_shows_the_selected_named_extra_metric() {
+        let mut settings = Settings::default();
+        settings.set_provider_metric(
+            codexbar::core::ProviderId::Cursor,
+            codexbar::settings::MetricPreference::NamedExtra("cursor-grok-bot".to_string()),
+        );
+        let mut cursor = fake_snapshot("cursor", "Cursor", 30.0);
+        cursor.extra_rate_windows = vec![crate::commands::NamedRateWindowSnapshot {
+            id: "cursor-grok-bot".to_string(),
+            title: "Grok Bot".to_string(),
+            window: crate::commands::RateWindowSnapshot {
+                used_percent: 42.0,
+                remaining_percent: 58.0,
+                ..Default::default()
+            },
+            fallback_lane: false,
+            icon_fallback: None,
+        }];
+
+        let lang = codexbar::settings::Language::English;
+        assert_eq!(
+            build_tooltip(&[cursor.clone()], &settings, lang, false),
+            "CodexBar\nCursor: Grok Bot 42%"
+        );
+        assert_eq!(
+            build_tooltip(&[cursor], &Settings::default(), lang, false),
+            "CodexBar\nCursor: 30%"
         );
     }
 

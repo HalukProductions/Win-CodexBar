@@ -227,6 +227,83 @@ describe("MenuBarMetricSection", () => {
     expect(screen.queryByRole("option", { name: "MetricTokensPerMinute" })).toBeNull();
   });
 
+  it("offers a declared named allowance before the first refresh and saves it", () => {
+    const onChange = vi.fn();
+    const cursor: ProviderDetail = {
+      ...provider(false),
+      id: "cursor",
+      displayName: "Cursor",
+      hasSnapshot: false,
+      namedExtraMetrics: [{ id: "cursor-grok-bot", label: "Grok Bot" }],
+    };
+    render(
+      <MenuBarMetricSection
+        provider={cursor}
+        providerMetrics={{}}
+        disabled={false}
+        t={(key) => key}
+        onChange={onChange}
+      />,
+    );
+
+    expect(optionNames()).toEqual([
+      "Automatic",
+      "ProviderSessionLabel",
+      "ExtraUsage",
+      "Grok Bot",
+    ]);
+    fireEvent.change(screen.getByRole("combobox"), {
+      target: { value: "extra:cursor-grok-bot" },
+    });
+    expect(onChange).toHaveBeenCalledWith({
+      providerMetrics: { cursor: "extra:cursor-grok-bot" },
+    });
+  });
+
+  it("selects a saved named allowance and keeps a retired one readable", () => {
+    const cursor: ProviderDetail = {
+      ...provider(false),
+      id: "cursor",
+      displayName: "Cursor",
+      namedExtraMetrics: [{ id: "cursor-grok-bot", label: "Grok Bot" }],
+    };
+    const { rerender } = render(
+      <MenuBarMetricSection
+        provider={cursor}
+        providerMetrics={{ cursor: "extra:cursor-grok-bot" }}
+        disabled={false}
+        t={(key) => key}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("combobox")).toHaveValue("extra:cursor-grok-bot");
+
+    rerender(
+      <MenuBarMetricSection
+        provider={cursor}
+        providerMetrics={{ cursor: "extra:cursor-retired" }}
+        disabled={false}
+        t={(key) => key}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("combobox")).toHaveValue("extra:cursor-retired");
+    expect(screen.getByRole("option", { name: "cursor-retired" })).toBeInTheDocument();
+  });
+
+  it("never offers another provider's named allowance", () => {
+    render(
+      <MenuBarMetricSection
+        provider={provider()}
+        providerMetrics={{}}
+        disabled={false}
+        t={(key) => key}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("option", { name: "Grok Bot" })).toBeNull();
+  });
+
   it("hides the picker for Aixy, which offers only Automatic", () => {
     const aixy = provider();
     aixy.id = "aixy";
