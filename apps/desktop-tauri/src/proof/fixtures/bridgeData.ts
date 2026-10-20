@@ -1,5 +1,7 @@
 import type {
   AppInfoBridge,
+  CodexSessionToolActivity,
+  CodexWorkspacesSessionUsage,
   CostCoverageCounts,
   CurrencyRatesSnapshot,
   HooksConfigSnapshot,
@@ -161,7 +163,11 @@ export function providerChartData(
   };
 }
 
-export function spendContract(providerId: string, reportingPeriod: string): SpendContract {
+export function spendContract(
+  providerId: string,
+  reportingPeriod: string,
+  conversations: CodexWorkspacesSessionUsage[] = [],
+): SpendContract {
   return {
     providerId,
     historyDays: 30,
@@ -179,15 +185,36 @@ export function spendContract(providerId: string, reportingPeriod: string): Spen
       cacheCreationTokens: null,
       reasoningTokens: null,
     },
-    conversationCount: 0,
+    conversationCount: conversations.length,
     models: [],
     projects: [],
-    conversations: [],
+    conversations,
     daily: [],
     hourlyActivity: [],
     projectSourceStatus: null,
     customPricingActive: false,
     imports: [],
+  };
+}
+
+/** Mirrors `get_codex_session_tool_activity`, including its Hide personal information redaction. */
+export function codexSessionToolActivity(
+  scenario: ProofScenario,
+  sessionId: string,
+): CodexSessionToolActivity {
+  const found = scenario.codexConversations?.find((conversation) => conversation.session.id === sessionId);
+  const activity = found?.toolActivity ?? {
+    sessionId,
+    operations: [],
+    ignoredRecordCount: 0,
+    isPartial: false,
+    redacted: false,
+  };
+  if (!scenario.settings.hidePersonalInfo) return activity;
+  return {
+    ...activity,
+    redacted: true,
+    operations: activity.operations.map((operation) => ({ ...operation, name: operation.kind, preview: null })),
   };
 }
 
@@ -218,7 +245,11 @@ export function usageSpendSummary(scenario: ProofScenario, now: Date): UsageSpen
   });
   return {
     rows,
-    contract: spendContract("all", reportingPeriod),
+    contract: spendContract(
+      "all",
+      reportingPeriod,
+      (scenario.codexConversations ?? []).map((conversation) => conversation.session),
+    ),
     reportingPeriod,
     reportingDay: dayKey(now, 0),
     dashboardTimezone: "UTC",

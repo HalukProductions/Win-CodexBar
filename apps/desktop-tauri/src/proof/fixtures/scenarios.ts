@@ -3,6 +3,9 @@ import type {
   CodexAccount,
   CodexAccountsStateBridge,
   CodexAccountUsageSnapshot,
+  CodexSessionToolActivity,
+  CodexToolOperation,
+  CodexWorkspacesSessionUsage,
   ProviderCatalogEntry,
   ProviderUsageSnapshot,
   SettingsSnapshot,
@@ -23,6 +26,7 @@ export const PROOF_SCENARIO_NAMES = [
   "errors",
   "empty",
   "claude-plan-hidden",
+  "codex-tool-activity",
 ] as const;
 
 export type ProofScenarioName = (typeof PROOF_SCENARIO_NAMES)[number];
@@ -39,6 +43,14 @@ export interface ProofScenario {
   localSpend: LocalSpendFixture[];
   /** Claude token accounts; absent means Claude offers no token accounts. */
   claudeTokenAccounts?: TokenAccountBridge[];
+  /** Codex conversations in the spend contract, each with its tool activity. */
+  codexConversations?: ProofCodexConversation[];
+}
+
+export interface ProofCodexConversation {
+  session: CodexWorkspacesSessionUsage;
+  /** Unredacted; the router removes names and previews under Hide personal information. */
+  toolActivity: CodexSessionToolActivity;
 }
 
 export interface LocalSpendFixture {
@@ -371,12 +383,99 @@ function claudePlanHiddenScenario(now: Date): ProofScenario {
   };
 }
 
+function toolOperation(
+  now: Date,
+  index: number,
+  overrides: Partial<CodexToolOperation>,
+): CodexToolOperation {
+  return {
+    turnId: "proof-turn-1",
+    itemId: `proof-item-${index}`,
+    kind: "command",
+    name: "shell",
+    preview: null,
+    completedAt: isoBefore(now, 40 + index * 3),
+    outcome: "completed",
+    exitCode: 0,
+    durationMilliseconds: 420,
+    timing: "native",
+    needsAttention: false,
+    isSlow: false,
+    ...overrides,
+  };
+}
+
+function codexToolActivityConversation(now: Date): ProofCodexConversation {
+  const sessionId = "proof-session-tools";
+  const operations = [
+    toolOperation(now, 1, { preview: "pnpm test --run", durationMilliseconds: 48_200, isSlow: true }),
+    toolOperation(now, 2, {
+      preview: "cargo clippy --all-targets",
+      outcome: "nonzeroExit",
+      exitCode: 101,
+      durationMilliseconds: 12_900,
+      needsAttention: true,
+      isSlow: true,
+    }),
+    toolOperation(now, 3, {
+      kind: "mcp",
+      name: "docs/search",
+      preview: "{\"query\":\"proof harness\"}",
+      outcome: "toolError",
+      exitCode: null,
+      durationMilliseconds: 870,
+      needsAttention: true,
+    }),
+    toolOperation(now, 4, {
+      kind: "fileChange",
+      name: "fileChange",
+      exitCode: null,
+      durationMilliseconds: 2_400,
+      timing: "recordedInterval",
+    }),
+    toolOperation(now, 5, { preview: "git status --short", durationMilliseconds: 95 }),
+    toolOperation(now, 6, {
+      kind: "webSearch",
+      name: "webSearch",
+      outcome: "unknown",
+      exitCode: null,
+      durationMilliseconds: null,
+      timing: null,
+    }),
+  ];
+  return {
+    session: {
+      id: sessionId,
+      projectId: "proof-project",
+      displayTitle: "Fix the proof harness",
+      cwd: null,
+      startedAt: isoBefore(now, 120),
+      latestActivity: isoBefore(now, 40),
+      totals: { inputTokens: 182_000, cachedInputTokens: 96_000, outputTokens: 14_500, totalTokens: 196_500 },
+      costEstimate: { knownUsd: 1.42, unknownTokens: 0 },
+      topModel: "gpt-5-codex",
+      turnPerformance: null,
+    },
+    toolActivity: { sessionId, operations, ignoredRecordCount: 1, isPartial: true, redacted: false },
+  };
+}
+
+/** Default data plus one Codex conversation with native tool operations (upstream #4363). */
+function codexToolActivityScenario(now: Date): ProofScenario {
+  return {
+    ...defaultScenario(now),
+    name: "codex-tool-activity",
+    codexConversations: [codexToolActivityConversation(now)],
+  };
+}
+
 const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   default: defaultScenario,
   "two-codex-accounts": twoCodexAccountsScenario,
   errors: errorsScenario,
   empty: emptyScenario,
   "claude-plan-hidden": claudePlanHiddenScenario,
+  "codex-tool-activity": codexToolActivityScenario,
 };
 
 export function isProofScenarioName(value: string): value is ProofScenarioName {

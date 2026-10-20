@@ -756,6 +756,48 @@ export interface CodexWorkspacesSessionUsage {
   turnPerformance: CodexWorkspacesTurnPerformance | null;
 }
 
+export type CodexToolOperationKind =
+  | "command"
+  | "mcp"
+  | "dynamic"
+  | "fileChange"
+  | "webSearch"
+  | "image"
+  | "extensionItem";
+
+export type CodexToolOperationOutcome = "completed" | "nonzeroExit" | "toolError" | "declined" | "unknown";
+
+/** Native operations carry their own duration; recorded intervals are labeled. */
+export type CodexToolOperationTiming = "native" | "recordedInterval";
+
+/** One native Codex tool operation (upstream #4363). */
+export interface CodexToolOperation {
+  turnId: string;
+  itemId: string;
+  kind: CodexToolOperationKind;
+  /** `server/tool`, `namespace/tool`, the extension kind, or the item type. */
+  name: string;
+  preview: string | null;
+  completedAt: string;
+  outcome: CodexToolOperationOutcome;
+  exitCode: number | null;
+  /** `null` when no timing was recorded, which is distinct from zero. */
+  durationMilliseconds: number | null;
+  timing: CodexToolOperationTiming | null;
+  needsAttention: boolean;
+  isSlow: boolean;
+}
+
+/** Tool operations of one conversation, newest first (get_codex_session_tool_activity). */
+export interface CodexSessionToolActivity {
+  sessionId: string;
+  operations: CodexToolOperation[];
+  ignoredRecordCount: number;
+  isPartial: boolean;
+  /** Names and previews were removed for Hide personal information. */
+  redacted: boolean;
+}
+
 export interface CodexWorkspacesProjectUsage {
   id: string;
   displayName: string;

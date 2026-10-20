@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   BootstrapState,
+  CodexSessionToolActivity,
   CurrentSurfaceState,
   LocaleStrings,
   ProviderDetail,
@@ -43,6 +44,26 @@ describe("proof router", () => {
 
     const surface = router.handle("get_current_surface_state") as CurrentSurfaceState;
     expect(surface.mode).toBe("trayPanel");
+  });
+
+  it("serves a conversation's tool activity and redacts it under Hide personal information", () => {
+    const router = routerFor("codex-tool-activity", "settings");
+    const args = { sessionId: "proof-session-tools", historyDays: 30 };
+
+    const plain = router.handle("get_codex_session_tool_activity", args) as CodexSessionToolActivity;
+    expect(plain.redacted).toBe(false);
+    expect(plain.operations.map((operation) => operation.preview)).toContain("pnpm test --run");
+
+    router.handle("update_settings", { patch: { hidePersonalInfo: true } });
+    const hidden = router.handle("get_codex_session_tool_activity", args) as CodexSessionToolActivity;
+    expect(hidden.redacted).toBe(true);
+    expect(hidden.operations.every((operation) => operation.preview === null)).toBe(true);
+    expect(hidden.operations.every((operation) => operation.name === operation.kind)).toBe(true);
+
+    const unknown = router.handle("get_codex_session_tool_activity", {
+      sessionId: "missing",
+    }) as CodexSessionToolActivity;
+    expect(unknown.operations).toEqual([]);
   });
 
   it("keeps each provider's identity on its own snapshot", () => {

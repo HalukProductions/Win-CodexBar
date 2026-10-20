@@ -13,6 +13,7 @@ import {
 } from "../surfaces/settings/settingsTabs";
 import type { ProofScenario } from "./fixtures/scenarios";
 import {
+  codexSessionToolActivity,
   proofAppInfo,
   proofCurrencyRates,
   proofHooksConfig,
@@ -311,6 +312,8 @@ export function createProofRouter(
     list_jetbrains_detected_ides: () => [],
     get_kiro_status: () => ({ available: false, hint: null }),
     get_codex_workspaces_snapshot: () => null,
+    get_codex_session_tool_activity: (args) =>
+      codexSessionToolActivity(current(), stringArg(args, "sessionId")),
     get_safe_diagnostics: () => "Proof build: mocked IPC, no diagnostics collected.",
     // Window and shell side effects are no-ops in a browser.
     dismiss_tray_panel: () => null,

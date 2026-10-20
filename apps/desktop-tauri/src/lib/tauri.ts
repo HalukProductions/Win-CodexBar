@@ -41,6 +41,7 @@ import type {
   SessionFocusResult,
   TrayVisibilityStatusDto,
   UsageSpendSummary,
+  CodexSessionToolActivity,
   CodexAccount,
   CodexAccountUsageSnapshot,
   CodexAccountsStateBridge,
@@ -325,6 +326,17 @@ export function getUsageSpendSummary(options?: { period?: string; forceRefresh?:
   return invoke<UsageSpendSummary>("get_usage_spend_summary", {
     period: options?.period ?? null,
     forceRefresh: options?.forceRefresh ?? null,
+  });
+}
+
+/** Native tool operations of one Codex conversation, read on demand. */
+export function getCodexSessionToolActivity(
+  sessionId: string,
+  historyDays?: number,
+): Promise<CodexSessionToolActivity> {
+  return invoke<CodexSessionToolActivity>("get_codex_session_tool_activity", {
+    sessionId,
+    historyDays: historyDays ?? null,
   });
 }
 
