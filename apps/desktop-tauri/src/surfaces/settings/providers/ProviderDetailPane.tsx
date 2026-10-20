@@ -533,6 +533,7 @@ export function ProviderDetailPane({
             resetTimeRelative={resetTimeRelative}
             claudeSwapEnabled={settings.claudeSwapEnabled ?? false}
             claudeSwapExecutablePath={settings.claudeSwapExecutablePath ?? ""}
+            claudeSwapSource={settings.claudeSwapSource ?? "claude-swap"}
           />
         )}
         {detail.id === "grok" && (

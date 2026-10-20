@@ -193,6 +193,56 @@ describe("OptionsSection", () => {
     expect(onSettingsChange).toHaveBeenLastCalledWith({ claudeSwapExecutablePath: "D:/bin/cswap.exe" });
   });
 
+  it("shows the Source picker only while claude-swap is on and writes the chosen source", async () => {
+    const onSettingsChange = vi.fn();
+    const { rerender } = render(
+      <OptionsSection
+        detail={detail("claude")}
+        settings={settings()}
+        disabled={false}
+        t={t}
+        onSettingsChange={onSettingsChange}
+        onReload={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("combobox", { name: "ClaudeSwapSource" })).toBeNull();
+
+    rerender(
+      <OptionsSection
+        detail={detail("claude")}
+        settings={settings({ claudeSwapEnabled: true })}
+        disabled={false}
+        t={t}
+        onSettingsChange={onSettingsChange}
+        onReload={vi.fn()}
+      />,
+    );
+    const picker = screen.getByRole("combobox", { name: "ClaudeSwapSource" });
+    expect(picker).toHaveValue("claude-swap");
+    expect(Array.from((picker as HTMLSelectElement).options).map((o) => o.textContent)).toEqual([
+      "claude-swap",
+      "tcr",
+    ]);
+    expect(screen.getByText("ClaudeSwapHint")).toBeTruthy();
+    await act(async () => fireEvent.change(picker, { target: { value: "tcr" } }));
+    expect(onSettingsChange).toHaveBeenLastCalledWith({ claudeSwapSource: "tcr" });
+
+    rerender(
+      <OptionsSection
+        detail={detail("claude")}
+        settings={settings({ claudeSwapEnabled: true, claudeSwapSource: "tcr" })}
+        disabled={false}
+        t={t}
+        onSettingsChange={onSettingsChange}
+        onReload={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("combobox", { name: "ClaudeSwapSource" })).toHaveValue("tcr");
+    expect(screen.getByRole("textbox", { name: "ClaudeTcrExecutablePath" })).toBeTruthy();
+    expect(screen.getByText("ClaudeTcrHint")).toBeTruthy();
+    expect(screen.queryByText("ClaudeSwapHint")).toBeNull();
+  });
+
   it("offers Claude desktop app cookies only while the cookie source is Automatic", async () => {
     const onSettingsChange = vi.fn();
     const { rerender } = render(

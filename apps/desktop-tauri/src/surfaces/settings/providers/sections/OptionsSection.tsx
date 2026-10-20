@@ -1,11 +1,12 @@
 import { Fragment } from "react";
 import type {
+  ClaudeSwapAccountSource,
   ProviderDetail,
   SettingsSnapshot,
   SettingsUpdate,
 } from "../../../../types/bridge";
 import type { LocaleKey } from "../../../../i18n/keys";
-import { Field, SettingsGroup, Toggle } from "../../../../components/FormControls";
+import { Field, Select, SettingsGroup, Toggle } from "../../../../components/FormControls";
 import { AutoResumeSection } from "./AutoResumeSection";
 import { OptionalDetailsSection } from "./OptionalDetailsSection";
 import { ClaudeSwapPathField } from "./credentials/ClaudeSwapPathField";
@@ -26,6 +27,7 @@ export type OptionSettings = Pick<
   | "claudeAllowReadingClaudeCodeCredentials"
   | "claudeSwapEnabled"
   | "claudeSwapExecutablePath"
+  | "claudeSwapSource"
   | "claudeDesktopCookiesEnabled"
   | "disableKeychainAccess"
 >;
@@ -50,6 +52,8 @@ interface Props {
   /** Reload the provider detail after a provider-scoped command saved. */
   onReload: () => void;
 }
+
+const CLAUDE_SWAP_SOURCES: ClaudeSwapAccountSource[] = ["claude-swap", "tcr"];
 
 interface OptionRow {
   key: string;
@@ -135,7 +139,7 @@ function claudeRows(
     {
       key: "claude-swap",
       label: "ClaudeSwapEnable",
-      help: "ClaudeSwapHint",
+      help: settings.claudeSwapSource === "tcr" ? "ClaudeTcrHint" : "ClaudeSwapHint",
       checked: settings.claudeSwapEnabled ?? false,
       patch: (on) => ({ claudeSwapEnabled: on }),
     },
@@ -203,14 +207,30 @@ export function OptionsSection({
               onChange={(on) => onSettingsChange(row.patch(on))}
             />
           </Field>
-          {/* macOS attaches the cswap path to this toggle as an inline field. */}
+          {/* macOS attaches the executable path to this toggle as an inline
+              field and shows the Source picker only while the toggle is on. */}
           {row.key === "claude-swap" && row.checked && (
-            <ClaudeSwapPathField
-              value={settings.claudeSwapExecutablePath ?? ""}
-              disabled={disabled}
-              t={t}
-              onSettingsChange={onSettingsChange}
-            />
+            <>
+              <ClaudeSwapPathField
+                value={settings.claudeSwapExecutablePath ?? ""}
+                source={settings.claudeSwapSource ?? "claude-swap"}
+                disabled={disabled}
+                t={t}
+                onSettingsChange={onSettingsChange}
+              />
+              <Field label={t("ClaudeSwapSource")}>
+                <Select
+                  variant="menu"
+                  value={settings.claudeSwapSource ?? "claude-swap"}
+                  // Tool names, not prose: they stay untranslated in every locale.
+                  options={CLAUDE_SWAP_SOURCES.map((source) => ({ value: source, label: source }))}
+                  disabled={disabled}
+                  onChange={(value) =>
+                    onSettingsChange({ claudeSwapSource: value as ClaudeSwapAccountSource })
+                  }
+                />
+              </Field>
+            </>
           )}
         </Fragment>
       ))}
