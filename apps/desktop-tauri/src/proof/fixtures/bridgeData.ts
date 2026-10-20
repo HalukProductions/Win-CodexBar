@@ -100,6 +100,8 @@ export function providerDetail(
     secondaryLabel: snapshot?.secondaryLabel ?? null,
     modelSpecific: snapshot?.modelSpecific ?? null,
     tertiary: snapshot?.tertiary ?? null,
+    // Mirrors `Provider::reports_tokens_per_minute`: only OpenAI API reports throughput.
+    tokensPerMinuteMetric: providerId === "openaiapi",
     extraRateWindows: snapshot?.extraRateWindows ?? [],
     usageItems: [],
     hiddenUsageItemIds: [],

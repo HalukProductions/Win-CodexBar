@@ -1194,6 +1194,13 @@ locale_keys! {
     OpenAiTpmEmpty,
     OpenAiTpmModels,
     OpenAiTpmLimitLine,
+    OpenAiChartModeLabel,
+    OpenAiChartModeLive,
+    OpenAiChartModeSpend,
+    OpenAiTpmHoverMinute,
+    OpenAiTpmReporting,
+    OpenAiSpendChartTitle,
+    OpenAiSpendHoverDay,
     OpenAiLimitsTitle,
     OpenAiLimitsHelp,
     OpenAiLimitModelLabel,
@@ -1536,6 +1543,9 @@ locale_keys! {
     MistralMonthlySpendHelper,
     // Mistral Monthly Plan menu bar metric (upstream 0.70.0 #4072)
     MetricMonthlyPlan,
+    // OpenAI Tokens/min menu bar metric (upstream 0.75.0 #4495)
+    MetricTokensPerMinute,
+    TrayTokensPerMinuteUnavailable,
 
     // Menu cost-summary display style (#2976)
     CostSummaryDisplayStyle,
