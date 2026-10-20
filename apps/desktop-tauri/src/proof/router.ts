@@ -228,7 +228,7 @@ export function createProofRouter(
     refresh_providers_if_stale: () => null,
     get_current_surface_state: surfaceState,
     set_surface_mode: (args) => args.mode ?? "trayPanel",
-    get_locale_strings: () => englishLocaleStrings(),
+    get_locale_strings: () => englishLocaleStrings(current().localeOverrides),
     set_ui_language: () => null,
     get_available_languages: () => PROOF_LANGUAGES,
     get_currency_rates: (args) =>

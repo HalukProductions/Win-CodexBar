@@ -287,12 +287,10 @@
   min-width: 0;
 }
 
+/* Titles wrap to their full height (upstream #4193); values stay on one line. */
 .menu-surface--tray .card-dash__kpi-title {
   font: var(--mac-text-caption2);
   color: var(--mac-text-2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .menu-surface--tray .card-dash__kpi-value {

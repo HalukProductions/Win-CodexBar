@@ -196,7 +196,7 @@ URL parameters:
 | --- | --- | --- |
 | `window` | `main`, `settings`, `flyout`, `floatbar` | `main` |
 | `tab` | any settings tab id, or `providers:<id>` | `general` |
-| `fixture` | `default`, `two-codex-accounts`, `errors`, `empty`, `claude-plan-hidden` | `default` |
+| `fixture` | `default`, `two-codex-accounts`, `errors`, `empty`, `claude-plan-hidden`, `kpi-long-titles` | `default` |
 | `theme` | `dark`, `light`, `auto` (overrides the fixture) | fixture value |
 
 Example: `proof.html?window=settings&tab=providers:codex&fixture=two-codex-accounts`.
@@ -248,6 +248,7 @@ exception, or an unhandled backend command.
 | --- | --- |
 | `expectText` / `expectNoText` | page text (string or list), polled up to 8 s |
 | `expectSelector` | an element exists |
+| `expectNoOverflow` | a selector's matches fit their boxes horizontally, so no text is clipped (wrapped text passes, `nowrap` + ellipsis fails) |
 | `expectTheme` | `<html data-theme>` |
 | `click` | `{ selector, label, near? }`: a real mouse click on the element whose aria-label or text equals `label`; `near` picks the match closest to that text |
 | `expectCall` | `{ cmd, args? }`: the frontend invoked that backend command (args are a subset match) |
