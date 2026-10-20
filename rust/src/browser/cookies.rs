@@ -112,14 +112,21 @@ pub struct CookieRequestScope {
 
 impl CookieRequestScope {
     /// Whether a cookie stored under `host_key` is sent to the scope's host.
+    ///
+    /// A leading dot marks a domain cookie, which a browser sends to the
+    /// domain and its subdomains. Without the dot the cookie is host-only and
+    /// is sent only on an exact host match, so a cookie stored as
+    /// `google.com` must not leak to `gemini.google.com`.
     pub fn applies_to(&self, host_key: &str) -> bool {
-        let stored = host_key
-            .trim()
-            .trim_start_matches('.')
-            .trim_end_matches('.')
-            .to_ascii_lowercase();
         let host = self.host.to_ascii_lowercase();
-        !stored.is_empty() && (host == stored || host.ends_with(&format!(".{stored}")))
+        let trimmed = host_key.trim();
+        if let Some(dotted) = trimmed.strip_prefix('.') {
+            let domain = dotted.trim_end_matches('.').to_ascii_lowercase();
+            !domain.is_empty() && (host == domain || host.ends_with(&format!(".{domain}")))
+        } else {
+            let stored = trimmed.trim_end_matches('.').to_ascii_lowercase();
+            !stored.is_empty() && host == stored
+        }
     }
 
     /// Keep only the cookies sent to the scope's host.
@@ -795,7 +802,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn request_scope_keeps_host_and_parent_cookies_only() {
+    fn request_scope_keeps_host_and_dotted_parent_cookies_only() {
         let scope = CookieRequestScope {
             scan_domain: "example.com",
             host: "app.example.com",
@@ -803,11 +810,31 @@ mod tests {
         assert!(scope.applies_to("app.example.com"));
         assert!(scope.applies_to(".app.example.com"));
         assert!(scope.applies_to(".example.com"));
-        assert!(scope.applies_to("EXAMPLE.COM."));
+        assert!(!scope.applies_to("example.com"));
+        assert!(!scope.applies_to("EXAMPLE.COM."));
         assert!(!scope.applies_to("mail.example.com"));
         assert!(!scope.applies_to("deep.app.example.com"));
         assert!(!scope.applies_to("badexample.com"));
         assert!(!scope.applies_to(""));
+    }
+
+    #[test]
+    fn host_only_cookie_is_not_sent_to_subdomains() {
+        let subdomain = CookieRequestScope {
+            scan_domain: "example.com",
+            host: "app.example.com",
+        };
+        // A host-only cookie (stored without a leading dot) is sent to the
+        // exact host only; a browser would not send it to a subdomain.
+        assert!(!subdomain.applies_to("example.com"));
+        assert!(subdomain.applies_to(".example.com"));
+
+        let exact = CookieRequestScope {
+            scan_domain: "example.com",
+            host: "example.com",
+        };
+        assert!(exact.applies_to("example.com"));
+        assert!(exact.applies_to(".example.com"));
     }
 
     #[test]

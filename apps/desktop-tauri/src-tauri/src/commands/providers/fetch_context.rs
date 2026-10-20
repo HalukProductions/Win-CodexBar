@@ -308,6 +308,11 @@ pub(crate) fn build_fetch_context(
     }
 }
 
+/// Unscoped first-browser cookie read shared by both call sites above.
+/// Gemini never reaches this path: it owns browser cookie resolution
+/// (`owns_browser_cookie_resolution`), so `defer_provider_browser_cookie_lookup`
+/// suppresses this lookup and its web source reads cookies through
+/// `CookieRequestScope` inside the provider instead.
 fn browser_cookie_header(id: ProviderId, settings: &Settings) -> Option<String> {
     provider_cookie_domain(id, settings).and_then(|domain| {
         codexbar::browser::cookies::get_cookie_header(domain)
