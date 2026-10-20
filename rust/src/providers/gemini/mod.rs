@@ -53,4 +53,10 @@ impl Provider for GeminiProvider {
     fn available_sources(&self) -> Vec<SourceMode> {
         vec![SourceMode::Auto, SourceMode::Cli]
     }
+
+    // Pro (primary) outranks Flash (model-specific); a fuller Flash quota
+    // must not replace the Pro tier unless a tier is exhausted.
+    fn automatic_metric_follows_lane_order(&self) -> bool {
+        true
+    }
 }

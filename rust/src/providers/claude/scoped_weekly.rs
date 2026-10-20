@@ -6,6 +6,9 @@ use crate::core::{NamedRateWindow, RateWindow};
 
 use super::cli_reset::slug_claude_model;
 
+/// Id prefix shared by every model-scoped weekly window (`claude-weekly-scoped-<model>`).
+pub(super) const SCOPED_WEEKLY_ID_PREFIX: &str = "claude-weekly-scoped-";
+
 #[derive(Debug, Deserialize)]
 pub(super) struct ScopedWeeklyLimit {
     kind: Option<String>,
@@ -56,7 +59,7 @@ pub(super) fn scoped_weekly_windows(limits: &[ScopedWeeklyLimit]) -> Vec<NamedRa
             }
             let resets_at = limit_resets_at(limit);
             Some(NamedRateWindow::new(
-                format!("claude-weekly-scoped-{slug}"),
+                format!("{SCOPED_WEEKLY_ID_PREFIX}{slug}"),
                 format!("{title} only"),
                 RateWindow::with_details(percent, Some(7 * 24 * 60), resets_at, None),
             ))

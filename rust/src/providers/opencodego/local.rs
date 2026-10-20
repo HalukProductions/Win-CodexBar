@@ -132,6 +132,7 @@ impl LocalUsageSnapshot {
         // the data contract so CLI/React can present it without guessing.
         ProviderFetchResult::new(snap, super::LOCAL_ESTIMATE_SOURCE_LABEL)
             .with_non_authoritative_pace()
+            .with_estimated_quota()
     }
 }
 

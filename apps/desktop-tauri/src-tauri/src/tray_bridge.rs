@@ -12,7 +12,7 @@ use tauri::{AppHandle, Manager};
 use crate::shell;
 use crate::state::{AppState, TrayAnchor};
 use crate::tray_menu::{MenuState, TrayMenuEntry, build_tray_menu_with};
-use crate::tray_presentation::{TrayPresentationPlan, headline_window};
+use crate::tray_presentation::{TrayPresentationPlan, headline_status_label};
 
 #[derive(Debug, Clone, Copy)]
 struct MonitorScaleInfo {
@@ -450,9 +450,7 @@ fn build_tooltip(
             format!("{}: {} ({})", s.display_name, error_label, short)
         } else {
             let label = crate::tray_presentation::tokens_per_minute_status(s, settings, lang)
-                .unwrap_or_else(|| {
-                    crate::commands::compact_tray_status_label(headline_window(s), lang)
-                });
+                .unwrap_or_else(|| headline_status_label(s, lang));
             format!("{}: {}", s.display_name, truncate_tooltip_text(&label, 42))
         };
         lines.push(status);
@@ -660,6 +658,23 @@ mod tests {
         assert_eq!(
             tooltip,
             "CodexBar\nClaude: 13% • Resets in 2h 05m\nCodex: 8% • Resets in 4h 10m"
+        );
+    }
+
+    #[test]
+    fn tooltip_marks_an_estimated_quota_with_a_tilde() {
+        let mut estimated = fake_snapshot("opencodego", "OpenCode Go", 95.0);
+        estimated.quota_estimated = true;
+        let exact = fake_snapshot("opencodego", "OpenCode Go", 95.0);
+
+        let lang = codexbar::settings::Language::English;
+        assert_eq!(
+            build_tooltip(&[estimated], &Settings::default(), lang, false),
+            "CodexBar\nOpenCode Go: ~95%"
+        );
+        assert_eq!(
+            build_tooltip(&[exact], &Settings::default(), lang, false),
+            "CodexBar\nOpenCode Go: 95%"
         );
     }
 

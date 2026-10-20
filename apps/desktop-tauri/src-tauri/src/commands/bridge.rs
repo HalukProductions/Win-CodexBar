@@ -390,6 +390,10 @@ pub struct ProviderUsageSnapshot {
     /// beside the windows. Tray-only; not sent to the frontend.
     #[serde(default = "default_pace_authoritative", skip_serializing)]
     pub pace_authoritative: bool,
+    /// The quota percentages are a local estimate (upstream
+    /// `dataConfidence == .estimated`); percent surfaces prefix them with `~`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub quota_estimated: bool,
     #[serde(default)]
     pub account_organization: Option<String>,
     #[serde(default)]
@@ -440,6 +444,7 @@ impl Default for ProviderUsageSnapshot {
             error_state: default_error_state(),
             pace: None,
             pace_authoritative: default_pace_authoritative(),
+            quota_estimated: false,
             account_organization: None,
             tray_status_label: None,
             fetch_duration_ms: None,
@@ -771,6 +776,7 @@ impl ProviderUsageSnapshot {
             error_state: codexbar::core::ProviderStateKind::Ready,
             pace,
             pace_authoritative: allows_pace,
+            quota_estimated: result.quota_estimated,
             account_organization: usage.account_organization.clone(),
             tray_status_label: None,
             fetch_duration_ms: None,
