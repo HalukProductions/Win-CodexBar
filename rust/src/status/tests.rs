@@ -154,6 +154,10 @@ fn status_sources_match_upstream_descriptors() {
         Some(StatusSource::Statuspage("https://status.claude.com"))
     );
     assert_eq!(
+        status_source(ProviderId::ClaudePlatform),
+        Some(StatusSource::Statuspage("https://status.claude.com"))
+    );
+    assert_eq!(
         status_source(ProviderId::Codex),
         Some(StatusSource::Statuspage("https://status.openai.com"))
     );
@@ -174,7 +178,7 @@ fn status_sources_match_upstream_descriptors() {
         .iter()
         .filter(|id| status_source(**id).is_some())
         .count();
-    assert_eq!(polled, 11);
+    assert_eq!(polled, 12);
 }
 
 #[test]

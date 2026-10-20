@@ -138,7 +138,7 @@ const FETCH_TIMEOUT: Duration = Duration::from_secs(10);
 pub fn status_source(provider: ProviderId) -> Option<StatusSource> {
     use StatusSource::{GoogleWorkspace, Statuspage};
     Some(match provider {
-        ProviderId::Claude => Statuspage("https://status.claude.com"),
+        ProviderId::Claude | ProviderId::ClaudePlatform => Statuspage("https://status.claude.com"),
         ProviderId::Codex | ProviderId::OpenAIApi => Statuspage("https://status.openai.com"),
         ProviderId::Copilot => Statuspage("https://www.githubstatus.com"),
         ProviderId::Cursor => Statuspage("https://status.cursor.com"),

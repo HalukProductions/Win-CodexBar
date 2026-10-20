@@ -365,7 +365,7 @@ async function runStep(page, step, ctx) {
     // `near` picks, among same-label matches, the one whose closest ancestor
     // containing that text is nearest (e.g. the Switch button of one account row).
     const { selector, label, near = null } = step.click;
-    const point = await page.eval(`(() => {
+    const locate = `(() => {
       const near = ${js(near)};
       const depth = (e) => {
         let d = 0;
@@ -381,7 +381,15 @@ async function runStep(page, step, ctx) {
       el.scrollIntoView({ block: "center" });
       const r = el.getBoundingClientRect();
       return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
-    })()`);
+    })()`;
+    // Targets can render after async fixture data (e.g. a count in a summary
+    // label), so wait for them like the expect* steps do.
+    const end = Date.now() + STEP_TIMEOUT_MS;
+    let point = await page.eval(locate);
+    while (!point && Date.now() <= end) {
+      await sleep(150);
+      point = await page.eval(locate);
+    }
     if (!point) throw new Error(`nothing to click: ${selector} labelled ${js(label)}`);
     for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) {
       await page.send("Input.dispatchMouseEvent", { type, ...point, button: "left", clickCount: 1 });

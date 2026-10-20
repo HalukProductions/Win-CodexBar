@@ -10,11 +10,13 @@ use super::{
 };
 use crate::providers::AerostackProvider;
 use crate::providers::AtlasCloudProvider;
+use crate::providers::ClaudePlatformProvider;
 use crate::providers::ClawRouterProvider;
 use crate::providers::CosmicProvider;
 use crate::providers::ExaProvider;
 use crate::providers::FalProvider;
 use crate::providers::FloraProvider;
+use crate::providers::FutureAgiProvider;
 use crate::providers::IBMBobProvider;
 use crate::providers::LangdockProvider;
 use crate::providers::LinkupProvider;
@@ -160,7 +162,9 @@ pub fn instantiate(id: ProviderId) -> Box<dyn Provider> {
         ProviderId::Parallel => Box::new(ParallelProvider::new()),
         ProviderId::Fal => Box::new(FalProvider::new()),
         ProviderId::Flora => Box::new(FloraProvider::new()),
+        ProviderId::FutureAgi => Box::new(FutureAgiProvider::new()),
         ProviderId::Munito => Box::new(MunitoProvider::new()),
+        ProviderId::ClaudePlatform => Box::new(ClaudePlatformProvider::new()),
     }
 }
 
@@ -279,7 +283,9 @@ pub fn pace_capability(id: ProviderId) -> ProviderPaceCapability {
         | ProviderId::Parallel
         | ProviderId::Fal
         | ProviderId::Flora
-        | ProviderId::Munito => ProviderPaceCapability::UNSUPPORTED,
+        | ProviderId::FutureAgi
+        | ProviderId::Munito
+        | ProviderId::ClaudePlatform => ProviderPaceCapability::UNSUPPORTED,
     }
 }
 
@@ -398,7 +404,9 @@ pub fn limit_reset_policy(id: ProviderId) -> ProviderLimitResetPolicy {
         | ProviderId::Parallel
         | ProviderId::Fal
         | ProviderId::Flora
-        | ProviderId::Munito => ProviderLimitResetPolicy::DEFAULT,
+        | ProviderId::FutureAgi
+        | ProviderId::Munito
+        | ProviderId::ClaudePlatform => ProviderLimitResetPolicy::DEFAULT,
     }
 }
 
@@ -515,7 +523,9 @@ pub(crate) fn cost_cli_extension_for(id: ProviderId) -> Option<&'static dyn Cost
         | ProviderId::Parallel
         | ProviderId::Fal
         | ProviderId::Flora
-        | ProviderId::Munito => None,
+        | ProviderId::FutureAgi
+        | ProviderId::Munito
+        | ProviderId::ClaudePlatform => None,
     }
 }
 

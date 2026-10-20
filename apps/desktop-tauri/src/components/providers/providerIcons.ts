@@ -12,6 +12,7 @@ import atlascloud from "./icons/ProviderIcon-atlascloud.svg?raw";
 import augment from "./icons/ProviderIcon-augment.svg?raw";
 import bedrock from "./icons/ProviderIcon-bedrock.svg?raw";
 import claude from "./icons/ProviderIcon-claude.svg?raw";
+import claudeplatform from "./icons/ProviderIcon-claudeplatform.svg?raw";
 import codebuff from "./icons/ProviderIcon-codebuff.svg?raw";
 import coderabbit from "./icons/ProviderIcon-coderabbit.svg?raw";
 import codex from "./icons/ProviderIcon-codex.svg?raw";
@@ -39,6 +40,7 @@ import exa from "./icons/ProviderIcon-exa.svg?raw";
 import factory from "./icons/ProviderIcon-factory.svg?raw";
 import fal from "./icons/ProviderIcon-fal.svg?raw";
 import flora from "./icons/ProviderIcon-flora.svg?raw";
+import futureagi from "./icons/ProviderIcon-futureagi.svg?raw";
 import gemini from "./icons/ProviderIcon-gemini.svg?raw";
 import grok from "./icons/ProviderIcon-grok.svg?raw";
 import groq from "./icons/ProviderIcon-groq.svg?raw";
@@ -127,6 +129,7 @@ const RAW: Record<string, string> = {
   augment: tint(augment),
   bedrock: tint(bedrock),
   claude: tint(claude),
+  claudeplatform: tint(claudeplatform),
   codebuff: tint(codebuff),
   coderabbit: tint(coderabbit),
   codex: tint(codex),
@@ -154,6 +157,7 @@ const RAW: Record<string, string> = {
   factory: tint(factory),
   fal: tint(fal),
   flora: tint(flora),
+  futureagi: tint(futureagi),
   gemini: tint(gemini),
   grok: tint(grok),
   groq: tint(groq),
@@ -222,6 +226,7 @@ export const PROVIDER_ICON_REGISTRY: Record<string, ProviderIcon> = {
   aerostack:   { id: "aerostack",   brandColor: "#6366F1", fallbackLetter: "◆", svgPath: RAW.aerostack },
   augment:     { id: "augment",     brandColor: "#1aa049", fallbackLetter: "A", svgPath: RAW.augment },
   claude:      { id: "claude",      brandColor: "#cc7c5e", fallbackLetter: "◈", svgPath: RAW.claude },
+  claudeplatform: { id: "claudeplatform", brandColor: "#cc7c5e", fallbackLetter: "◈", svgPath: RAW.claudeplatform },
   pi:          { id: "pi",          brandColor: "#7c3aed", fallbackLetter: "P" },
   codebuff:    { id: "codebuff",    brandColor: "#00ff95", fallbackLetter: "B", svgPath: RAW.codebuff },
   coderabbit:  { id: "coderabbit",  brandColor: "#ff5c35", fallbackLetter: "C", svgPath: RAW.coderabbit },
@@ -244,6 +249,7 @@ export const PROVIDER_ICON_REGISTRY: Record<string, ProviderIcon> = {
   factory:     { id: "factory",     brandColor: "#ff6b35", fallbackLetter: "◎", svgPath: RAW.factory },
   fal:         { id: "fal",         brandColor: "#7C3AED", fallbackLetter: "F", svgPath: RAW.fal },
   flora:       { id: "flora",       brandColor: "#111111", fallbackLetter: "F", svgPath: RAW.flora },
+  futureagi:   { id: "futureagi",   brandColor: "#7857FC", fallbackLetter: "F", svgPath: RAW.futureagi },
   gemini:      { id: "gemini",      brandColor: "#ab87ea", fallbackLetter: "✦", svgPath: RAW.gemini },
   grok:        { id: "grok",        brandColor: "#10a37f", fallbackLetter: "G", svgPath: RAW.grok },
   groq:        { id: "groq",        brandColor: "#f56844", fallbackLetter: "G", svgPath: RAW.groq },
