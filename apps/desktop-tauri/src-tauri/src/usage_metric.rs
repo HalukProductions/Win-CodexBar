@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::cmp::Ordering;
 
 use chrono::{DateTime, Utc};
-use codexbar::core::{IconLane, ProviderId, UsagePace};
+use codexbar::core::{IconLane, NamedExtraMetric, ProviderId, UsagePace};
 use codexbar::settings::{MetricPreference, Settings};
 
 use crate::commands::{ProviderUsageSnapshot, RateWindowSnapshot};
@@ -172,6 +172,17 @@ fn preferred_window(
     now: DateTime<Utc>,
 ) -> Option<RateWindowSnapshot> {
     match preference {
+        // Upstream 0.73.0 (#4269): a declared allowance with no reading shows
+        // as unknown instead of borrowing another lane. An id the provider
+        // does not declare falls through like any unavailable choice.
+        MetricPreference::NamedExtra(id) => {
+            let declared = named_extra_metric(provider?, &id)?;
+            Some(
+                plan_window(snapshot, declared.id)
+                    .cloned()
+                    .unwrap_or_else(unknown_window),
+            )
+        }
         MetricPreference::Automatic => automatic_window(snapshot, provider, now),
         // A missing session is represented by an informational zero-percent
         // placeholder. Fall through to Automatic instead of displaying it.
@@ -218,6 +229,22 @@ pub(crate) fn monthly_plan_window(
     provider: Option<ProviderId>,
 ) -> Option<&RateWindowSnapshot> {
     plan_window(snapshot, provider.and_then(monthly_plan_window_id)?)
+}
+
+/// The provider-declared named extra allowance with this window id.
+pub(crate) fn named_extra_metric(provider: ProviderId, id: &str) -> Option<NamedExtraMetric> {
+    codexbar::core::instantiate_provider(provider)
+        .named_extra_metrics()
+        .iter()
+        .find(|metric| metric.id == id)
+        .copied()
+}
+
+fn unknown_window() -> RateWindowSnapshot {
+    RateWindowSnapshot {
+        is_informational: true,
+        ..Default::default()
+    }
 }
 
 fn monthly_plan_window_id(provider: ProviderId) -> Option<&'static str> {

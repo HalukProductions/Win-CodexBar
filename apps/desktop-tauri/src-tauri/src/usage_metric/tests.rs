@@ -148,6 +148,77 @@ fn cursor_automatic_uses_semantic_monthly_lane_and_keeps_grok_bot_explicit() {
     );
 }
 
+fn grok_bot_snapshot(used_percent: Option<f64>) -> ProviderUsageSnapshot {
+    let mut snapshot = snapshot();
+    snapshot.provider_id = "cursor".to_string();
+    snapshot.primary = window(85.0);
+    snapshot.secondary = Some(window(20.0));
+    snapshot.extra_rate_windows = used_percent
+        .map(|used| crate::commands::NamedRateWindowSnapshot {
+            id: "cursor-grok-bot".to_string(),
+            title: "Grok Bot".to_string(),
+            window: window(used),
+            fallback_lane: false,
+            icon_fallback: None,
+        })
+        .into_iter()
+        .collect();
+    snapshot
+}
+
+fn grok_bot_settings() -> Settings {
+    let mut settings = Settings::default();
+    settings.set_provider_metric(
+        ProviderId::Cursor,
+        MetricPreference::NamedExtra("cursor-grok-bot".to_string()),
+    );
+    settings
+}
+
+#[test]
+fn named_extra_preference_selects_its_window_including_a_real_zero() {
+    let settings = grok_bot_settings();
+    for used in [0.0, 42.0] {
+        let selected = selected_usage_window(&grok_bot_snapshot(Some(used)), &settings);
+        assert!(!selected.is_informational, "{used}");
+        assert_eq!(selected.used_percent, used);
+    }
+}
+
+#[test]
+fn named_extra_without_a_reading_stays_unknown_instead_of_borrowing_a_lane() {
+    let selected = selected_usage_window(&grok_bot_snapshot(None), &grok_bot_settings());
+    assert!(selected.is_informational);
+    assert_eq!(selected.used_percent, 0.0);
+}
+
+#[test]
+fn undeclared_named_extra_falls_back_to_automatic() {
+    let mut settings = Settings::default();
+    settings.set_provider_metric(
+        ProviderId::Cursor,
+        MetricPreference::NamedExtra("cursor-retired-window".to_string()),
+    );
+    // Cursor's Automatic lane is the semantic monthly (secondary) lane.
+    assert_eq!(
+        selected_usage_window(&grok_bot_snapshot(Some(95.0)), &settings).used_percent,
+        20.0
+    );
+
+    // Another provider cannot select Cursor's allowance by id.
+    let mut codex = grok_bot_snapshot(Some(95.0));
+    codex.provider_id = "codex".to_string();
+    let mut settings = Settings::default();
+    settings.set_provider_metric(
+        ProviderId::Codex,
+        MetricPreference::NamedExtra("cursor-grok-bot".to_string()),
+    );
+    assert_eq!(
+        selected_usage_window(&codex, &settings).used_percent,
+        selected_usage_window(&codex, &Settings::default()).used_percent
+    );
+}
+
 #[test]
 fn kimi_monthly_only_snapshot_selects_the_total_usage_lane() {
     // Upstream 0.60.5 #3694: a Code API response may report only the
@@ -174,7 +245,7 @@ fn kimi_monthly_only_snapshot_selects_the_total_usage_lane() {
         MetricPreference::Weekly,
     ] {
         let mut settings = Settings::default();
-        settings.set_provider_metric(ProviderId::Kimi, preference);
+        settings.set_provider_metric(ProviderId::Kimi, preference.clone());
         let selected = selected_usage_window(&snapshot, &settings);
         assert!(!selected.is_informational, "{preference:?}");
         assert_eq!(selected.used_percent, 100.0, "{preference:?}");
@@ -786,7 +857,7 @@ fn claude_session_and_weekly_preferences_fall_back_to_the_scoped_weekly() {
     let snapshot = claude_scoped_only_snapshot();
     for preference in [MetricPreference::Session, MetricPreference::Weekly] {
         let mut settings = Settings::default();
-        settings.set_provider_metric(ProviderId::Claude, preference);
+        settings.set_provider_metric(ProviderId::Claude, preference.clone());
 
         assert_eq!(
             selected_usage_window(&snapshot, &settings).used_percent,

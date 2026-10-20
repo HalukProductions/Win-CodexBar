@@ -25,6 +25,15 @@ pub enum ManualEmptyCookiePolicy {
     FailClosedWeb,
 }
 
+/// A provider-declared extra rate window that can be the menu bar metric.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NamedExtraMetric {
+    /// The extra rate window id (`NamedRateWindow::id`).
+    pub id: &'static str,
+    /// Label used when the snapshot carries no title for the window.
+    pub label: &'static str,
+}
+
 /// Trait that all providers must implement
 #[allow(
     clippy::double_must_use,
@@ -156,6 +165,14 @@ pub trait Provider: Send + Sync {
     /// Plan metric.
     fn monthly_plan_window_id(&self) -> Option<&'static str> {
         None
+    }
+
+    /// Named extra allowances this provider publishes as extra rate windows
+    /// that may be chosen as the menu bar metric (upstream 0.73.0 #4269,
+    /// `menuBarMetrics.namedExtras`). Declared statically so the picker can
+    /// offer them before the first refresh. Empty means none.
+    fn named_extra_metrics(&self) -> &'static [NamedExtraMetric] {
+        &[]
     }
 
     /// Whether refreshes can carry per-minute token throughput, which offers

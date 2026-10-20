@@ -44,6 +44,9 @@ pub struct ProviderDetail {
     /// Offers the Tokens/min metric in the settings metric picker (upstream
     /// 0.75.0 #4495).
     pub tokens_per_minute_metric: bool,
+    /// Provider-declared named extra allowances offered as menu bar metrics
+    /// (upstream 0.73.0 #4269), available before the first refresh.
+    pub named_extra_metrics: Vec<NamedExtraMetricOption>,
     /// Metric picker label for the primary lane when it is not a session
     /// window (upstream `menuBarLayoutPrimaryLabel`).
     pub primary_metric_label: Option<&'static str>,
@@ -85,6 +88,15 @@ pub struct ProviderDetail {
     /// provider opted in to failing closed (`manual_empty_cookie_policy`).
     /// Drives the "No cookie header pasted." hint and the switch-to-Auto action.
     pub manual_cookie_missing: bool,
+}
+
+/// A named extra allowance the settings metric picker can offer.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NamedExtraMetricOption {
+    /// Extra rate window id; the picker value is `extra:<id>`.
+    pub id: &'static str,
+    pub label: &'static str,
 }
 
 /// Same decision the refresh path makes in `build_fetch_context`, gated on the
@@ -148,6 +160,14 @@ pub(crate) fn build_provider_detail(
         tertiary_label_key: metadata.tertiary_label_key,
         monthly_plan_window_id: provider.monthly_plan_window_id(),
         tokens_per_minute_metric: provider.reports_tokens_per_minute(),
+        named_extra_metrics: provider
+            .named_extra_metrics()
+            .iter()
+            .map(|metric| NamedExtraMetricOption {
+                id: metric.id,
+                label: metric.label,
+            })
+            .collect(),
         primary_metric_label: provider.menu_bar_primary_label(),
         extra_rate_windows: Vec::new(),
         usage_items: Vec::new(),

@@ -36,6 +36,12 @@ pub(crate) const PACE_CAPABILITY: crate::core::ProviderPaceCapability =
         crate::core::PaceWindowRule::WindowDurationPresent,
     );
 
+/// Grok Bot is Cursor's named extra allowance (upstream 0.73.0 #4269).
+const NAMED_EXTRA_METRICS: &[crate::core::NamedExtraMetric] = &[crate::core::NamedExtraMetric {
+    id: api::GROK_BOT_WINDOW_ID,
+    label: api::GROK_BOT_TITLE,
+}];
+
 /// Cursor provider for fetching AI usage limits
 pub struct CursorProvider {
     api: CursorApi,
@@ -239,6 +245,10 @@ impl Provider for CursorProvider {
         ProviderId::Cursor
     }
 
+    fn named_extra_metrics(&self) -> &'static [crate::core::NamedExtraMetric] {
+        NAMED_EXTRA_METRICS
+    }
+
     fn retains_last_good_on_transport_failure(&self) -> bool {
         true
     }
@@ -307,6 +317,19 @@ mod tests {
     use crate::core::{FetchContext, LastGoodFailurePolicy};
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::Duration;
+
+    #[test]
+    fn grok_bot_is_the_declared_named_extra_metric() {
+        let metrics = CursorProvider::new().named_extra_metrics();
+        assert_eq!(metrics.len(), 1);
+        assert_eq!(metrics[0].id, "cursor-grok-bot");
+        assert_eq!(metrics[0].label, "Grok Bot");
+        assert!(
+            crate::core::instantiate_provider(ProviderId::Codex)
+                .named_extra_metrics()
+                .is_empty()
+        );
+    }
 
     #[tokio::test]
     async fn cli_mode_does_not_return_unsupported_source() {

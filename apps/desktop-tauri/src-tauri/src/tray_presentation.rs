@@ -485,7 +485,8 @@ fn provider_status_label(
         );
     }
 
-    let label = tokens_per_minute_status(snapshot, settings, language)
+    let label = named_extra_status(snapshot, &preference, language)
+        .or_else(|| tokens_per_minute_status(snapshot, settings, language))
         .unwrap_or_else(|| headline_status_label(snapshot, language));
     (
         snapshot.provider_id.clone(),
@@ -506,6 +507,33 @@ pub(crate) fn headline_status_label(
     } else {
         label
     }
+}
+
+/// Tray status text for a named extra allowance metric (upstream 0.73.0
+/// #4269): the allowance's own label before its reading, and an en dash when
+/// the snapshot has no reading, so a real 0% never reads as unknown. `None`
+/// when the metric is not a named extra this provider declares.
+pub(crate) fn named_extra_status(
+    snapshot: &ProviderUsageSnapshot,
+    preference: &MetricPreference,
+    language: Language,
+) -> Option<String> {
+    let provider = ProviderId::from_cli_name(&snapshot.provider_id)?;
+    let declared = crate::usage_metric::named_extra_metric(provider, preference.named_extra_id()?)?;
+    let extra = snapshot
+        .extra_rate_windows
+        .iter()
+        .find(|extra| extra.id == declared.id);
+    let title = extra
+        .map(|extra| extra.title.as_str())
+        .filter(|title| !title.trim().is_empty())
+        .unwrap_or(declared.label);
+    let reading = extra
+        .map(|extra| &extra.window)
+        .filter(|window| !window.is_informational)
+        .map(|window| crate::commands::compact_tray_status_label(window, language))
+        .unwrap_or_else(|| "\u{2013}".to_string());
+    Some(format!("{title} {reading}"))
 }
 
 /// Tray status text for the Tokens/min metric: the latest reported minute

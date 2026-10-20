@@ -257,6 +257,8 @@ export interface ProviderDetail {
   monthlyPlanWindowId?: string | null;
   /** Offers the Tokens/min menu bar metric (upstream 0.75.0 #4495). */
   tokensPerMinuteMetric?: boolean;
+  /** Named extra allowances offered as menu bar metrics, e.g. Cursor's Grok Bot (upstream 0.73.0 #4269). */
+  namedExtraMetrics?: Array<{ id: string; label: string }>;
   /** Metric picker label for the primary lane when it is not a session window. */
   primaryMetricLabel?: string | null;
   extraRateWindows: Array<{

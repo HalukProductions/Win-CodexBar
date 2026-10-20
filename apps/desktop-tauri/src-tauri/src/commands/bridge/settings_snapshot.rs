@@ -148,7 +148,7 @@ pub struct SettingsSnapshot {
     openai_model_rate_limits: Vec<ModelRateLimitSnapshot>,
     disable_keychain_access: bool,
     wayfinder_gateway_url: String,
-    provider_metrics: std::collections::HashMap<String, &'static str>,
+    provider_metrics: std::collections::HashMap<String, String>,
     float_bar_enabled: bool,
     float_bar_opacity: u8,
     float_bar_scale: u8,
@@ -241,7 +241,7 @@ impl From<Settings> for SettingsSnapshot {
         let provider_metrics = settings
             .provider_metrics
             .into_iter()
-            .map(|(k, v)| (k, metric_preference_label(v)))
+            .map(|(k, v)| (k, metric_preference_label(&v)))
             .collect();
 
         Self {
@@ -453,33 +453,10 @@ pub(in crate::commands) fn parse_theme(s: &str) -> Option<ThemePreference> {
     }
 }
 
-fn metric_preference_label(pref: MetricPreference) -> &'static str {
-    match pref {
-        MetricPreference::Automatic => "automatic",
-        MetricPreference::Session => "session",
-        MetricPreference::Weekly => "weekly",
-        MetricPreference::Model => "model",
-        MetricPreference::Tertiary => "tertiary",
-        MetricPreference::Credits => "credits",
-        MetricPreference::ExtraUsage => "extraUsage",
-        MetricPreference::MonthlyPlan => "monthlyPlan",
-        MetricPreference::Average => "average",
-        MetricPreference::TokensPerMinute => "tokensPerMinute",
-    }
+fn metric_preference_label(pref: &MetricPreference) -> String {
+    pref.key().into_owned()
 }
 
 pub(in crate::commands) fn parse_metric_preference(s: &str) -> Option<MetricPreference> {
-    match s {
-        "automatic" => Some(MetricPreference::Automatic),
-        "session" => Some(MetricPreference::Session),
-        "weekly" => Some(MetricPreference::Weekly),
-        "model" => Some(MetricPreference::Model),
-        "tertiary" => Some(MetricPreference::Tertiary),
-        "credits" => Some(MetricPreference::Credits),
-        "extraUsage" | "extrausage" => Some(MetricPreference::ExtraUsage),
-        "monthlyPlan" | "monthlyplan" => Some(MetricPreference::MonthlyPlan),
-        "average" => Some(MetricPreference::Average),
-        "tokensPerMinute" | "tokensperminute" => Some(MetricPreference::TokensPerMinute),
-        _ => None,
-    }
+    MetricPreference::from_key(s)
 }

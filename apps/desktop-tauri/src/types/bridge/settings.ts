@@ -51,7 +51,9 @@ export type MetricPreference =
   | "extraUsage"
   | "monthlyPlan"
   | "average"
-  | "tokensPerMinute";
+  | "tokensPerMinute"
+  /** A provider-declared named extra allowance, by extra rate window id (upstream 0.73.0 #4269). */
+  | `extra:${string}`;
 
 export type Language =
   | "english"

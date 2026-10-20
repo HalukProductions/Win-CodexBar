@@ -104,6 +104,9 @@ export function providerDetail(
     tertiary: snapshot?.tertiary ?? null,
     // Mirrors `Provider::reports_tokens_per_minute`: only OpenAI API reports throughput.
     tokensPerMinuteMetric: providerId === "openaiapi",
+    // Mirrors `Provider::named_extra_metrics`: Cursor declares Grok Bot.
+    namedExtraMetrics:
+      providerId === "cursor" ? [{ id: "cursor-grok-bot", label: "Grok Bot" }] : [],
     extraRateWindows: snapshot?.extraRateWindows ?? [],
     usageItems: [],
     hiddenUsageItemIds: [],
