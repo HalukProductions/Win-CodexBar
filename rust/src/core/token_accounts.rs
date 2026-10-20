@@ -47,6 +47,9 @@ pub struct TokenAccountSupport {
     pub requires_manual_cookie_source: bool,
     /// Cookie name to use when normalizing (e.g., "sessionKey")
     pub cookie_name: Option<&'static str>,
+    /// Minimum pause between two accounts' refreshes, for providers whose
+    /// endpoint is rate limited per caller. `None` means no pause is needed.
+    pub minimum_delay_between_account_refreshes: Option<std::time::Duration>,
 }
 
 impl TokenAccountSupport {
@@ -58,6 +61,7 @@ impl TokenAccountSupport {
             injection: TokenInjection::CookieHeader,
             requires_manual_cookie_source: true,
             cookie_name: None,
+            minimum_delay_between_account_refreshes: None,
         }
     }
 
@@ -76,6 +80,7 @@ impl TokenAccountSupport {
             },
             requires_manual_cookie_source: false,
             cookie_name: None,
+            minimum_delay_between_account_refreshes: None,
         }
     }
 
@@ -231,12 +236,17 @@ impl TokenAccountSupport {
                 "Store multiple ClinePass API keys. Without one, CodexBar reads your existing Cline session (run cline auth) without copying it.",
                 "API key",
             )),
-            ProviderId::Neuralwatt => Some(Self::api_key(
-                "API keys",
-                "NEURALWATT_API_KEY",
-                "Store multiple Neuralwatt API keys.",
-                "API key",
-            )),
+            ProviderId::Neuralwatt => Some(Self {
+                minimum_delay_between_account_refreshes: Some(
+                    crate::providers::neuralwatt::MIN_DELAY_BETWEEN_ACCOUNT_REFRESHES,
+                ),
+                ..Self::api_key(
+                    "API keys",
+                    "NEURALWATT_API_KEY",
+                    "Store multiple Neuralwatt API keys.",
+                    "API key",
+                )
+            }),
             ProviderId::Grok => Some(Self {
                 title: "Grok credentials",
                 requires_manual_cookie_source: false,
