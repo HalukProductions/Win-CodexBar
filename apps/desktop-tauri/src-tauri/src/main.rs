@@ -273,6 +273,7 @@ fn main() {
             commands::add_token_account,
             commands::remove_token_account,
             commands::set_active_token_account,
+            commands::set_token_account_claude_config_dir,
             commands::get_app_info,
             commands::get_safe_diagnostics,
             commands::get_provider_chart_data,

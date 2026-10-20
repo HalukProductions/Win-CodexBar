@@ -36,6 +36,38 @@
       ]
     },
     {
+      "name": "tray-claude-reset-credits",
+      "query": "window=main&fixture=claude-reset-credits",
+      "size": [310, 1032],
+      "steps": [
+        { "click": { "selector": ".provider-grid__item", "label": "Claude" } },
+        { "expectText": ["claude.user@example.com", "Limit Reset Credits", "2 available"] },
+        { "screenshot": "tray-claude-reset-credits", "clip": "panel" }
+      ]
+    },
+    {
+      "name": "tray-claude-reset-credits-hidden",
+      "query": "window=main&fixture=claude-reset-credits-hidden",
+      "size": [310, 1032],
+      "steps": [
+        { "click": { "selector": ".provider-grid__item", "label": "Claude" } },
+        { "expectText": ["claude.user@example.com", "Plan renews: Dec 1, 2026"] },
+        { "expectNoText": ["Limit Reset Credits", "2 available"] },
+        { "screenshot": "tray-claude-reset-credits-hidden", "clip": "panel" }
+      ]
+    },
+    {
+      "name": "tray-claude-reset-credits-absent",
+      "query": "window=main&fixture=default",
+      "size": [310, 1032],
+      "steps": [
+        { "click": { "selector": ".provider-grid__item", "label": "Claude" } },
+        { "expectText": "claude.user@example.com" },
+        { "expectNoText": ["Limit Reset Credits", "2 available"] },
+        { "screenshot": "tray-claude-reset-credits-absent", "clip": "panel" }
+      ]
+    },
+    {
       "name": "tray-errors",
       "query": "window=main&fixture=errors",
       "size": [310, 1032],
@@ -141,6 +173,37 @@
         { "expectText": ": $" },
         { "expectSelector": "[data-testid=\"openai-spend-layer\"] rect.openai-tpm__bar--selected" },
         { "screenshot": "tray-openai-spend-inspect", "clip": "panel" }
+      ]
+    },
+    {
+      "name": "settings-claude-desktop-cookies",
+      "query": "window=settings&tab=providers:claude&fixture=default&theme=dark",
+      "size": [880, 620],
+      "steps": [
+        { "expectText": ["Use Claude desktop app cookies", "follow the account signed in to the Claude desktop app"] },
+        { "expectSelector": "option[value=\"claude-desktop\"]" },
+        { "expectCall": { "cmd": "list_detected_browsers", "args": { "providerId": "claude" } } },
+        { "click": { "selector": ".settings-field__label", "label": "Use Claude desktop app cookies" } },
+        { "screenshot": "settings-claude-desktop-cookies" }
+      ]
+    },
+    {
+      "name": "settings-claude-token-account-config-dir",
+      "query": "window=settings&tab=providers:claude&fixture=default&theme=dark",
+      "size": [880, 620],
+      "steps": [
+        { "click": { "selector": "summary", "label": "Token accounts1/2" } },
+        { "expectText": ["Claude config directory", "C:\\Users\\proof\\.claude-work", "Unavailable", "Choose folder…"] },
+        { "screenshot": "settings-claude-token-account-config-dir" },
+        { "click": { "selector": "button", "label": "Clear C:\\Users\\proof\\.claude-work" } },
+        {
+          "expectCall": {
+            "cmd": "set_token_account_claude_config_dir",
+            "args": { "providerId": "claude", "accountId": "00000000-0000-4000-8000-00000000c1a1", "directory": null }
+          }
+        },
+        { "expectNoText": ["C:\\Users\\proof\\.claude-work", "Unavailable"] },
+        { "screenshot": "settings-claude-token-account-config-dir-cleared" }
       ]
     },
     {

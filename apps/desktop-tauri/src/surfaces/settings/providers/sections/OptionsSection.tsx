@@ -26,13 +26,18 @@ export type OptionSettings = Pick<
   | "claudeAllowReadingClaudeCodeCredentials"
   | "claudeSwapEnabled"
   | "claudeSwapExecutablePath"
+  | "claudeDesktopCookiesEnabled"
   | "disableKeychainAccess"
 >;
+
+/** Cookie sources the backend treats as automatic for Claude web usage. */
+const AUTOMATIC_COOKIE_SOURCES = new Set(["auto", "browser", "web"]);
 
 interface Props {
   detail: Pick<
     ProviderDetail,
     | "id"
+    | "cookieSource"
     | "autoResumeAfterQuotaReset"
     | "autoResumeSupported"
     | "optionalDetailsEnabled"
@@ -105,8 +110,11 @@ function codexRows(settings: OptionSettings): OptionRow[] {
   return rows;
 }
 
-function claudeRows(settings: OptionSettings): OptionRow[] {
-  return [
+function claudeRows(
+  settings: OptionSettings,
+  cookieSource: string | null,
+): OptionRow[] {
+  const rows: OptionRow[] = [
     {
       key: "claude-code-credentials",
       label: "ProviderClaudeAllowReadingClaudeCodeCredentials",
@@ -132,6 +140,17 @@ function claudeRows(settings: OptionSettings): OptionRow[] {
       patch: (on) => ({ claudeSwapEnabled: on }),
     },
   ];
+  // The backend reads the desktop session only for the Automatic cookie source.
+  if (cookieSource !== null && AUTOMATIC_COOKIE_SOURCES.has(cookieSource)) {
+    rows.push({
+      key: "claude-desktop-cookies",
+      label: "ProviderClaudeDesktopCookies",
+      help: "ProviderClaudeDesktopCookiesHelp",
+      checked: settings.claudeDesktopCookiesEnabled ?? false,
+      patch: (on) => ({ claudeDesktopCookiesEnabled: on }),
+    });
+  }
+  return rows;
 }
 
 /**
@@ -150,7 +169,7 @@ export function OptionsSection({
     detail.id === "codex"
       ? codexRows(settings)
       : detail.id === "claude"
-        ? claudeRows(settings)
+        ? claudeRows(settings, detail.cookieSource)
         : [];
 
   return (

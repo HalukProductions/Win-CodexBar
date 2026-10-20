@@ -1,4 +1,7 @@
-use super::test_db::{insert_message, insert_step_finish, iso_ms, open_db, write_message_db};
+use super::test_db::{
+    create_session_message_table, insert_message, insert_session_message, insert_step_finish,
+    iso_ms, open_db, write_message_db,
+};
 use super::*;
 use crate::core::RateWindow;
 use chrono::Weekday;
@@ -419,6 +422,193 @@ fn daily_entries_group_cost_by_model_within_a_day() {
         buckets.iter().map(|b| (b.model.as_str(), b.cost)).collect();
     assert!((by_model["claude-sonnet-4-5"] - 4.0).abs() < 1e-6);
     assert!((by_model["gpt-5.1-codex"] - 2.0).abs() < 1e-6);
+}
+
+#[test]
+fn v2_session_messages_add_new_turns_without_double_counting_migrated_ones() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("opencode.db");
+    let conn = open_db(&db, false);
+    create_session_message_table(&conn);
+    let migrated_ms = iso_ms("2026-03-06T11:00:00.000Z");
+    // Migrated turn: present in both tables under one id, counted once via the legacy row.
+    insert_message(
+        &conn,
+        "migrated",
+        migrated_ms,
+        Some(3.0),
+        Some("claude-sonnet-4-5"),
+        None,
+    );
+    insert_session_message(
+        &conn,
+        "migrated",
+        migrated_ms,
+        3.0,
+        "claude-sonnet-4-5",
+        "opencode-go",
+        None,
+    );
+    // New v2-only opencode-go turn with recorded tokens: 10 + 5 + 1 + 4 + 0 = 20.
+    insert_session_message(
+        &conn,
+        "v2-new",
+        iso_ms("2026-03-06T12:00:00.000Z"),
+        2.0,
+        "gpt-5.1-codex",
+        "opencode-go",
+        Some(r#"{"input":10,"output":5,"reasoning":1,"cache":{"read":4,"write":0}}"#),
+    );
+    // Other providers never count toward OpenCode Go.
+    insert_session_message(
+        &conn,
+        "v2-other",
+        iso_ms("2026-03-06T13:00:00.000Z"),
+        7.0,
+        "gpt-5.1-codex",
+        "openrouter",
+        None,
+    );
+    drop(conn);
+
+    let now = a14_now_afternoon();
+    let rows = read_rows(&db).unwrap();
+    assert_eq!(rows.len(), 2, "{rows:?}");
+    let v2_new = rows
+        .iter()
+        .find(|row| row.model == "gpt-5.1-codex")
+        .expect("v2 turn row");
+    assert_eq!(v2_new.tokens.as_ref().map(|t| t.total), Some(20));
+
+    let buckets = daily_model_costs(&rows, now, 30);
+    let total: f64 = buckets.iter().map(|b| b.cost).sum();
+    assert!((total - 5.0).abs() < 1e-6, "total {total}");
+    assert_eq!(buckets.iter().map(|b| b.request_count).sum::<u32>(), 2);
+    let by_model: std::collections::HashMap<&str, f64> =
+        buckets.iter().map(|b| (b.model.as_str(), b.cost)).collect();
+    assert!((by_model["claude-sonnet-4-5"] - 3.0).abs() < 1e-6);
+    assert!((by_model["gpt-5.1-codex"] - 2.0).abs() < 1e-6);
+}
+
+#[test]
+fn v2_session_messages_join_step_finish_parts_path_without_double_counting() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("opencode.db");
+    // A `part` table selects the step-finish legacy arm alongside `session_message`.
+    let conn = open_db(&db, true);
+    create_session_message_table(&conn);
+    let migrated_ms = iso_ms("2026-03-06T11:00:00.000Z");
+    // Migrated turn: the $12 message cost must be ignored in favor of the $3 step-finish part,
+    // and the v2 copy under the same id must not be counted again.
+    insert_message(
+        &conn,
+        "migrated",
+        migrated_ms,
+        Some(12.0),
+        Some("claude-sonnet-4-5"),
+        None,
+    );
+    insert_step_finish(&conn, "p-migrated", "migrated", migrated_ms, 3.0, None);
+    insert_session_message(
+        &conn,
+        "migrated",
+        migrated_ms,
+        3.0,
+        "claude-sonnet-4-5",
+        "opencode-go",
+        None,
+    );
+    // Legacy turn without parts: counted once from its message cost.
+    insert_message(
+        &conn,
+        "legacy",
+        iso_ms("2026-03-06T10:00:00.000Z"),
+        Some(1.0),
+        Some("claude-sonnet-4-5"),
+        None,
+    );
+    // v2-only turn: must be added.
+    insert_session_message(
+        &conn,
+        "v2-new",
+        iso_ms("2026-03-06T12:00:00.000Z"),
+        2.0,
+        "gpt-5.1-codex",
+        "opencode-go",
+        None,
+    );
+    drop(conn);
+
+    let rows = read_rows(&db).unwrap();
+    assert_eq!(rows.len(), 3, "{rows:?}");
+
+    let now = a14_now_afternoon();
+    let buckets = daily_model_costs(&rows, now, 30);
+    let total: f64 = buckets.iter().map(|b| b.cost).sum();
+    assert!((total - 6.0).abs() < 1e-6, "total {total}");
+    assert_eq!(buckets.iter().map(|b| b.request_count).sum::<u32>(), 3);
+    let by_model: std::collections::HashMap<&str, f64> =
+        buckets.iter().map(|b| (b.model.as_str(), b.cost)).collect();
+    assert!((by_model["claude-sonnet-4-5"] - 4.0).abs() < 1e-6);
+    assert!((by_model["gpt-5.1-codex"] - 2.0).abs() < 1e-6);
+}
+
+#[test]
+fn malformed_v2_session_messages_are_ignored_without_failing_the_read() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("opencode.db");
+    let conn = open_db(&db, false);
+    create_session_message_table(&conn);
+    let created = iso_ms("2026-03-06T12:00:00.000Z");
+    let insert_raw = |id: &str, ty: &str, data: &str| {
+        conn.execute(
+            "INSERT INTO session_message (id, session_id, type, seq, time_created, time_updated, data)
+             VALUES (?1, 'session-1', ?2, 0, ?3, ?3, ?4)",
+            rusqlite::params![id, ty, created, data],
+        )
+        .unwrap();
+    };
+    insert_raw(
+        "good",
+        "assistant",
+        &format!(
+            r#"{{"model":{{"providerID":"opencode-go","id":"good-model"}},"cost":4,"time":{{"created":{created}}}}}"#
+        ),
+    );
+    // Missing $.model.providerID.
+    insert_raw(
+        "no-provider",
+        "assistant",
+        &format!(r#"{{"model":{{"id":"x"}},"cost":5,"time":{{"created":{created}}}}}"#),
+    );
+    // Non-numeric cost (string).
+    insert_raw(
+        "string-cost",
+        "assistant",
+        &format!(
+            r#"{{"model":{{"providerID":"opencode-go","id":"x"}},"cost":"5","time":{{"created":{created}}}}}"#
+        ),
+    );
+    // Invalid JSON in data.
+    insert_raw(
+        "bad-json",
+        "assistant",
+        r#"{"model":{"providerID":"opencode-go""#,
+    );
+    // Not an assistant turn.
+    insert_raw(
+        "user-turn",
+        "user",
+        &format!(
+            r#"{{"model":{{"providerID":"opencode-go","id":"x"}},"cost":6,"time":{{"created":{created}}}}}"#
+        ),
+    );
+    drop(conn);
+
+    let rows = read_rows(&db).expect("malformed v2 rows must not fail the whole read");
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(rows[0].model, "good-model");
+    assert!((rows[0].cost - 4.0).abs() < 1e-6);
 }
 
 #[test]

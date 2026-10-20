@@ -139,7 +139,9 @@ impl SessionEquivalentBurnEstimator {
                     continue;
                 }
                 if last.resets_at > resets_at {
-                    return None;
+                    // A reset correction starts a new history segment; never
+                    // combine samples across it.
+                    groups.clear();
                 }
             }
 
