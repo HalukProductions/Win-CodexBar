@@ -45,7 +45,7 @@ fn session_cookie_header_from(
 ) -> Result<String, ProviderError> {
     let store = store.ok_or_else(no_session)?;
     let cookies = read(&store, COOKIE_DOMAIN).map_err(|error| match error {
-        CookieError::AppBoundEncryption => {
+        CookieError::AppBoundEncryption { .. } => {
             ProviderError::Other(CLAUDE_DESKTOP_APP_BOUND_MESSAGE.to_string())
         }
         error => {
@@ -149,7 +149,9 @@ mod tests {
     #[test]
     fn app_bound_encryption_gets_a_desktop_specific_message() {
         let error = session_cookie_header_from(Some(fake_store(Path::new("x"))), |_, _| {
-            Err(CookieError::AppBoundEncryption)
+            Err(CookieError::AppBoundEncryption {
+                browsers: vec![BrowserType::ClaudeDesktop],
+            })
         })
         .unwrap_err()
         .to_string();

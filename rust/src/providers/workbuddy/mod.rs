@@ -464,7 +464,7 @@ fn collect_sessions(
             }
             Err(error) => error,
         };
-        let protected = matches!(error, CookieError::AppBoundEncryption);
+        let protected = matches!(error, CookieError::AppBoundEncryption { .. });
         let error = crate::providers::map_browser_cookie_error(error);
         if matches!(error, ProviderError::NoCookies) {
             continue;

@@ -528,12 +528,17 @@ fn fixture_then_other_sessions() -> BrowserSessions {
 }
 
 /// The shared App-Bound Encryption message, as the provider reports it.
-const ABE_ERROR: &str = "Failed to read browser cookies: Chromium App-Bound Encryption is blocking automatic browser import. Paste the Cookie header manually, or use Firefox if that browser has the same login.";
+const ABE_ERROR: &str = "Failed to read browser cookies: Chromium App-Bound Encryption blocked automatic import from Google Chrome. Paste the Cookie header manually, or use Firefox if that browser has the same login.";
 
 /// Chrome is skipped by App-Bound Encryption; Edge holds a session.
 fn chrome_protected_edge_signed_in() -> BrowserSessions {
     collect_sessions([
-        (BrowserType::Chrome, Err(CookieError::AppBoundEncryption)),
+        (
+            BrowserType::Chrome,
+            Err(CookieError::AppBoundEncryption {
+                browsers: vec![BrowserType::Chrome],
+            }),
+        ),
         (
             BrowserType::Edge,
             Ok(vec![cookie("session", ".workbuddy.cn", "/")]),
@@ -545,7 +550,12 @@ fn chrome_protected_edge_signed_in() -> BrowserSessions {
 /// request to www.workbuddy.cn would not carry.
 fn chrome_protected_edge_without_session() -> BrowserSessions {
     collect_sessions([
-        (BrowserType::Chrome, Err(CookieError::AppBoundEncryption)),
+        (
+            BrowserType::Chrome,
+            Err(CookieError::AppBoundEncryption {
+                browsers: vec![BrowserType::Chrome],
+            }),
+        ),
         (
             BrowserType::Edge,
             Ok(vec![cookie("api", "api.workbuddy.cn", "/")]),
@@ -921,7 +931,12 @@ async fn no_session_is_a_sign_in_prompt_without_a_request() {
 #[test]
 fn browser_scans_keep_sessions_in_order_and_the_first_failure_of_each_kind() {
     let found = collect_sessions([
-        (BrowserType::Chrome, Err(CookieError::AppBoundEncryption)),
+        (
+            BrowserType::Chrome,
+            Err(CookieError::AppBoundEncryption {
+                browsers: vec![BrowserType::Chrome],
+            }),
+        ),
         (
             BrowserType::Edge,
             Ok(vec![cookie("session", ".workbuddy.cn", "/")]),
@@ -931,7 +946,12 @@ fn browser_scans_keep_sessions_in_order_and_the_first_failure_of_each_kind() {
             BrowserType::Firefox,
             Err(CookieError::Decryption("first".into())),
         ),
-        (BrowserType::Arc, Err(CookieError::AppBoundEncryption)),
+        (
+            BrowserType::Arc,
+            Err(CookieError::AppBoundEncryption {
+                browsers: vec![BrowserType::Arc],
+            }),
+        ),
         (BrowserType::Chromium, Err(CookieError::NoEncryptionKey)),
         (
             BrowserType::ChromeBeta,
