@@ -156,6 +156,19 @@
       ]
     },
     {
+      "name": "settings-openaiapi-tokens-per-minute-metric",
+      "query": "window=settings&tab=providers:openaiapi&theme=dark",
+      "size": [880, 620],
+      "steps": [
+        { "expectText": ["OpenAI API", "Menu and floating bar metric", "Tokens/min"] },
+        { "expectField": { "label": "Menu and floating bar metric", "value": "automatic" } },
+        { "select": { "label": "Menu and floating bar metric", "value": "tokensPerMinute" } },
+        { "expectCall": { "cmd": "update_settings", "args": { "patch": { "providerMetrics": { "openaiapi": "tokensPerMinute" } } } } },
+        { "expectField": { "label": "Menu and floating bar metric", "value": "tokensPerMinute" } },
+        { "screenshot": "settings-openaiapi-tokens-per-minute-metric" }
+      ]
+    },
+    {
       "name": "settings-menu-work-days",
       "query": "window=settings&tab=menu&theme=dark",
       "size": [880, 620],

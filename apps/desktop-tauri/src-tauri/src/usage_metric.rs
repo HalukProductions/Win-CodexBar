@@ -169,6 +169,9 @@ fn preferred_window(
             extra_usage_window(snapshot).or_else(|| cost_window(snapshot))
         }
         MetricPreference::Average => average_window(snapshot),
+        // A rate, not a quota: the meter keeps the Automatic lane and the tray
+        // status text carries the Tokens/min value (`tray_presentation`).
+        MetricPreference::TokensPerMinute => automatic_window(snapshot, provider),
         // Upstream 0.70.0 (#4072): the provider's plan allowance. A missing
         // or unknown plan falls back to the primary (included API) allowance,
         // never to a spend window. Providers without a plan window fall

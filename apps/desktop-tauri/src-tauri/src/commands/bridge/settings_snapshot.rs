@@ -459,6 +459,7 @@ fn metric_preference_label(pref: MetricPreference) -> &'static str {
         MetricPreference::ExtraUsage => "extraUsage",
         MetricPreference::MonthlyPlan => "monthlyPlan",
         MetricPreference::Average => "average",
+        MetricPreference::TokensPerMinute => "tokensPerMinute",
     }
 }
 
@@ -473,6 +474,7 @@ pub(in crate::commands) fn parse_metric_preference(s: &str) -> Option<MetricPref
         "extraUsage" | "extrausage" => Some(MetricPreference::ExtraUsage),
         "monthlyPlan" | "monthlyplan" => Some(MetricPreference::MonthlyPlan),
         "average" => Some(MetricPreference::Average),
+        "tokensPerMinute" | "tokensperminute" => Some(MetricPreference::TokensPerMinute),
         _ => None,
     }
 }

@@ -172,6 +172,13 @@ impl ProviderId {
         }
     }
 
+    /// Whether this provider reports a Tokens/min rate, which offers the
+    /// Tokens/min menu bar metric (upstream 0.75.0 #4495). Shared by the
+    /// provider trait and shell code that has no provider instance.
+    pub fn reports_tokens_per_minute(self) -> bool {
+        matches!(self, ProviderId::OpenAIApi)
+    }
+
     /// Parse from CLI name string
     pub fn from_cli_name(name: &str) -> Option<Self> {
         let name = name.to_lowercase();
