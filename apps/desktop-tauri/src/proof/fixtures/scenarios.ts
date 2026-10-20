@@ -3,6 +3,7 @@ import type {
   CodexAccount,
   CodexAccountsStateBridge,
   CodexAccountUsageSnapshot,
+  CodexWorkspacesSessionUsage,
   ProviderCatalogEntry,
   ProviderUsageSnapshot,
   SettingsSnapshot,
@@ -24,6 +25,8 @@ export const PROOF_SCENARIO_NAMES = [
   "empty",
   "openai-live-spend",
   "claude-plan-hidden",
+  "codex-conversations",
+  "codex-conversations-private",
   "claude-reset-credits",
   "claude-reset-credits-hidden",
   "claudeplatform",
@@ -43,6 +46,8 @@ export interface ProofScenario {
   localSpend: LocalSpendFixture[];
   /** Claude token accounts; absent means Claude offers no token accounts. */
   claudeTokenAccounts?: TokenAccountBridge[];
+  /** Local Codex conversations in the Usage & Spend contract, unmasked. */
+  codexConversations?: CodexWorkspacesSessionUsage[];
 }
 
 export interface LocalSpendFixture {
@@ -476,6 +481,51 @@ function claudePlanHiddenScenario(now: Date): ProofScenario {
   };
 }
 
+function codexConversation(
+  now: Date,
+  id: string,
+  displayTitle: string,
+  minutesAgo: number,
+  knownUsd: number,
+  unknownTokens = 0,
+): CodexWorkspacesSessionUsage {
+  return {
+    id,
+    projectId: "proof-project",
+    displayTitle,
+    cwd: null,
+    startedAt: isoBefore(now, minutesAgo + 30),
+    latestActivity: isoBefore(now, minutesAgo),
+    totals: { inputTokens: 184_000, cachedInputTokens: 120_000, outputTokens: 9_400, totalTokens: 193_400 },
+    costEstimate: { knownUsd, unknownTokens },
+    topModel: "gpt-5-codex",
+    turnPerformance: null,
+  };
+}
+
+/** Default data plus three synthetic Codex conversations for the tray card list. */
+function codexConversationsScenario(now: Date): ProofScenario {
+  return {
+    ...defaultScenario(now),
+    name: "codex-conversations",
+    codexConversations: [
+      codexConversation(now, "019f0000-0000-7000-8000-00000000a001", "Port the tray conversations list", 600, 3.12),
+      codexConversation(now, "019f0000-0000-7000-8000-00000000a002", "Session 019f...0000a002", 45, 0.87, 2_000),
+      codexConversation(now, "019f0000-0000-7000-8000-00000000a003", "Fix the parser fixture", 5, 1.46),
+    ],
+  };
+}
+
+/** The same conversations with Hide personal information on. */
+function codexConversationsPrivateScenario(now: Date): ProofScenario {
+  const base = codexConversationsScenario(now);
+  return {
+    ...base,
+    name: "codex-conversations-private",
+    settings: { ...base.settings, hidePersonalInfo: true },
+  };
+}
+
 /**
  * Default data with a saved Claude limit-reset credit (`reset-credits` inventory
  * item, as the OAuth and Web sources produce). `hidden` adds the Claude
@@ -524,6 +574,8 @@ const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   empty: emptyScenario,
   "openai-live-spend": openAiLiveSpendScenario,
   "claude-plan-hidden": claudePlanHiddenScenario,
+  "codex-conversations": codexConversationsScenario,
+  "codex-conversations-private": codexConversationsPrivateScenario,
   "claude-reset-credits": (now) => claudeResetCreditsScenario(now, false),
   "claude-reset-credits-hidden": (now) => claudeResetCreditsScenario(now, true),
   claudeplatform: claudePlatformScenario,

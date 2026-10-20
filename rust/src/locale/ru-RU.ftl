@@ -777,6 +777,11 @@ PanelCurrentWindowTokens = Токены текущего окна
 PanelPreviousWindow = Предыдущее окно
 PanelWindowsAgo = { "{}" } окна назад
 PanelRecentWindows = Недавние окна
+CardConversationsTitle = Диалоги ({ "{}" })
+CardConversationsSessionId = Сеанс { "{}" }
+CardConversationsInput = ввод { "{}" }
+CardConversationsCached = кэш { "{}" }
+CardConversationsOutput = вывод { "{}" }
 QuotaUsageTitle = Использование квоты
 CostPeriodThisMonth = Этот месяц
 PanelPartialEstimate = Частичная оценка
@@ -1736,3 +1741,12 @@ OpenAiOrgLimitsLoad = Загрузить лимиты проектов
 OpenAiOrgLimitsEmpty = Лимиты проектов не найдены.
 OpenAiOrgLimitsScoped = Лимиты проектов действуют на всю организацию. Очистите ID проекта, чтобы загрузить их.
 OpenAiOrgLimitsTruncated = Проверены не все проекты.
+
+# About - Acknowledgements
+AboutLinkAcknowledgements = Благодарности
+AcknowledgementsFooter = CodexBar создан с использованием этих проектов с открытым исходным кодом.
+AcknowledgementsOthers = ещё { "{}" }
+AcknowledgementsAuthor = Автор
+AcknowledgementsAuthors = Авторы
+AcknowledgementsLicense = Лицензия
+AcknowledgementsStandardText = Стандартный текст лицензии. Пакет не содержит файла лицензии.

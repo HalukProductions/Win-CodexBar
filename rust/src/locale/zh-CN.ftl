@@ -745,6 +745,11 @@ PanelCurrentWindowTokens = 当前窗口 Token
 PanelPreviousWindow = 上一个窗口
 PanelWindowsAgo = { "{}" } 个窗口前
 PanelRecentWindows = 最近窗口
+CardConversationsTitle = 对话 ({ "{}" })
+CardConversationsSessionId = 会话 { "{}" }
+CardConversationsInput = 输入 { "{}" }
+CardConversationsCached = 缓存 { "{}" }
+CardConversationsOutput = 输出 { "{}" }
 QuotaUsageTitle = 配额用量
 CostPeriodThisMonth = 本月
 PanelPartialEstimate = 部分估算
@@ -1736,3 +1741,12 @@ OpenAiOrgLimitsLoad = 加载项目上限
 OpenAiOrgLimitsEmpty = 未找到项目上限。
 OpenAiOrgLimitsScoped = 项目上限适用于整个组织。请先清空项目 ID 再加载。
 OpenAiOrgLimitsTruncated = 仅检查了部分项目。
+
+# About - Acknowledgements
+AboutLinkAcknowledgements = 致谢
+AcknowledgementsFooter = CodexBar 使用了以下开源项目。
+AcknowledgementsOthers = 其他 { "{}" } 人
+AcknowledgementsAuthor = 作者
+AcknowledgementsAuthors = 作者
+AcknowledgementsLicense = 许可证
+AcknowledgementsStandardText = 标准许可证文本。该软件包未附带许可证文件。

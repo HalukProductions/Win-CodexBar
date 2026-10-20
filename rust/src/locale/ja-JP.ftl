@@ -745,6 +745,11 @@ PanelCurrentWindowTokens = 現在の期間のトークン
 PanelPreviousWindow = 前の期間
 PanelWindowsAgo = { "{}" } 期間前
 PanelRecentWindows = 最近の期間
+CardConversationsTitle = 会話 ({ "{}" })
+CardConversationsSessionId = セッション { "{}" }
+CardConversationsInput = 入力 { "{}" }
+CardConversationsCached = キャッシュ { "{}" }
+CardConversationsOutput = 出力 { "{}" }
 QuotaUsageTitle = クォータ使用量
 CostPeriodThisMonth = 今月
 PanelPartialEstimate = 部分的な推定
@@ -1736,3 +1741,12 @@ OpenAiOrgLimitsLoad = プロジェクト上限を読み込む
 OpenAiOrgLimitsEmpty = プロジェクト上限は見つかりませんでした。
 OpenAiOrgLimitsScoped = プロジェクト上限は組織全体に適用されます。読み込むにはプロジェクト ID を空にしてください。
 OpenAiOrgLimitsTruncated = 一部のプロジェクトのみ確認しました。
+
+# About - Acknowledgements
+AboutLinkAcknowledgements = 謝辞
+AcknowledgementsFooter = CodexBar は以下のオープンソースプロジェクトを使用しています。
+AcknowledgementsOthers = ほか { "{}" } 名
+AcknowledgementsAuthor = 作者
+AcknowledgementsAuthors = 作者
+AcknowledgementsLicense = ライセンス
+AcknowledgementsStandardText = 標準のライセンス文です。このパッケージにはライセンスファイルが含まれていません。

@@ -294,6 +294,123 @@
   color: var(--text-secondary);
 }
 
+/* ── About → Acknowledgements ─────────────────────────────────────── */
+.acknowledgements__back {
+  align-self: flex-start;
+}
+
+.acknowledgements__footer {
+  text-align: center;
+}
+
+.settings-group__box > .acknowledgement + .acknowledgement {
+  border-top: 1px solid var(--panel-border);
+}
+
+.acknowledgement__summary {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 0;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  list-style: none;
+}
+
+.acknowledgement__summary::-webkit-details-marker {
+  display: none;
+}
+
+.acknowledgement__summary::before {
+  content: "›";
+  flex-shrink: 0;
+  width: 10px;
+  color: var(--text-secondary);
+  transition: transform 0.15s;
+}
+
+.acknowledgement[open] > .acknowledgement__summary::before {
+  transform: rotate(90deg);
+}
+
+.acknowledgement__summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.acknowledgement__name {
+  flex-shrink: 0;
+}
+
+.acknowledgement__authors {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-secondary);
+}
+
+.acknowledgement__license {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.acknowledgement__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 0 12px;
+  user-select: text;
+}
+
+.acknowledgement__detail + .acknowledgement__detail {
+  padding-top: 12px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.acknowledgement__detail h4 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.acknowledgement__detail p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.acknowledgement__url {
+  display: block;
+  font-size: 12px;
+  text-align: left;
+  word-break: break-all;
+}
+
+.acknowledgement__note {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.acknowledgement__text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.acknowledgement__text + .acknowledgement__text {
+  margin-top: 12px;
+}
+
 /* ── Switcher shortcuts dialog ────────────────────────────────────── */
 .settings-dialog-backdrop {
   position: fixed;

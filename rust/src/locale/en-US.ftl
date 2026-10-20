@@ -777,6 +777,11 @@ PanelCurrentWindowTokens = Current window tokens
 PanelPreviousWindow = Previous window
 PanelWindowsAgo = { "{}" } windows ago
 PanelRecentWindows = Recent windows
+CardConversationsTitle = Conversations ({ "{}" })
+CardConversationsSessionId = Session { "{}" }
+CardConversationsInput = { "{}" } input
+CardConversationsCached = { "{}" } cached
+CardConversationsOutput = { "{}" } output
 QuotaUsageTitle = Quota usage
 CostPeriodThisMonth = This month
 PanelPartialEstimate = Partial estimate
@@ -1738,3 +1743,12 @@ OpenAiOrgLimitsLoad = Load project caps
 OpenAiOrgLimitsEmpty = No project caps were found.
 OpenAiOrgLimitsScoped = Project caps apply to the whole organization. Clear the project ID to load them.
 OpenAiOrgLimitsTruncated = Only some projects were checked.
+
+# About - Acknowledgements
+AboutLinkAcknowledgements = Acknowledgements
+AcknowledgementsFooter = CodexBar is built with these open-source projects.
+AcknowledgementsOthers = { "{}" } others
+AcknowledgementsAuthor = Author
+AcknowledgementsAuthors = Authors
+AcknowledgementsLicense = License
+AcknowledgementsStandardText = Standard license text. This package ships no license file.

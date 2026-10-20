@@ -7,6 +7,7 @@ import type { AppInfoBridge, UpdateChannel } from "../../../types/bridge";
 import type { LocaleKey } from "../../../i18n/keys";
 import type { TabProps } from "../settingsTabs";
 import codexbarIcon from "../../../assets/codexbar-icon.png";
+import AcknowledgementsView from "./AcknowledgementsView";
 
 const REPO_URL = "https://github.com/nesszer/Win-CodexBar";
 const SUBMIT_ISSUE_URL = `${REPO_URL}/issues/new?labels=bug&template=bug_report.yml`;
@@ -38,6 +39,7 @@ export default function AboutTab({ settings, set, saving }: TabProps) {
     useUpdateState();
   const [hasChecked, setHasChecked] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
+  const [showAcknowledgements, setShowAcknowledgements] = useState(false);
 
   useEffect(() => {
     void getAppInfo().then(setAppInfo);
@@ -60,6 +62,15 @@ export default function AboutTab({ settings, set, saving }: TabProps) {
       <section className="settings-section">
         <p className="settings-section__hint">{t("AboutLoading")}</p>
       </section>
+    );
+  }
+
+  if (showAcknowledgements) {
+    return (
+      <AcknowledgementsView
+        onBack={() => setShowAcknowledgements(false)}
+        onOpenUrl={openAboutLink}
+      />
     );
   }
 
@@ -225,6 +236,19 @@ export default function AboutTab({ settings, set, saving }: TabProps) {
             </span>
           </button>
         ))}
+        <button
+          type="button"
+          className="settings-link-row"
+          onClick={() => {
+            setLinkError(null);
+            setShowAcknowledgements(true);
+          }}
+        >
+          <span>{t("AboutLinkAcknowledgements")}</span>
+          <span className="settings-link-row__arrow" aria-hidden="true">
+            ›
+          </span>
+        </button>
       </SettingsGroup>
 
       <p className="about-copyright">
