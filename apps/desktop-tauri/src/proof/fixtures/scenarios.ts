@@ -6,6 +6,7 @@ import type {
   ProviderCatalogEntry,
   ProviderUsageSnapshot,
   SettingsSnapshot,
+  TokenAccountBridge,
 } from "../../types/bridge";
 import {
   PROOF_PROVIDER_CATALOG,
@@ -22,6 +23,8 @@ export const PROOF_SCENARIO_NAMES = [
   "errors",
   "empty",
   "claude-plan-hidden",
+  "claude-reset-credits",
+  "claude-reset-credits-hidden",
 ] as const;
 
 export type ProofScenarioName = (typeof PROOF_SCENARIO_NAMES)[number];
@@ -36,6 +39,8 @@ export interface ProofScenario {
   claudeAccounts: ClaudeAccount[];
   /** Local-log spend; providers without an entry have no local logs. */
   localSpend: LocalSpendFixture[];
+  /** Claude token accounts; absent means Claude offers no token accounts. */
+  claudeTokenAccounts?: TokenAccountBridge[];
 }
 
 export interface LocalSpendFixture {
@@ -239,6 +244,29 @@ function claudeAccounts(now: Date): ClaudeAccount[] {
   ];
 }
 
+function claudeTokenAccounts(): TokenAccountBridge[] {
+  return [
+    {
+      id: "00000000-0000-4000-8000-00000000c1a1",
+      label: "Work",
+      addedAt: "Oct 01, 2026",
+      lastUsed: null,
+      isActive: true,
+      claudeConfigDirectory: "C:\\Users\\proof\\.claude-work",
+      claudeConfigDirectoryAvailable: false,
+    },
+    {
+      id: "00000000-0000-4000-8000-00000000c1a2",
+      label: "Personal",
+      addedAt: "Oct 02, 2026",
+      lastUsed: null,
+      isActive: false,
+      claudeConfigDirectory: null,
+      claudeConfigDirectoryAvailable: false,
+    },
+  ];
+}
+
 function emptyCodexAccounts(): CodexAccountsStateBridge {
   return { accounts: [], accountOrdinals: {}, snapshots: {} };
 }
@@ -260,6 +288,7 @@ function defaultScenario(now: Date): ProofScenario {
     codexAccounts: singleCodexAccount(now),
     claudeAccounts: claudeAccounts(now),
     localSpend: [codexSpend(), claudeSpend()],
+    claudeTokenAccounts: claudeTokenAccounts(),
   };
 }
 
@@ -344,12 +373,43 @@ function claudePlanHiddenScenario(now: Date): ProofScenario {
   };
 }
 
+/**
+ * Default data with a saved Claude limit-reset credit (`reset-credits` inventory
+ * item, as the OAuth and Web sources produce). `hidden` adds the Claude
+ * "Limit reset credits" section to `hiddenUsageItemIds`.
+ */
+function claudeResetCreditsScenario(now: Date, hidden: boolean): ProofScenario {
+  const base = defaultScenario(now);
+  return {
+    ...base,
+    name: hidden ? "claude-reset-credits-hidden" : "claude-reset-credits",
+    providers: base.providers.map((snapshot) =>
+      snapshot.providerId === "claude"
+        ? {
+            ...snapshot,
+            inventory: [
+              {
+                id: "reset-credits",
+                title: "Limit Reset Credits",
+                availableCount: 2,
+                nextExpiresAt: isoAfter(now, 3 * DAY_MINUTES),
+              },
+            ],
+            hiddenUsageItemIds: hidden ? ["section:claude-reset-credits"] : [],
+          }
+        : snapshot,
+    ),
+  };
+}
+
 const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   default: defaultScenario,
   "two-codex-accounts": twoCodexAccountsScenario,
   errors: errorsScenario,
   empty: emptyScenario,
   "claude-plan-hidden": claudePlanHiddenScenario,
+  "claude-reset-credits": (now) => claudeResetCreditsScenario(now, false),
+  "claude-reset-credits-hidden": (now) => claudeResetCreditsScenario(now, true),
 };
 
 export function isProofScenarioName(value: string): value is ProofScenarioName {

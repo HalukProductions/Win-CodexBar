@@ -164,6 +164,9 @@ export interface TokenAccountBridge {
   addedAt: string;
   lastUsed: string | null;
   isActive: boolean;
+  /** Claude config directory whose history this account owns for local cost estimates. */
+  claudeConfigDirectory: string | null;
+  claudeConfigDirectoryAvailable: boolean;
 }
 
 export interface ProviderTokenAccountsBridge {

@@ -374,7 +374,8 @@ impl TokenAccountSupport {
             | ProviderId::Parallel
             | ProviderId::Fal
             | ProviderId::Flora
-            | ProviderId::FutureAgi => None,
+            | ProviderId::FutureAgi
+            | ProviderId::Munito => None,
         }
     }
 
@@ -535,6 +536,10 @@ pub struct TokenAccount {
     /// When this account was last used (Unix timestamp in seconds)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_used: Option<i64>,
+    /// User-declared Claude history ownership for local cost estimates; never
+    /// used to resolve credentials.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claude_config_directory: Option<String>,
 }
 
 impl TokenAccount {
@@ -547,6 +552,7 @@ impl TokenAccount {
             external_identifier: None,
             added_at: Utc::now().timestamp(),
             last_used: None,
+            claude_config_directory: None,
         }
     }
 

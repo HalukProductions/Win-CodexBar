@@ -178,6 +178,7 @@ export function baseSettings(overrides: Partial<SettingsSnapshot> = {}): Setting
     claudeAvoidKeychainPrompts: false,
     claudeSwapEnabled: false,
     claudeSwapExecutablePath: "",
+    claudeDesktopCookiesEnabled: false,
     codexSparkUsageVisible: true,
     codexOpenaiWebExtras: false,
     codexHistoricalTracking: true,

@@ -59,6 +59,7 @@ import meta from "./icons/ProviderIcon-meta.svg?raw";
 import mimo from "./icons/ProviderIcon-mimo.svg?raw";
 import minimax from "./icons/ProviderIcon-minimax.svg?raw";
 import mistral from "./icons/ProviderIcon-mistral.svg?raw";
+import munito from "./icons/ProviderIcon-munito.svg?raw";
 import muse from "./icons/ProviderIcon-muse.svg?raw";
 import museai from "./icons/ProviderIcon-museai.svg?raw";
 import notion from "./icons/ProviderIcon-notion.svg?raw";
@@ -179,6 +180,7 @@ const RAW: Record<string, string> = {
   xapi: tint(xapi),
   xkiro: tint(xkiro),
   mistral: tint(mistral),
+  munito: tint(munito),
   muse: tint(muse),
   museai: tint(museai),
   workbuddy: tint(workbuddy),
@@ -266,6 +268,7 @@ export const PROVIDER_ICON_REGISTRY: Record<string, ProviderIcon> = {
   llmproxy:    { id: "llmproxy",    brandColor: "#24b47e", fallbackLetter: "L", svgPath: RAW.llmproxy },
   minimax:     { id: "minimax",     brandColor: "#fe603c", fallbackLetter: "M", svgPath: RAW.minimax },
   mistral:     { id: "mistral",     brandColor: "#ff5229", fallbackLetter: "M", svgPath: RAW.mistral },
+  munito:      { id: "munito",      brandColor: "#702CF6", fallbackLetter: "M", svgPath: RAW.munito },
   muse:        { id: "muse",        brandColor: "#0668e1", fallbackLetter: "M", svgPath: RAW.muse },
   ollama:      { id: "ollama",      brandColor: "#888888", fallbackLetter: "○", svgPath: RAW.ollama },
   azureopenai: { id: "azureopenai", brandColor: "#0078d4", fallbackLetter: "A" },

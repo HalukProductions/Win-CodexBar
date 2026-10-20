@@ -293,6 +293,12 @@ impl Provider for CursorProvider {
     fn available_sources(&self) -> Vec<SourceMode> {
         vec![SourceMode::Auto, SourceMode::Web]
     }
+
+    /// The shell would pin the first browser's header; this provider tries each
+    /// browser so a rejected session can move on to the next one.
+    fn owns_browser_cookie_resolution(&self) -> bool {
+        true
+    }
 }
 
 #[cfg(test)]
@@ -349,6 +355,36 @@ mod tests {
     fn does_not_advertise_unsupported_credits() {
         let provider = CursorProvider::new();
         assert!(!provider.metadata().supports_credits);
+    }
+
+    #[test]
+    fn cursor_owns_browser_cookie_resolution() {
+        // The shell must not pre-resolve the first browser's header for Cursor;
+        // this provider tries each browser session itself.
+        assert!(CursorProvider::new().owns_browser_cookie_resolution());
+    }
+
+    #[tokio::test]
+    async fn missing_manual_cookie_gate_reports_no_cookies_without_any_request() {
+        // Cookie source Off reaches the provider as Cli with the gate set; no
+        // browser may be read and no Cursor request may be sent.
+        let mut server = mockito::Server::new_async().await;
+        let usage = usage_mock(&mut server, 0).await;
+        let harness = Harness::new(&server);
+        let ctx = FetchContext {
+            source_mode: SourceMode::Cli,
+            manual_cookie_missing: true,
+            ..FetchContext::default()
+        };
+
+        let err = harness
+            .provider
+            .fetch_usage(&ctx)
+            .await
+            .expect_err("import is forbidden, so no session is available");
+
+        usage.assert_async().await;
+        assert!(matches!(err, ProviderError::NoCookies), "got {err:?}");
     }
 
     #[test]

@@ -149,6 +149,7 @@ For Claude, browser cookies (the `sessionKey`) are preferred, because they match
 | fal | API Key | Account credit balance |
 | FLORA | API Key + workspace ID | Workspace available balance, member limit, month-to-date spend |
 | Future AGI | API Key + secret key | Billing-period AI credits and gateway requests against free allowances, estimated cost |
+| Munito | Admin API Key | Today's and this month's organization spend against spend limits |
 
 </details>
 

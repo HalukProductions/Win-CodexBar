@@ -170,6 +170,19 @@ fn three_sample_histories(
     DateTime<Utc>,
     DateTime<Utc>,
 ) {
+    completed_session_histories(base, 3)
+}
+
+/// Build `count` completed full-burn sessions (each a 5.0 weekly-percent burn)
+/// plus an open current session.
+fn completed_session_histories(
+    base: i64,
+    count: i64,
+) -> (
+    Vec<PlanUtilizationSeriesHistory>,
+    DateTime<Utc>,
+    DateTime<Utc>,
+) {
     let s = session_secs();
     let w = weekly_secs();
     let weekly_reset = base + w;
@@ -177,8 +190,8 @@ fn three_sample_histories(
     let mut session_entries = Vec::new();
     let mut weekly_entries = Vec::new();
 
-    // Three completed sessions ending at base+s, base+2s, base+3s.
-    for i in 0..3 {
+    // Completed sessions ending at base+s, base+2s, ..., base+count*s.
+    for i in 0..count {
         let start = base + i * s;
         let end = start + s;
         // Window-start weekly anchor (session used 0).
@@ -193,7 +206,7 @@ fn three_sample_histories(
     }
 
     // Current open session.
-    let current_start = base + 3 * s;
+    let current_start = base + count * s;
     let current_end = current_start + s;
     let now_secs = current_start + 30 * 60;
     session_entries.push(entry(now_secs, 20.0, current_end));
@@ -268,8 +281,8 @@ fn grouping_tolerance_merges_nearby_resets() {
     }
     assert!(SessionEquivalentBurnEstimator::estimate(&nearby, Some(current_end), now, 7).is_none());
 
-    // Resets that move backward beyond the tolerance are an ordering reject.
-    // Each entry is plausible on its own, so only the ordering check can reject them.
+    // A reset that moves backward beyond the tolerance starts a new segment, so
+    // the earlier group is dropped and the single remaining group is too few.
     let out_of_order = vec![
         PlanUtilizationSeriesHistory {
             name: PlanUtilizationSeriesName::Session,
@@ -325,6 +338,79 @@ fn insufficient_samples_returns_none() {
         SessionEquivalentBurnEstimator::estimate(&histories, Some(ts(end + s)), ts(end + 60), 7)
             .is_none()
     );
+}
+
+#[test]
+fn old_reset_reversals_do_not_poison_a_clean_recent_history_segment() {
+    for recent_samples in [2_i64, 3] {
+        let base = 1_700_400_000_i64;
+        let (mut histories, _, current_end) = completed_session_histories(base, recent_samples);
+        let session = histories
+            .iter_mut()
+            .find(|h| h.name == PlanUtilizationSeriesName::Session)
+            .expect("session series");
+        let old_start = session.entries[0].captured_at.timestamp() - 150 * 86_400;
+        let old_entries = [
+            entry(old_start + 60, 10.0, old_start + 5 * 3_600),
+            // The reset moves 30 minutes backward: a correction, not a new window.
+            entry(old_start + 660, 20.0, old_start + 4 * 3_600 + 1_800),
+        ];
+        session.entries.splice(0..0, old_entries);
+        let weekly_history = histories
+            .iter_mut()
+            .find(|h| h.name == PlanUtilizationSeriesName::Weekly)
+            .expect("weekly series");
+        // Pre-correction group (reset old+5h) has a start anchor at old-60 and
+        // weekly 40 -> 45 while the session goes 0% -> 10%: a 50-per-session burn. If that
+        // group survived the correction, it would add a sample to the estimate.
+        // The post-correction group has no start anchor, so it yields no burn.
+        let old_weekly_reset = old_start + 6 * 86_400;
+        let old_weekly = [
+            entry(old_start - 60, 40.0, old_weekly_reset),
+            entry(old_start + 60, 45.0, old_weekly_reset),
+            entry(old_start + 660, 50.0, old_weekly_reset),
+        ];
+        weekly_history.entries.splice(0..0, old_weekly);
+
+        let now = current_end - Duration::hours(1);
+        let estimate =
+            SessionEquivalentBurnEstimator::estimate(&histories, Some(current_end), now, 7);
+        if recent_samples < 3 {
+            assert!(estimate.is_none(), "recent_samples={recent_samples}");
+            continue;
+        }
+        let burn = estimate.expect("clean recent segment must produce an estimate");
+        assert_eq!(burn.sample_count, 3);
+        assert!(
+            (burn.median_weekly_percent_per_window - 5.0).abs() < 0.01,
+            "median={}",
+            burn.median_weekly_percent_per_window
+        );
+
+        let weekly = histories
+            .iter()
+            .find(|h| h.name == PlanUtilizationSeriesName::Weekly)
+            .and_then(|h| h.entries.last())
+            .expect("weekly entry");
+        let forecast = SessionEquivalentForecast::make(
+            &RateWindow::with_details(20.0, Some(SESSION_WINDOW_MINUTES), Some(current_end), None),
+            &RateWindow::with_details(
+                weekly.used_percent,
+                Some(WEEKLY_WINDOW_MINUTES),
+                weekly.resets_at,
+                None,
+            ),
+            &burn,
+            None,
+            now,
+            None,
+        )
+        .expect("forecast");
+        // remaining weekly 70 / 5 = 14 windows
+        assert!((forecast.estimated_windows_to_exhaust_weekly - 14.0).abs() < 0.01);
+        assert!(forecast.windows_until_reset > 0);
+        assert_eq!(forecast.sample_count, 3);
+    }
 }
 
 #[test]

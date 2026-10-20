@@ -137,11 +137,11 @@ const fn spec(
     }
 }
 
-const COUNT: usize = 109;
+const COUNT: usize = 110;
 
 pub(crate) static ALL: [ProviderId; COUNT] = {
     // Indexing SPECS by discriminant relies on rows following declaration order.
-    assert!(P::FutureAgi as usize + 1 == COUNT);
+    assert!(P::Munito as usize + 1 == COUNT);
     let mut ids = [P::Codex; COUNT];
     let mut i = 0;
     while i < COUNT {
@@ -751,4 +751,7 @@ pub(crate) static SPECS: [ProviderSpec; COUNT] = [
         .labels("AI credits", "Gateway requests")
         .dashboard("https://app.futureagi.com/dashboard/settings/usage-summary")
         .parse_aliases(&["future agi"]),
+    spec(P::Munito, "munito", "Munito", "#702CF6")
+        .labels("Today", "This month")
+        .dashboard("https://console.munito.ai"),
 ];
