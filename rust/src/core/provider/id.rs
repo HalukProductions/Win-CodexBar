@@ -209,6 +209,12 @@ impl ProviderId {
             .copied()
     }
 
+    /// `display_details` ids that carry this provider's balance, in preference
+    /// order. Empty when the provider reports no balance (upstream #4319).
+    pub fn balance_display_detail_ids(self) -> &'static [&'static str] {
+        self.spec().balance_detail_ids
+    }
+
     /// Parse from CLI name string
     pub fn from_cli_name(name: &str) -> Option<Self> {
         let name = name.to_lowercase();
@@ -923,6 +929,19 @@ mod tests {
                 format!("{:?}", id.metadata()),
                 "{id:?}"
             );
+        }
+    }
+
+    #[test]
+    fn only_nous_declares_balance_detail_ids_in_preference_order() {
+        assert_eq!(
+            ProviderId::Nous.balance_display_detail_ids(),
+            &["total-usable", "top-up-credits"]
+        );
+        for &id in ProviderId::all() {
+            if id != ProviderId::Nous {
+                assert!(id.balance_display_detail_ids().is_empty(), "{id:?}");
+            }
         }
     }
 }

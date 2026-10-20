@@ -485,13 +485,27 @@ fn provider_status_label(
         );
     }
 
-    let label = named_extra_status(snapshot, &preference, language)
-        .or_else(|| tokens_per_minute_status(snapshot, settings, language))
-        .unwrap_or_else(|| headline_status_label(snapshot, language));
+    let label = metric_status_label(snapshot, settings, language);
     (
         snapshot.provider_id.clone(),
         format!("{} {}", snapshot.display_name, label),
     )
+}
+
+/// Status text for the provider's chosen menu bar metric, shared by the tray
+/// status row and the tray tooltip so both read the same allowance.
+pub(crate) fn metric_status_label(
+    snapshot: &ProviderUsageSnapshot,
+    settings: &Settings,
+    language: Language,
+) -> String {
+    let preference = ProviderId::from_cli_name(&snapshot.provider_id)
+        .map(|id| settings.get_provider_metric(id))
+        .unwrap_or_default();
+    named_extra_status(snapshot, &preference, language)
+        .or_else(|| tokens_per_minute_status(snapshot, settings, language))
+        .or_else(|| balance_status_label(snapshot))
+        .unwrap_or_else(|| headline_status_label(snapshot, language))
 }
 
 /// Compact status text for [`headline_window`]. A locally estimated quota
@@ -573,6 +587,26 @@ pub(crate) fn tokens_per_minute_status(
             ),
         },
     )
+}
+
+/// Balance text for a balance-carrying provider whose headline window is
+/// informational (no monthly meter), such as `$6.76` for Nous Portal. It is the
+/// first reported `display_details` row in the provider's declared order
+/// (upstream #4319). `None` when the headline is a real meter, which keeps its
+/// percentage, or when the provider declares or reports no balance.
+pub(crate) fn balance_status_label(snapshot: &ProviderUsageSnapshot) -> Option<String> {
+    let provider = ProviderId::from_cli_name(&snapshot.provider_id)?;
+    let ids = provider.balance_display_detail_ids();
+    if ids.is_empty() || !headline_window(snapshot).is_informational {
+        return None;
+    }
+    ids.iter().find_map(|id| {
+        snapshot
+            .display_details
+            .iter()
+            .find(|detail| detail.id == *id && !detail.value.trim().is_empty())
+            .map(|detail| detail.value.trim().to_string())
+    })
 }
 
 /// Window that headline tray surfaces should label for a provider.

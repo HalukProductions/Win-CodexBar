@@ -1409,6 +1409,48 @@ fn tokens_per_minute_metric_labels_status_with_the_latest_rate() {
     );
 }
 
+fn nous_balance_detail(id: &str, value: &str) -> crate::commands::ProviderDisplayDetailSnapshot {
+    crate::commands::ProviderDisplayDetailSnapshot {
+        id: id.to_string(),
+        section_title: None,
+        title: id.to_string(),
+        value: value.to_string(),
+        secondary_value: None,
+        progress: None,
+    }
+}
+
+#[test]
+fn balance_only_nous_status_row_reads_its_balance() {
+    let settings = Settings {
+        tray_icon_mode: TrayIconMode::PerProvider,
+        show_as_used: true,
+        ..Settings::default()
+    };
+    // Credits-only account: no monthly meter, so the headline is informational.
+    let mut nous = fake_snapshot("nous", "Nous Portal", 0.0);
+    nous.primary.is_informational = true;
+    nous.primary.reset_description = Some("Nous Portal credits".to_string());
+    nous.display_details = vec![nous_balance_detail("top-up-credits", "$6.76")];
+    // A monthly meter keeps its percentage even when a balance row exists.
+    let mut metered = fake_snapshot("nous", "Nous Portal", 25.0);
+    metered.display_details = vec![nous_balance_detail("total-usable", "$74.25")];
+
+    let balance_only = vec![nous];
+    let plan = TrayPresentationPlan::resolve(&settings, &balance_only, None);
+    assert_eq!(
+        plan.status_labels(Language::English),
+        vec![("nous".to_string(), "Nous Portal $6.76".to_string())]
+    );
+
+    let metered = vec![metered];
+    let plan = TrayPresentationPlan::resolve(&settings, &metered, None);
+    assert_eq!(
+        plan.status_labels(Language::English),
+        vec![("nous".to_string(), "Nous Portal 25%".to_string())]
+    );
+}
+
 #[test]
 fn tokens_per_minute_metric_without_reported_minutes_is_unavailable() {
     let mut settings = Settings::default();
