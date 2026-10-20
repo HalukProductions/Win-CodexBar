@@ -176,6 +176,7 @@ export function baseSettings(overrides: Partial<SettingsSnapshot> = {}): Setting
     trayScalePercent: 100,
     trayPanelAlwaysOnTop: false,
     powertoysStatusPipeEnabled: false,
+    shareUsageWithCli: false,
     claudeAvoidKeychainPrompts: false,
     claudeSwapEnabled: false,
     claudeSwapExecutablePath: "",

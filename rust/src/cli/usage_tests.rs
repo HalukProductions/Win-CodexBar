@@ -890,3 +890,153 @@ fn json_pace_follows_weekly_work_days() {
     assert!((expected(Some(7)) - linear).abs() < 0.01);
     assert!(expected(Some(5)) > linear);
 }
+
+mod app_cache_fallback {
+    use super::super::fetch_helpers::{
+        AppCacheFallback, app_cache_fallback, render_app_cache_json, render_app_cache_text,
+    };
+    use super::*;
+    use crate::cli_usage_cache::{self, CliUsageCache, Entry};
+    use crate::core::ProviderError;
+    use chrono::{Duration, TimeZone};
+
+    fn cached_usage() -> UsageSnapshot {
+        let mut usage = UsageSnapshot::new(RateWindow::with_details(42.0, Some(300), None, None));
+        usage.updated_at = Utc.with_ymd_and_hms(2026, 10, 20, 11, 58, 30).unwrap();
+        usage
+    }
+
+    fn fallback(age_seconds: i64) -> AppCacheFallback {
+        AppCacheFallback {
+            result: ProviderFetchResult::new(cached_usage(), cli_usage_cache::SOURCE_LABEL),
+            age_seconds,
+            status: None,
+        }
+    }
+
+    fn plain_command() -> UsageCommand {
+        let mut command = UsageCommand::from_args_with(
+            UsageArgs {
+                provider: Some("codex".to_string()),
+                source: "auto".to_string(),
+                ..UsageArgs::default()
+            },
+            Vec::new,
+        )
+        .unwrap();
+        command.use_color = false;
+        command
+    }
+
+    #[test]
+    fn json_row_is_marked_as_app_cache_with_its_age() {
+        let row = render_app_cache_json(ProviderId::Codex, &plain_command(), fallback(90));
+        assert_eq!(
+            row,
+            serde_json::json!({
+                "provider": "codex",
+                "source": "codexbar-app",
+                "ageSeconds": 90,
+                "usage": {
+                    "primary": {
+                        "used_percent": 42.0,
+                        "window_minutes": 300,
+                        "is_informational": false,
+                    },
+                    "updated_at": "2026-10-20T11:58:30Z",
+                },
+                "cost": null,
+            })
+        );
+    }
+
+    #[test]
+    fn text_output_says_it_came_from_the_app_cache() {
+        let command = plain_command();
+        let text = render_app_cache_text(ProviderId::Codex, &command, &fallback(150));
+        assert!(text.contains("(codexbar-app)"), "{text}");
+        assert!(
+            text.ends_with("Cached by the CodexBar app 2m ago (credentials could not be decrypted in this session)."),
+            "{text}"
+        );
+        let mut brief = plain_command();
+        brief.brief = true;
+        let line = render_app_cache_text(ProviderId::Codex, &brief, &fallback(5));
+        assert!(line.contains("Cached by the CodexBar app 5s ago"), "{line}");
+        assert!(!line.contains('\n'), "{line}");
+    }
+
+    #[test]
+    fn gate_is_closed_by_default_and_for_explicit_selections() {
+        let command = plain_command();
+        assert!(!command.app_cache_gate().opted_in);
+        assert!(command.app_cache_gate().default_account_fetch);
+        for args in [
+            UsageArgs {
+                source: "web".to_string(),
+                ..UsageArgs::default()
+            },
+            UsageArgs {
+                provider: Some("codex".to_string()),
+                account: Some("1".to_string()),
+                ..UsageArgs::default()
+            },
+            UsageArgs {
+                all_accounts: true,
+                ..UsageArgs::default()
+            },
+        ] {
+            let command = UsageCommand::from_args_with(args, Vec::new).unwrap();
+            assert!(!command.app_cache_gate().default_account_fetch);
+        }
+    }
+
+    #[tokio::test]
+    async fn fallback_serves_the_cache_only_when_sharing_is_on() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(cli_usage_cache::CACHE_FILE_NAME);
+        let mut usage = cached_usage();
+        usage.updated_at = Utc::now() - Duration::seconds(30);
+        CliUsageCache::new(vec![Entry::new(ProviderId::Codex, &usage).unwrap()])
+            .write(&path)
+            .unwrap();
+        // The process-wide witness only ever turns on, so setting it here
+        // cannot open a gate that another test expects closed.
+        cli_usage_cache::note_dpapi_decrypt_failure();
+        let auth: anyhow::Error = ProviderError::AuthRequired.into();
+
+        let mut command = plain_command();
+        command.app_cache_path = Some(path.clone());
+        assert!(
+            app_cache_fallback(ProviderId::Codex, &command, &auth)
+                .await
+                .is_none(),
+            "sharing off must not fall back"
+        );
+
+        command.app_cache_opted_in = true;
+        let served = app_cache_fallback(ProviderId::Codex, &command, &auth)
+            .await
+            .expect("sharing on falls back");
+        assert_eq!(served.result.source_label, "codexbar-app");
+        assert!((30..=40).contains(&served.age_seconds));
+
+        let timeout: anyhow::Error = ProviderError::Timeout.into();
+        assert!(
+            app_cache_fallback(ProviderId::Codex, &command, &timeout)
+                .await
+                .is_none()
+        );
+        let not_a_provider_error = anyhow::anyhow!("No active token account for Codex");
+        assert!(
+            app_cache_fallback(ProviderId::Codex, &command, &not_a_provider_error)
+                .await
+                .is_none()
+        );
+        assert!(
+            app_cache_fallback(ProviderId::Claude, &command, &auth)
+                .await
+                .is_none()
+        );
+    }
+}

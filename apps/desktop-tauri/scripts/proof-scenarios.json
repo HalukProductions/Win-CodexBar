@@ -223,6 +223,20 @@
       ]
     },
     {
+      "name": "settings-advanced-share-usage-with-cli",
+      "query": "window=settings&tab=advanced&theme=dark",
+      "size": [880, 620],
+      "steps": [
+        { "expectText": ["Share usage with the CLI", "Emails, plans, costs and credentials are not included."] },
+        { "expectSelector": "input[aria-label=\"Share usage with the CLI\"]:not(:checked)" },
+        { "screenshot": "settings-advanced-share-usage-with-cli-off" },
+        { "click": { "selector": "input", "label": "Share usage with the CLI" } },
+        { "expectCall": { "cmd": "update_settings", "args": { "patch": { "shareUsageWithCli": true } } } },
+        { "expectSelector": "input[aria-label=\"Share usage with the CLI\"]:checked" },
+        { "screenshot": "settings-advanced-share-usage-with-cli-on" }
+      ]
+    },
+    {
       "name": "floatbar",
       "query": "window=floatbar",
       "size": [520, 120],

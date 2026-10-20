@@ -145,6 +145,18 @@ export default function AdvancedTab({ settings, set, saving }: TabProps) {
             onChange={(v) => set({ powertoysStatusPipeEnabled: v })}
           />
         </Field>
+        <Field
+          label={t("ShareUsageWithCliLabel")}
+          description={t("ShareUsageWithCliHelper")}
+        >
+          <Toggle
+            variant="switch"
+            checked={settings.shareUsageWithCli}
+            ariaLabel={t("ShareUsageWithCliLabel")}
+            disabled={saving}
+            onChange={(v) => set({ shareUsageWithCli: v })}
+          />
+        </Field>
       </SettingsGroup>
 
       <SettingsGroup

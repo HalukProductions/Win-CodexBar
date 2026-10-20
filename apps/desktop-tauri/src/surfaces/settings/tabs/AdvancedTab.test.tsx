@@ -56,6 +56,29 @@ describe("AdvancedTab", () => {
   });
 
 
+  it("toggles sharing usage with the CLI", () => {
+    const set = vi.fn();
+    const { rerender } = render(
+      <AdvancedTab settings={settings} set={set} saving={false} />,
+    );
+
+    const toggle = screen.getByRole("checkbox", { name: "ShareUsageWithCliLabel" });
+    expect(toggle).not.toBeChecked();
+    fireEvent.click(toggle);
+    expect(set).toHaveBeenCalledWith({ shareUsageWithCli: true });
+
+    rerender(
+      <AdvancedTab
+        settings={{ ...settings, shareUsageWithCli: true }}
+        set={set}
+        saving={false}
+      />,
+    );
+    expect(
+      screen.getByRole("checkbox", { name: "ShareUsageWithCliLabel" }),
+    ).toBeChecked();
+  });
+
   it("keeps proxy text edits local until blur or Enter", () => {
     const set = vi.fn();
     render(
