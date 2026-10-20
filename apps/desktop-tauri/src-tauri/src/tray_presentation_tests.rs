@@ -1543,8 +1543,76 @@ fn named_extra_metric_without_a_reading_shows_a_labeled_dash() {
         named_extra_status(&missing, &preference, Language::English).as_deref(),
         Some("Grok Bot \u{2013}")
     );
-    // The meter reads as empty instead of borrowing the 30% core lane.
-    assert_eq!(selected_tray_percents(&missing, &settings).0, 0.0);
+    // The meter is unknown instead of borrowing the 30% core lane.
+    assert!(selected_tray_percents(&missing, &settings).0.is_nan());
+}
+
+#[test]
+fn named_extra_metric_without_a_reading_renders_an_unknown_icon_in_both_directions() {
+    for show_as_used in [true, false] {
+        let mut settings = Settings {
+            show_as_used,
+            menu_bar_icon_style: codexbar::settings::MenuBarIconStyle::Percent,
+            ..Settings::default()
+        };
+        settings.set_provider_metric(
+            ProviderId::Cursor,
+            MetricPreference::NamedExtra("cursor-grok-bot".to_string()),
+        );
+        let snapshots = vec![grok_bot_cursor(None)];
+
+        let (percent_icon, _, _) =
+            TrayPresentationPlan::resolve(&settings, &snapshots, None).render_icon();
+        let unknown =
+            codexbar::tray::render_percent_icon_rgba(codexbar::tray::UNKNOWN_PERCENT, false).0;
+        assert_eq!(percent_icon, unknown, "show_as_used={show_as_used}");
+        assert_ne!(
+            percent_icon,
+            codexbar::tray::render_percent_icon_rgba(0.0, false).0,
+            "show_as_used={show_as_used}"
+        );
+
+        settings.menu_bar_icon_style = codexbar::settings::MenuBarIconStyle::Bars;
+        let (bar_icon, _, _) =
+            TrayPresentationPlan::resolve(&settings, &snapshots, None).render_icon();
+        let (selected, companion) = selected_tray_percents(&snapshots[0], &settings);
+        assert!(selected.is_nan(), "show_as_used={show_as_used}");
+        assert_eq!(
+            bar_icon,
+            codexbar::tray::render_bar_icon_rgba(codexbar::tray::UNKNOWN_PERCENT, companion, false)
+                .0,
+            "show_as_used={show_as_used}"
+        );
+
+        // A real 0% used still renders as a reading in both directions.
+        let zero = vec![grok_bot_cursor(Some(0.0))];
+        settings.menu_bar_icon_style = codexbar::settings::MenuBarIconStyle::Percent;
+        let (zero_icon, _, _) = TrayPresentationPlan::resolve(&settings, &zero, None).render_icon();
+        let expected = if show_as_used { 0.0 } else { 100.0 };
+        assert_eq!(
+            zero_icon,
+            codexbar::tray::render_percent_icon_rgba(expected, false).0,
+            "show_as_used={show_as_used}"
+        );
+    }
+}
+
+#[test]
+fn named_extra_metric_marks_an_estimated_reading_but_not_a_dash() {
+    let preference = MetricPreference::NamedExtra("cursor-grok-bot".to_string());
+    let mut estimated = grok_bot_cursor(Some(42.0));
+    estimated.quota_estimated = true;
+    assert_eq!(
+        named_extra_status(&estimated, &preference, Language::English).as_deref(),
+        Some("Grok Bot ~42%")
+    );
+
+    let mut missing = grok_bot_cursor(None);
+    missing.quota_estimated = true;
+    assert_eq!(
+        named_extra_status(&missing, &preference, Language::English).as_deref(),
+        Some("Grok Bot \u{2013}")
+    );
 }
 
 #[test]

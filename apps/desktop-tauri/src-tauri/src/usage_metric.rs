@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::cmp::Ordering;
 
 use chrono::{DateTime, Utc};
-use codexbar::core::{IconLane, NamedExtraMetric, ProviderId, UsagePace};
+use codexbar::core::{IconLane, ProviderId, UsagePace};
 use codexbar::settings::{MetricPreference, Settings};
 
 use crate::commands::{ProviderUsageSnapshot, RateWindowSnapshot};
@@ -176,7 +176,7 @@ fn preferred_window(
         // as unknown instead of borrowing another lane. An id the provider
         // does not declare falls through like any unavailable choice.
         MetricPreference::NamedExtra(id) => {
-            let declared = named_extra_metric(provider?, &id)?;
+            let declared = provider?.named_extra_metric(&id)?;
             Some(
                 plan_window(snapshot, declared.id)
                     .cloned()
@@ -231,13 +231,20 @@ pub(crate) fn monthly_plan_window(
     plan_window(snapshot, provider.and_then(monthly_plan_window_id)?)
 }
 
-/// The provider-declared named extra allowance with this window id.
-pub(crate) fn named_extra_metric(provider: ProviderId, id: &str) -> Option<NamedExtraMetric> {
-    codexbar::core::instantiate_provider(provider)
-        .named_extra_metrics()
-        .iter()
-        .find(|metric| metric.id == id)
-        .copied()
+/// Whether the selected metric is a declared named extra allowance that the
+/// snapshot has no reading for, so the meter must show it as unknown.
+pub(crate) fn selected_named_extra_is_unknown(
+    snapshot: &ProviderUsageSnapshot,
+    settings: &Settings,
+) -> bool {
+    let Some(provider) = ProviderId::from_cli_name(&snapshot.provider_id) else {
+        return false;
+    };
+    settings
+        .get_provider_metric(provider)
+        .named_extra_id()
+        .and_then(|id| provider.named_extra_metric(id))
+        .is_some_and(|declared| plan_window(snapshot, declared.id).is_none())
 }
 
 fn unknown_window() -> RateWindowSnapshot {

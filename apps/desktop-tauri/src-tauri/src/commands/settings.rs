@@ -702,9 +702,18 @@ fn apply_provider_metrics(
     metrics_map: std::collections::HashMap<String, String>,
 ) {
     for (provider, label) in metrics_map {
-        if let Some(pref) = parse_metric_preference(&label) {
-            settings.provider_metrics.insert(provider, pref);
+        let Some(pref) = parse_metric_preference(&label) else {
+            continue;
+        };
+        let declared = match codexbar::core::ProviderId::from_cli_name(&provider) {
+            Some(id) => pref.is_declared_for(id),
+            None => pref.named_extra_id().is_none(),
+        };
+        if !declared {
+            tracing::warn!(provider = %provider, metric = %label, "ignoring undeclared named extra metric");
+            continue;
         }
+        settings.provider_metrics.insert(provider, pref);
     }
 }
 

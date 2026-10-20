@@ -67,6 +67,33 @@ fn camel_case_metric_keeps_the_rest_of_the_settings_file() {
 }
 
 #[test]
+fn unknown_metric_values_are_dropped_without_resetting_the_file() {
+    let loaded: Settings = serde_json::from_str(
+        r#"{
+            "refresh_interval_secs": 60,
+            "provider_metrics": {
+                "cursor": "extra:",
+                "codex": "bogus",
+                "gemini": 7,
+                "claude": "weekly"
+            }
+        }"#,
+    )
+    .expect("settings file parses");
+    assert_eq!(loaded.refresh_interval_secs, 60);
+    assert_eq!(
+        loaded.get_provider_metric(ProviderId::Claude),
+        MetricPreference::Weekly
+    );
+    assert_eq!(
+        loaded.provider_metrics.len(),
+        1,
+        "{:?}",
+        loaded.provider_metrics
+    );
+}
+
+#[test]
 fn named_extra_round_trips_through_the_settings_file() {
     let mut settings = Settings::default();
     settings.set_provider_metric(

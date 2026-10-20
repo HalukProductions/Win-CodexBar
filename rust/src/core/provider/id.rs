@@ -5,6 +5,15 @@ use std::collections::HashMap;
 
 use super::spec::{ALL, ProviderMetadata, ProviderSpec, SPECS};
 
+/// A provider-declared extra rate window that can be the menu bar metric.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NamedExtraMetric {
+    /// The extra rate window id (`NamedRateWindow::id`).
+    pub id: &'static str,
+    /// Label used when the snapshot carries no title for the window.
+    pub label: &'static str,
+}
+
 /// Unique identifier for a provider
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -179,6 +188,25 @@ impl ProviderId {
     /// provider trait and shell code that has no provider instance.
     pub fn reports_tokens_per_minute(self) -> bool {
         matches!(self, ProviderId::OpenAIApi)
+    }
+
+    /// Named extra allowances this provider publishes as extra rate windows
+    /// that may be chosen as the menu bar metric (upstream 0.73.0 #4269,
+    /// `menuBarMetrics.namedExtras`). Static so the picker can offer them
+    /// before the first refresh and shell code needs no provider instance.
+    pub fn named_extra_metrics(self) -> &'static [NamedExtraMetric] {
+        match self {
+            ProviderId::Cursor => crate::providers::cursor::NAMED_EXTRA_METRICS,
+            _ => &[],
+        }
+    }
+
+    /// The declared named extra allowance with this extra rate window id.
+    pub fn named_extra_metric(self, id: &str) -> Option<NamedExtraMetric> {
+        self.named_extra_metrics()
+            .iter()
+            .find(|metric| metric.id == id)
+            .copied()
     }
 
     /// Parse from CLI name string

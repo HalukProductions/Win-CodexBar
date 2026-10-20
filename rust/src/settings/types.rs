@@ -529,6 +529,15 @@ impl MetricPreference {
         })
     }
 
+    /// Whether `provider` can take this choice: a named extra only for the
+    /// provider that declares that window id; every other metric always.
+    pub fn is_declared_for(&self, provider: ProviderId) -> bool {
+        match self {
+            MetricPreference::NamedExtra(id) => provider.named_extra_metric(id).is_some(),
+            _ => true,
+        }
+    }
+
     /// The selected named extra window id, when this is a named extra choice.
     pub fn named_extra_id(&self) -> Option<&str> {
         match self {

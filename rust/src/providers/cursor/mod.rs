@@ -36,11 +36,13 @@ pub(crate) const PACE_CAPABILITY: crate::core::ProviderPaceCapability =
         crate::core::PaceWindowRule::WindowDurationPresent,
     );
 
-/// Grok Bot is Cursor's named extra allowance (upstream 0.73.0 #4269).
-const NAMED_EXTRA_METRICS: &[crate::core::NamedExtraMetric] = &[crate::core::NamedExtraMetric {
-    id: api::GROK_BOT_WINDOW_ID,
-    label: api::GROK_BOT_TITLE,
-}];
+/// Grok Bot is Cursor's named extra allowance (upstream 0.73.0 #4269),
+/// published through [`ProviderId::named_extra_metrics`].
+pub const NAMED_EXTRA_METRICS: &[crate::core::NamedExtraMetric] =
+    &[crate::core::NamedExtraMetric {
+        id: api::GROK_BOT_WINDOW_ID,
+        label: api::GROK_BOT_TITLE,
+    }];
 
 /// Cursor provider for fetching AI usage limits
 pub struct CursorProvider {
@@ -245,10 +247,6 @@ impl Provider for CursorProvider {
         ProviderId::Cursor
     }
 
-    fn named_extra_metrics(&self) -> &'static [crate::core::NamedExtraMetric] {
-        NAMED_EXTRA_METRICS
-    }
-
     fn retains_last_good_on_transport_failure(&self) -> bool {
         true
     }
@@ -320,14 +318,22 @@ mod tests {
 
     #[test]
     fn grok_bot_is_the_declared_named_extra_metric() {
-        let metrics = CursorProvider::new().named_extra_metrics();
+        let metrics = ProviderId::Cursor.named_extra_metrics();
         assert_eq!(metrics.len(), 1);
         assert_eq!(metrics[0].id, "cursor-grok-bot");
         assert_eq!(metrics[0].label, "Grok Bot");
-        assert!(
-            crate::core::instantiate_provider(ProviderId::Codex)
-                .named_extra_metrics()
-                .is_empty()
+        assert_eq!(
+            ProviderId::Cursor.named_extra_metric("cursor-grok-bot"),
+            Some(metrics[0])
+        );
+        assert_eq!(
+            ProviderId::Cursor.named_extra_metric("cursor-retired"),
+            None
+        );
+        assert!(ProviderId::Codex.named_extra_metrics().is_empty());
+        assert_eq!(
+            ProviderId::Codex.named_extra_metric("cursor-grok-bot"),
+            None
         );
     }
 

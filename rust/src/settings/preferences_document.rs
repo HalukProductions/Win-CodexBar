@@ -283,12 +283,23 @@ fn merged_overview_selection(value: &Value) -> bool {
 }
 
 fn provider_metrics(value: &Value) -> bool {
-    let known = known_provider_ids();
     value.as_object().is_some_and(|map| {
-        map.iter().all(|(provider, metric)| {
-            known.contains(provider.as_str()) && typed::<MetricPreference>(metric)
-        })
+        map.iter()
+            .all(|(provider, metric)| portable_metric(provider, metric))
     })
+}
+
+/// A known provider with a metric it can take; a named extra must be one
+/// that provider declares.
+fn portable_metric(provider: &str, metric: &Value) -> bool {
+    let Some(id) = ProviderId::from_cli_name(provider).filter(|id| id.cli_name() == provider)
+    else {
+        return false;
+    };
+    metric
+        .as_str()
+        .and_then(MetricPreference::from_key)
+        .is_some_and(|metric| metric.is_declared_for(id))
 }
 
 /// Keys are `<provider>` or `<provider>:session|weekly`; values carry optional
@@ -454,7 +465,7 @@ impl PreferencesDocument {
             ids.retain(|id| id.as_str().is_some_and(|id| known.contains(id)));
         }
         if let Some(Value::Object(metrics)) = preferences.get_mut("provider_metrics") {
-            metrics.retain(|provider, _| known.contains(provider.as_str()));
+            metrics.retain(|provider, metric| portable_metric(provider, metric));
         }
         if let Some(Value::Array(ids)) = preferences.get_mut("enabled_providers") {
             // `enabled_providers` is a set; keep exports deterministic.

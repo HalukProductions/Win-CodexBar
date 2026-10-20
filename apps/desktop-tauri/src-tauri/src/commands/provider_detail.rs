@@ -160,7 +160,7 @@ pub(crate) fn build_provider_detail(
         tertiary_label_key: metadata.tertiary_label_key,
         monthly_plan_window_id: provider.monthly_plan_window_id(),
         tokens_per_minute_metric: provider.reports_tokens_per_minute(),
-        named_extra_metrics: provider
+        named_extra_metrics: id
             .named_extra_metrics()
             .iter()
             .map(|metric| NamedExtraMetricOption {

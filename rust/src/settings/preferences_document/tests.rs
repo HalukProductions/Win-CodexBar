@@ -214,6 +214,29 @@ fn export_is_deterministic_and_sorted() {
 }
 
 #[test]
+fn export_keeps_only_named_extras_the_provider_declares() {
+    use crate::settings::MetricPreference;
+    let mut settings = customized_settings();
+    settings.provider_metrics.insert(
+        "cursor".to_string(),
+        MetricPreference::NamedExtra("cursor-grok-bot".to_string()),
+    );
+    settings.provider_metrics.insert(
+        "codex".to_string(),
+        MetricPreference::NamedExtra("cursor-grok-bot".to_string()),
+    );
+
+    let exported = PreferencesDocument::from_settings(&settings)
+        .expect("an undeclared named extra does not prevent export");
+    let json: Value = serde_json::from_str(&exported.to_json()).expect("valid JSON");
+    let metrics = &json["preferences"]["provider_metrics"];
+
+    assert_eq!(metrics["cursor"], "extra:cursor-grok-bot");
+    assert!(metrics.get("codex").is_none());
+    assert!(metrics.get("claude").is_some());
+}
+
+#[test]
 fn export_skips_provider_preferences_unknown_to_this_build() {
     let mut settings = customized_settings();
     settings
@@ -531,6 +554,16 @@ fn rejection_matrix_names_the_offending_key() {
         (
             "metric provider",
             json!({ "provider_metrics": { "nope": "weekly" } }),
+            "provider_metrics",
+        ),
+        (
+            "named extra of another provider",
+            json!({ "provider_metrics": { "codex": "extra:cursor-grok-bot" } }),
+            "provider_metrics",
+        ),
+        (
+            "undeclared named extra",
+            json!({ "provider_metrics": { "cursor": "extra:cursor-retired" } }),
             "provider_metrics",
         ),
         (
