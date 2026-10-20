@@ -75,7 +75,7 @@ When the Kimi cookie source is Automatic, CodexBar also reads `access_token` fro
 - Local storage is not App-Bound encrypted, so this can work when cookie decryption is blocked.
 - CodexBar uses only unexpired JWTs with three segments. It never reads refresh tokens.
 - A manual cookie always wins. Cookie source **Manual** or **Off** skips this step.
-- CodexBar scans only the `Default` and `Profile N` profiles. It doesn't read Firefox local storage.
+- CodexBar scans every detected Chromium profile: `Default` and `Profile N`, or the browser root for Opera, Opera GX and Opera Neon. It doesn't read Firefox local storage.
 
 If the token has expired, open Kimi in the browser to renew the session.
 
