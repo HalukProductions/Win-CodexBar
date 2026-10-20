@@ -171,7 +171,7 @@ impl SnapshotProducer {
                     };
                     tracing::warn!(
                         provider = provider_id.cli_name(),
-                        ?join_error,
+                        is_panic = join_error.is_panic(),
                         "dashboard account task failed"
                     );
                     provider_accounts.insert(
@@ -268,18 +268,42 @@ async fn fetch_provider_envelope(
     ctx: FetchContext,
     fetch_timeout: Option<Duration>,
 ) -> ProviderFetchEnvelope {
-    let fetch = bounded_fetch(provider_id, ctx, None, fetch_timeout).await;
+    let fetch = bounded_fetch(
+        provider_id,
+        ctx,
+        None,
+        fetch_timeout.map(FetchBudget::whole),
+    )
+    .await;
     provider_envelope(provider_id, fetch)
+}
+
+/// How long one fetch may run, and the budget its timeout error reports.
+/// An account fetch runs for the build's remaining time but reports the
+/// build's total, so every timeout row in a snapshot reads the same.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct FetchBudget {
+    remaining: Duration,
+    total: Duration,
+}
+
+impl FetchBudget {
+    fn whole(total: Duration) -> Self {
+        Self {
+            remaining: total,
+            total,
+        }
+    }
 }
 
 async fn bounded_fetch(
     provider_id: ProviderId,
     ctx: FetchContext,
     label: Option<&str>,
-    timeout_budget: Option<Duration>,
+    budget: Option<FetchBudget>,
 ) -> Result<ProviderFetchResult, String> {
     let provider = instantiate_provider(provider_id);
-    let Some(timeout_budget) = timeout_budget else {
+    let Some(budget) = budget else {
         return provider
             .fetch_usage(&ctx)
             .await
@@ -288,17 +312,21 @@ async fn bounded_fetch(
                 None => error.to_string(),
             });
     };
-    let secs = timeout_budget.as_secs();
-    match tokio::time::timeout(timeout_budget, provider.fetch_usage(&ctx)).await {
+    match tokio::time::timeout(budget.remaining, provider.fetch_usage(&ctx)).await {
         Ok(Ok(result)) => Ok(result),
         Ok(Err(error)) => Err(match label {
             Some(label) => format!("{label}: {error}"),
             None => error.to_string(),
         }),
-        Err(_) => Err(match label {
-            Some(label) => format!("{label}: fetch timed out after {secs}s"),
-            None => format!("fetch timed out after {secs}s"),
-        }),
+        Err(_) => Err(timeout_error(label, budget)),
+    }
+}
+
+fn timeout_error(label: Option<&str>, budget: FetchBudget) -> String {
+    let secs = budget.total.as_secs();
+    match label {
+        Some(label) => format!("{label}: fetch timed out after {secs}s"),
+        None => format!("fetch timed out after {secs}s"),
     }
 }
 
@@ -396,7 +424,7 @@ async fn collect_claude_accounts(
                 ProviderId::Claude,
                 ctx,
                 Some(&account.label),
-                Some(ACCOUNT_FETCH_TIMEOUT),
+                Some(FetchBudget::whole(ACCOUNT_FETCH_TIMEOUT)),
             )
             .await;
             (
@@ -449,6 +477,17 @@ impl BuildDeadline {
     fn remaining(&self) -> Option<Duration> {
         let left = self.at.saturating_duration_since(Instant::now());
         (!left.is_zero()).then_some(left)
+    }
+
+    fn next_budget(&self) -> Option<FetchBudget> {
+        self.remaining().map(|remaining| FetchBudget {
+            remaining,
+            total: self.total,
+        })
+    }
+
+    fn is_expired(&self) -> bool {
+        self.remaining().is_none()
     }
 
     fn expired_error(&self) -> String {
@@ -559,24 +598,11 @@ async fn fetch_account_plan(
     )
     .await;
 
-    let selected = rows
-        .iter()
-        .position(|(account, _)| plan.active_id == Some(account.id))
-        .unwrap_or(0);
-    let top_level = results
-        .get(selected)
-        .cloned()
-        .unwrap_or_else(|| Err("no token accounts".to_string()));
-    let accounts = rows
-        .iter()
-        .zip(results)
-        .map(|((account, _), fetch)| AccountFetchEnvelope {
-            id: format!("token:{}", account.id),
-            label: account.label.clone(),
-            active: plan.active_id == Some(account.id),
-            fetch,
-        })
-        .collect();
+    let (top_level, accounts) = account_rows(
+        rows.iter().map(|(account, _)| account),
+        plan.active_id,
+        results,
+    );
     (
         provider_envelope(provider_id, top_level),
         ClaudeAccountsInput {
@@ -586,12 +612,42 @@ async fn fetch_account_plan(
     )
 }
 
+/// Pair each account with its result. The provider's top-level row is the
+/// active account's result, or the first account's when none is active.
+fn account_rows<'a>(
+    accounts: impl IntoIterator<Item = &'a TokenAccount>,
+    active_id: Option<uuid::Uuid>,
+    results: Vec<Result<ProviderFetchResult, String>>,
+) -> (
+    Result<ProviderFetchResult, String>,
+    Vec<AccountFetchEnvelope>,
+) {
+    let rows: Vec<AccountFetchEnvelope> = accounts
+        .into_iter()
+        .zip(results)
+        .map(|(account, fetch)| AccountFetchEnvelope {
+            id: format!("token:{}", account.id),
+            label: account.label.clone(),
+            active: active_id == Some(account.id),
+            fetch,
+        })
+        .collect();
+    let top_level = rows
+        .iter()
+        .find(|row| row.active)
+        .or_else(|| rows.first())
+        .map(|row| row.fetch.clone())
+        .unwrap_or_else(|| Err("no token accounts".to_string()));
+    (top_level, rows)
+}
+
 /// Run `fetch` for accounts `0..count` and return the results in account
 /// order (upstream `collectAccountUsage`). A provider with a minimum delay
 /// is fetched one account at a time with `sleep(delay)` between accounts;
-/// others run up to [`MAX_CONCURRENT_ACCOUNT_FETCHES`] at once. Each fetch
-/// gets the build's remaining time, and an account reached after the
-/// deadline becomes a timeout row without being fetched.
+/// others run up to [`MAX_CONCURRENT_ACCOUNT_FETCHES`] at once, and a slow
+/// account does not hold back the ones queued after it. Each fetch gets the
+/// build's remaining time, and an account reached after the deadline becomes
+/// a timeout row without being fetched.
 async fn collect_account_results<F, Fut, S, SFut>(
     count: usize,
     minimum_delay: Option<Duration>,
@@ -600,23 +656,24 @@ async fn collect_account_results<F, Fut, S, SFut>(
     sleep: S,
 ) -> Vec<Result<ProviderFetchResult, String>>
 where
-    F: Fn(usize, Option<Duration>) -> Fut,
+    F: Fn(usize, Option<FetchBudget>) -> Fut,
     Fut: Future<Output = Result<ProviderFetchResult, String>>,
     S: Fn(Duration) -> SFut,
     SFut: Future<Output = ()>,
 {
     let run_one = |index: usize| {
-        let budget = deadline.map(|deadline| deadline.remaining());
-        let fetch = match budget {
-            Some(None) => None,
-            Some(Some(left)) => Some(fetch(index, Some(left))),
+        let fetch = match deadline {
+            Some(deadline) => deadline
+                .next_budget()
+                .map(|budget| fetch(index, Some(budget))),
             None => Some(fetch(index, None)),
         };
         async move {
-            match fetch {
+            let result = match fetch {
                 Some(fetch) => fetch.await,
                 None => Err(deadline.map(|d| d.expired_error()).unwrap_or_default()),
-            }
+            };
+            (index, result)
         }
     };
 
@@ -624,19 +681,30 @@ where
         Some(delay) => {
             let mut results = Vec::with_capacity(count);
             for index in 0..count {
+                if let Some(deadline) = deadline
+                    && deadline.is_expired()
+                {
+                    // Out of time: the rest become timeout rows, with no
+                    // further pacing sleeps.
+                    results.resize_with(count, || Err(deadline.expired_error()));
+                    break;
+                }
                 if index > 0 {
                     sleep(delay).await;
                 }
-                results.push(run_one(index).await);
+                results.push(run_one(index).await.1);
             }
             results
         }
         None => {
-            futures::stream::iter(0..count)
-                .map(run_one)
-                .buffered(MAX_CONCURRENT_ACCOUNT_FETCHES)
-                .collect()
-                .await
+            let mut indexed: Vec<(usize, Result<ProviderFetchResult, String>)> =
+                futures::stream::iter(0..count)
+                    .map(run_one)
+                    .buffer_unordered(MAX_CONCURRENT_ACCOUNT_FETCHES)
+                    .collect()
+                    .await;
+            indexed.sort_by_key(|(index, _)| *index);
+            indexed.into_iter().map(|(_, result)| result).collect()
         }
     }
 }
@@ -855,6 +923,7 @@ mod tests {
             total: Duration::from_secs(75),
         };
         let fetched = std::sync::atomic::AtomicUsize::new(0);
+        let slept = std::sync::atomic::AtomicUsize::new(0);
         let results = collect_account_results(
             2,
             Some(Duration::from_secs(1)),
@@ -863,10 +932,14 @@ mod tests {
                 fetched.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 std::future::ready(ok_result("account"))
             },
-            |_delay| std::future::ready(()),
+            |_delay| {
+                slept.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                std::future::ready(())
+            },
         )
         .await;
         assert_eq!(fetched.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(slept.load(std::sync::atomic::Ordering::SeqCst), 0);
         assert_eq!(
             results
                 .into_iter()
@@ -885,13 +958,147 @@ mod tests {
             Some(deadline),
             |_index, budget| async move {
                 let budget = budget.expect("a deadline yields a budget");
-                assert!(budget <= Duration::from_secs(75));
-                assert!(budget > Duration::from_secs(70));
+                assert!(budget.remaining <= Duration::from_secs(75));
+                assert!(budget.remaining > Duration::from_secs(70));
+                assert_eq!(budget.total, Duration::from_secs(75));
                 ok_result("account")
             },
             |_delay| std::future::ready(()),
         )
         .await;
         assert!(results[0].is_ok());
+    }
+
+    #[tokio::test]
+    async fn delayed_provider_stops_sleeping_once_the_deadline_passes() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let deadline = BuildDeadline {
+            at: Instant::now() + Duration::from_millis(50),
+            total: Duration::from_secs(75),
+        };
+        let fetched = AtomicUsize::new(0);
+        let slept = AtomicUsize::new(0);
+        let results = collect_account_results(
+            3,
+            Some(Duration::from_secs(1)),
+            Some(deadline),
+            |_index, budget| {
+                fetched.fetch_add(1, Ordering::SeqCst);
+                let remaining = budget.expect("first account has a budget").remaining;
+                async move {
+                    // The first account uses up the whole build budget.
+                    tokio::time::sleep(remaining + Duration::from_millis(10)).await;
+                    ok_result("account 0")
+                }
+            },
+            |_delay| {
+                slept.fetch_add(1, Ordering::SeqCst);
+                std::future::ready(())
+            },
+        )
+        .await;
+        assert_eq!(fetched.load(Ordering::SeqCst), 1);
+        assert_eq!(slept.load(Ordering::SeqCst), 0);
+        assert!(results[0].is_ok());
+        assert_eq!(
+            results[1..]
+                .iter()
+                .map(|result| result.clone().unwrap_err())
+                .collect::<Vec<_>>(),
+            vec!["fetch timed out after 75s", "fetch timed out after 75s"]
+        );
+    }
+
+    #[tokio::test]
+    async fn slow_first_account_does_not_hold_back_later_accounts() {
+        use std::sync::Mutex;
+        let count = MAX_CONCURRENT_ACCOUNT_FETCHES + 4;
+        // Account 0 only finishes once the last account has run, which needs
+        // every account after it to start while account 0 is still pending.
+        let (release, released) = tokio::sync::oneshot::channel::<()>();
+        let release = Mutex::new(Some(release));
+        let released = Mutex::new(Some(released));
+        let results = tokio::time::timeout(
+            Duration::from_secs(5),
+            collect_account_results(
+                count,
+                None,
+                None,
+                |index, _budget| {
+                    let wait = (index == 0).then(|| released.lock().unwrap().take().unwrap());
+                    let signal =
+                        (index == count - 1).then(|| release.lock().unwrap().take().unwrap());
+                    async move {
+                        if let Some(wait) = wait {
+                            wait.await.expect("last account releases the first");
+                        }
+                        if let Some(signal) = signal {
+                            signal.send(()).expect("first account is still waiting");
+                        }
+                        ok_result(&format!("account {index}"))
+                    }
+                },
+                |_delay| std::future::ready(()),
+            ),
+        )
+        .await
+        .expect("a pending first account must not block later accounts");
+        let labels: Vec<String> = results
+            .into_iter()
+            .map(|result| result.unwrap().source_label)
+            .collect();
+        let expected: Vec<String> = (0..count).map(|index| format!("account {index}")).collect();
+        assert_eq!(labels, expected);
+    }
+
+    fn labelled_results(count: usize) -> Vec<Result<ProviderFetchResult, String>> {
+        (0..count)
+            .map(|index| ok_result(&format!("account {index}")))
+            .collect()
+    }
+
+    #[test]
+    fn top_level_row_is_the_active_accounts_result() {
+        let accounts = [
+            TokenAccount::new("First", "key-1"),
+            TokenAccount::new("Second", "key-2"),
+            TokenAccount::new("Third", "key-3"),
+        ];
+        let (top_level, rows) =
+            account_rows(accounts.iter(), Some(accounts[1].id), labelled_results(3));
+        assert_eq!(top_level.unwrap().source_label, "account 1");
+        assert_eq!(
+            rows.iter().map(|row| row.active).collect::<Vec<_>>(),
+            vec![false, true, false]
+        );
+        assert_eq!(rows[2].id, format!("token:{}", accounts[2].id));
+    }
+
+    #[test]
+    fn top_level_row_falls_back_to_the_first_account_without_an_active_one() {
+        let accounts = [
+            TokenAccount::new("First", "key-1"),
+            TokenAccount::new("Second", "key-2"),
+        ];
+        let (top_level, rows) = account_rows(accounts.iter(), None, labelled_results(2));
+        assert_eq!(top_level.unwrap().source_label, "account 0");
+        assert!(rows.iter().all(|row| !row.active));
+        let (empty, none) = account_rows(std::iter::empty(), None, Vec::new());
+        assert!(none.is_empty());
+        assert_eq!(empty.unwrap_err(), "no token accounts");
+    }
+
+    #[test]
+    fn account_timeouts_report_the_build_total_not_the_remaining_time() {
+        let deadline = BuildDeadline::starting_now(Duration::from_secs(75));
+        let budget = FetchBudget {
+            remaining: Duration::from_secs(3),
+            total: deadline.total,
+        };
+        assert_eq!(timeout_error(None, budget), deadline.expired_error());
+        assert_eq!(
+            timeout_error(Some("Work"), budget),
+            "Work: fetch timed out after 75s"
+        );
     }
 }

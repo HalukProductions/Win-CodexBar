@@ -252,7 +252,7 @@ How much identity the expanded snapshot shows depends on `--identity`:
 
 These rules cover Claude's account rows too. If an account's fetch fails before it produces a row, the provider reports `Account list incomplete`.
 
-Providers are fetched at the same time, and so are their account lists, all under the build's 75-second deadline. Within one provider, up to three accounts are fetched at once. Neuralwatt is the exception: its quota endpoint allows one request per second, so its accounts are fetched one after another with a one-second pause between them. An account that is still waiting when the deadline passes becomes a timeout row.
+Providers are fetched at the same time, and so are their account lists, all under the build's 75-second deadline. Within one provider, up to three accounts are fetched at once, and a slow account doesn't hold back the ones queued after it. Neuralwatt is the exception: its quota endpoint allows one request per second, so its accounts are fetched one after another with a one-second pause between them. An account that is still waiting when the deadline passes becomes a timeout row, and every timeout row reports the 75-second build budget. Claude's account rows are not under the shared deadline: each Claude account gets its own 75-second timeout.
 
 ```powershell
 codexbar serve --all-accounts
