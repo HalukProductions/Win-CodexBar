@@ -77,7 +77,7 @@ impl WebTransport for HttpWebTransport {
         cookie_header: &str,
         timeout: Duration,
     ) -> Result<String, ProviderError> {
-        console::fetch_workspace_id(&self.client, cookie_header, timeout).await
+        console::fetch_workspace_id(&self.client, super::BASE_URL, cookie_header, timeout).await
     }
 
     async fn fetch_console_usage(
@@ -86,7 +86,14 @@ impl WebTransport for HttpWebTransport {
         cookie_header: &str,
         timeout: Duration,
     ) -> Result<console::ConsoleUsage, ProviderError> {
-        console::fetch_usage(&self.client, workspace_id, cookie_header, timeout).await
+        console::fetch_usage(
+            &self.client,
+            super::BASE_URL,
+            workspace_id,
+            cookie_header,
+            timeout,
+        )
+        .await
     }
 
     async fn fetch_console_balance(

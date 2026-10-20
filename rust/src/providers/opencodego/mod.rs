@@ -6,7 +6,7 @@
 //! API or browser-session quota onto the local estimate (upstream #4445);
 //! Web is cookie scrape only; Cli is local-only.
 
-mod console;
+pub(crate) mod console;
 mod legacy;
 pub(crate) mod local;
 mod session_overlay;
@@ -55,8 +55,10 @@ struct CookieCapabilities {
     legacy: bool,
 }
 
+/// Console vs legacy session capabilities of an `opencode.ai` cookie header,
+/// shared by OpenCode and OpenCode Go.
 #[derive(Clone, Debug)]
-struct WebCookieSession {
+pub(crate) struct WebCookieSession {
     header: String,
     capabilities: CookieCapabilities,
 }
@@ -68,7 +70,7 @@ enum OptionalZenBalance {
 }
 
 impl WebCookieSession {
-    fn new(header: &str) -> Self {
+    pub(crate) fn new(header: &str) -> Self {
         let has_cookie = |names: &[&str]| {
             header.split(';').any(|part| {
                 let Some((name, value)) = part.trim().split_once('=') else {
@@ -86,11 +88,15 @@ impl WebCookieSession {
         }
     }
 
-    fn header(&self) -> &str {
+    pub(crate) fn header(&self) -> &str {
         &self.header
     }
 
-    fn can_recover_with_legacy(&self, error: &ProviderError) -> bool {
+    pub(crate) fn has_console_session(&self) -> bool {
+        self.capabilities.console
+    }
+
+    pub(crate) fn can_recover_with_legacy(&self, error: &ProviderError) -> bool {
         self.capabilities.legacy
             && (matches!(
                 error,
@@ -101,7 +107,7 @@ impl WebCookieSession {
             ) || error.is_transport_failure())
     }
 
-    fn select_legacy_result<T>(
+    pub(crate) fn select_legacy_result<T>(
         &self,
         console_error: ProviderError,
         legacy_result: Result<T, ProviderError>,
