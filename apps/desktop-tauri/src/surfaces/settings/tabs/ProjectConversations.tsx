@@ -4,6 +4,7 @@ import type {
   CodexWorkspacesSessionUsage,
   CodexWorkspacesTurnPerformance,
 } from "../../../types/bridge";
+import ToolActivity from "./ToolActivity";
 
 /** Conversations shown before the expand control, and the most ever shown. */
 export const CONVERSATION_INITIAL_ROWS = 8;
@@ -12,10 +13,12 @@ export const CONVERSATION_MAX_ROWS = 50;
 interface ProjectConversationsProps {
   /** Already ranked by the backend: cost descending, unpriced last. */
   conversations: CodexWorkspacesSessionUsage[];
+  /** History window of the spend contract; tool activity reads the same dates. */
+  historyDays?: number;
   t: (key: LocaleKey) => string;
 }
 
-export default function ProjectConversations({ conversations, t }: ProjectConversationsProps) {
+export default function ProjectConversations({ conversations, historyDays, t }: ProjectConversationsProps) {
   const [showAll, setShowAll] = useState(false);
   const capped = conversations.slice(0, CONVERSATION_MAX_ROWS);
   const visible = showAll ? capped : capped.slice(0, CONVERSATION_INITIAL_ROWS);
@@ -42,6 +45,7 @@ export default function ProjectConversations({ conversations, t }: ProjectConver
           {session.turnPerformance && (
             <TurnPerformance performance={session.turnPerformance} t={t} />
           )}
+          <ToolActivity sessionId={session.id} historyDays={historyDays} t={t} />
         </div>
       ))}
       {capped.length > CONVERSATION_INITIAL_ROWS && (
