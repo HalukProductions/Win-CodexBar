@@ -82,6 +82,12 @@ export function providerSnapshot(
 export const PROOF_PROVIDER_CATALOG: ProviderCatalogEntry[] = [
   { id: "codex", displayName: "Codex", cookieDomain: "chatgpt.com", cliAliases: ["openai"] },
   { id: "claude", displayName: "Claude", cookieDomain: "claude.ai" },
+  {
+    id: "claudeplatform",
+    displayName: "Claude Platform",
+    cookieDomain: "platform.claude.com",
+    cliAliases: ["claude-platform"],
+  },
   { id: "cursor", displayName: "Cursor", cookieDomain: "cursor.com" },
   { id: "gemini", displayName: "Gemini", cookieDomain: "gemini.google.com" },
   { id: "copilot", displayName: "Copilot", cookieDomain: null },

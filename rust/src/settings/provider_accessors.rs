@@ -39,7 +39,8 @@ impl Settings {
                 | ProviderId::WorkBuddy
                 | ProviderId::TinyApi
                 | ProviderId::Xapi
-                | ProviderId::Parallel => "auto",
+                | ProviderId::Parallel
+                | ProviderId::ClaudePlatform => "auto",
                 _ => DEFAULT_COOKIE_SOURCE,
             })
     }
