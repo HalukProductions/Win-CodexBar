@@ -139,6 +139,8 @@ If none match, it uses English. The app ships 10 languages: English, Simplified 
 
 **Refresh interval.** The options are Manual (0), 1, 2, 5, 15, 30 and 60 minutes, and Adaptive. Adaptive sets `adaptive_refresh` to true. Any other choice sets it to false. A settings file without `adaptive_refresh` gets false.
 
+**Adaptive activity.** While Adaptive is on, a running coding agent process, or a Codex rollout (`rollout-*.jsonl`) modified in the last 5 minutes, caps the delay at 5 minutes. Rollouts are read from today's and yesterday's `YYYY/MM/DD` folders under the Codex sessions directory (`CODEX_HOME\sessions`, or `%USERPROFILE%\.codex\sessions`). Only modification times are read, never contents. The rollout signal is skipped under Low Power Mode. Turning Adaptive off stops all of this.
+
 **Start at login** writes the value `CodexBar` under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, pointing at the desktop app. The CLI has `codexbar autostart` for the same job.
 
 ### Usage & Spend

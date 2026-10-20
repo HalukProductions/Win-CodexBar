@@ -258,7 +258,7 @@ async fn resolve_sessions(access: CookieAccess) -> Sessions {
                         protected: false,
                     }
                 }
-                Ok(Err(CookieError::AppBoundEncryption)) => Sessions {
+                Ok(Err(CookieError::AppBoundEncryption { .. })) => Sessions {
                     cookies: Vec::new(),
                     protected: true,
                 },

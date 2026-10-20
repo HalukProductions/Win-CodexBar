@@ -45,11 +45,48 @@ pub enum CookieError {
     /// after the ABE migration. Modern Chromium-based browsers can write these cookies
     /// with a `v20` prefix; older migrated profiles can also fail every AES-GCM decrypt
     /// while exposing `app_bound_encrypted_key` in Local State.
-    #[error(
-        "Chromium App-Bound Encryption is blocking automatic browser import. \
+    ///
+    /// `browsers` names the browsers ABE blocked, in scan order without repeats.
+    /// A single browser read reports its own browser; a scan that finds nothing
+    /// merges every blocked browser it saw. An empty list means the browser was
+    /// not attributed (only the raw per-cookie decrypt reports that).
+    #[error("{}", app_bound_encryption_message(.browsers))]
+    AppBoundEncryption { browsers: Vec<BrowserType> },
+}
+
+/// Display text for [`CookieError::AppBoundEncryption`]. Names the blocked
+/// browsers so a multi-browser failure says which imports to work around.
+fn app_bound_encryption_message(browsers: &[BrowserType]) -> String {
+    if browsers.is_empty() {
+        return "Chromium App-Bound Encryption is blocking automatic browser import. \
+                Paste the Cookie header manually, or use Firefox if that browser has the same login."
+            .to_string();
+    }
+    let names: Vec<&str> = browsers
+        .iter()
+        .map(|browser| browser.display_name())
+        .collect();
+    let list = join_names(&names);
+    if browsers.len() == 1 {
+        format!(
+            "Chromium App-Bound Encryption blocked automatic import from {list}. \
              Paste the Cookie header manually, or use Firefox if that browser has the same login."
-    )]
-    AppBoundEncryption,
+        )
+    } else {
+        format!(
+            "Chromium App-Bound Encryption blocked automatic import from {list}. \
+             Paste the Cookie header manually, or sign in with Firefox instead."
+        )
+    }
+}
+
+/// Join display names as "A", "A and B", or "A, B and C".
+fn join_names(names: &[&str]) -> String {
+    match names {
+        [] => String::new(),
+        [only] => (*only).to_string(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    }
 }
 
 /// Only the app that wrote App-Bound (`v20`) cookies can decrypt them, so a
@@ -63,10 +100,10 @@ impl CookieError {
     /// concrete browser instead of implying the problem only affects Chrome/Edge.
     pub fn user_message_for_browser(&self, browser_type: BrowserType) -> String {
         match self {
-            Self::AppBoundEncryption if browser_type == BrowserType::ClaudeDesktop => {
+            Self::AppBoundEncryption { .. } if browser_type == BrowserType::ClaudeDesktop => {
                 CLAUDE_DESKTOP_APP_BOUND_MESSAGE.to_string()
             }
-            Self::AppBoundEncryption => format!(
+            Self::AppBoundEncryption { .. } => format!(
                 "{} is using Chromium App-Bound Encryption, which is blocking automatic cookie import for this profile. \
                  Paste the Cookie header manually, or use Firefox if that browser has the same login.",
                 browser_type.display_name()
@@ -152,14 +189,16 @@ impl CookieExtractor {
         for profile in &browser.profiles {
             match Self::extract_profile_cookies(browser, profile, domain) {
                 Ok(cookies) => all_cookies.extend(cookies),
-                Err(CookieError::AppBoundEncryption) => {
+                Err(CookieError::AppBoundEncryption { .. }) => {
                     tracing::debug!(
                         "App-Bound Encryption blocked profile {}: {}",
                         profile.name,
                         browser.browser_type.display_name()
                     );
                     if abe_error.is_none() {
-                        abe_error = Some(CookieError::AppBoundEncryption);
+                        abe_error = Some(CookieError::AppBoundEncryption {
+                            browsers: vec![browser.browser_type],
+                        });
                     }
                 }
                 Err(e) => {
@@ -295,7 +334,7 @@ impl CookieExtractor {
                 // Decrypt the cookie value
                 let value = match Self::decrypt_chromium_cookie(&encrypted_value, &encryption_key) {
                     Ok(v) => v,
-                    Err(CookieError::AppBoundEncryption) => {
+                    Err(CookieError::AppBoundEncryption { .. }) => {
                         tracing::debug!("Candidate cookie uses Chromium App-Bound Encryption");
                         decrypt_failures += 1;
                         abe_decrypt_failures += 1;
@@ -349,7 +388,9 @@ impl CookieExtractor {
                 "Chromium App-Bound Encryption (ABE) detected: all {} cookies failed to decrypt",
                 decrypt_failures
             );
-            return Err(CookieError::AppBoundEncryption);
+            return Err(CookieError::AppBoundEncryption {
+                browsers: vec![browser.browser_type],
+            });
         }
 
         Ok(cookies)
@@ -509,7 +550,11 @@ impl CookieExtractor {
             // Modern Chromium-based browsers on Windows use App-Bound Encryption for these
             // cookies. Treating the blob as old DPAPI data produces a misleading
             // DPAPI or "no cookies found" error even though the user is signed in.
-            return Err(CookieError::AppBoundEncryption);
+            // The browser is not known here. extract_chromium_cookies skips the
+            // cookie and attributes the browser when it reports the failure.
+            return Err(CookieError::AppBoundEncryption {
+                browsers: Vec::new(),
+            });
         }
 
         if has_v10_prefix || has_v11_prefix {
@@ -875,7 +920,9 @@ mod tests {
     /// Verify that the ABE error variant formats a readable, actionable message.
     #[test]
     fn test_abe_error_display() {
-        let err = CookieError::AppBoundEncryption;
+        let err = CookieError::AppBoundEncryption {
+            browsers: vec![BrowserType::Chrome, BrowserType::Edge],
+        };
         let msg = err.to_string();
         assert!(
             msg.contains("App-Bound Encryption"),
@@ -889,11 +936,54 @@ mod tests {
             msg.contains("Paste") || msg.contains("manual"),
             "ABE error should mention manual import fallback"
         );
+        assert_eq!(
+            msg,
+            "Chromium App-Bound Encryption blocked automatic import from Google Chrome and Microsoft Edge. \
+             Paste the Cookie header manually, or sign in with Firefox instead."
+        );
+    }
+
+    /// One blocked browser keeps the singular remedy; three or more join with
+    /// commas and a final "and".
+    #[test]
+    fn test_abe_error_wording_for_one_and_three_browsers() {
+        assert_eq!(
+            CookieError::AppBoundEncryption {
+                browsers: vec![BrowserType::Chrome],
+            }
+            .to_string(),
+            "Chromium App-Bound Encryption blocked automatic import from Google Chrome. \
+             Paste the Cookie header manually, or use Firefox if that browser has the same login."
+        );
+        assert_eq!(
+            CookieError::AppBoundEncryption {
+                browsers: vec![BrowserType::Chrome, BrowserType::Edge, BrowserType::Arc,],
+            }
+            .to_string(),
+            "Chromium App-Bound Encryption blocked automatic import from Google Chrome, \
+             Microsoft Edge and Arc. Paste the Cookie header manually, or sign in with Firefox instead."
+        );
+    }
+
+    /// An unattributed ABE error keeps the generic wording rather than naming nobody.
+    #[test]
+    fn test_abe_error_without_browser_uses_generic_message() {
+        let msg = CookieError::AppBoundEncryption {
+            browsers: Vec::new(),
+        }
+        .to_string();
+        assert!(
+            msg.starts_with("Chromium App-Bound Encryption is blocking automatic browser import.")
+        );
+        assert!(msg.contains("Paste the Cookie header manually"));
     }
 
     #[test]
     fn test_abe_error_names_selected_brave_browser() {
-        let msg = CookieError::AppBoundEncryption.user_message_for_browser(BrowserType::Brave);
+        let msg = CookieError::AppBoundEncryption {
+            browsers: vec![BrowserType::Brave],
+        }
+        .user_message_for_browser(BrowserType::Brave);
         assert!(msg.contains("Brave"), "ABE error should name Brave");
         assert!(
             msg.contains("Chromium App-Bound Encryption"),
@@ -917,7 +1007,7 @@ mod tests {
             .expect_err("v20 cookies should report App-Bound Encryption");
 
         assert!(
-            matches!(err, CookieError::AppBoundEncryption),
+            matches!(err, CookieError::AppBoundEncryption { .. }),
             "expected AppBoundEncryption, got {err:?}"
         );
     }

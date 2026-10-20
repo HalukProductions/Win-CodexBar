@@ -36,6 +36,11 @@ pub(crate) struct ProviderSpec {
     pub(crate) aliases: &'static [&'static str],
     /// Accepted by `from_cli_name` only.
     pub(crate) parse_aliases: &'static [&'static str],
+    /// `display_details` ids that carry this provider's balance, in preference
+    /// order (upstream #4319). The tray tooltip shows the first reported one
+    /// when the headline window is informational, so a balance-only account
+    /// never reads as a generic label. Empty for providers without a balance.
+    pub(crate) balance_detail_ids: &'static [&'static str],
 }
 
 impl ProviderSpec {
@@ -105,6 +110,11 @@ impl ProviderSpec {
         self.parse_aliases = aliases;
         self
     }
+
+    const fn balance_details(mut self, ids: &'static [&'static str]) -> Self {
+        self.balance_detail_ids = ids;
+        self
+    }
 }
 
 const fn spec(
@@ -134,6 +144,7 @@ const fn spec(
         },
         aliases: &[],
         parse_aliases: &[],
+        balance_detail_ids: &[],
     }
 }
 
@@ -643,7 +654,8 @@ pub(crate) static SPECS: [ProviderSpec; COUNT] = [
     spec(P::Nous, "nous", "Nous Portal", "#D6A55C")
         .labels("Monthly credits", "Weekly")
         .dashboard("https://portal.nousresearch.com/usage")
-        .aliases(&["nous-portal", "nous portal", "hermes"]),
+        .aliases(&["nous-portal", "nous portal", "hermes"])
+        .balance_details(&["total-usable", "top-up-credits"]),
     spec(P::Hyper, "hyper", "Charm Hyper", "#FF60FF")
         .labels("Balance", "Balance")
         .cookie("hyper.charm.land")

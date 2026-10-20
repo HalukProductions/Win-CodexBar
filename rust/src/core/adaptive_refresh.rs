@@ -43,7 +43,9 @@ pub struct AdaptiveRefreshDecision {
 const RECENT_INTERACTION_THRESHOLD: Duration = Duration::from_secs(5 * 60);
 const WARM_THRESHOLD: Duration = Duration::from_secs(60 * 60);
 const IDLE_THRESHOLD: Duration = Duration::from_secs(4 * 60 * 60);
-const CODING_ACTIVITY_THRESHOLD: Duration = Duration::from_secs(5 * 60);
+/// Coding activity older than this does not change the delay. Platform scanners use it as the
+/// activity window, so a rollout older than this is not worth recording.
+pub const CODING_ACTIVITY_THRESHOLD: Duration = Duration::from_secs(5 * 60);
 
 const RECENT_INTERACTION_DELAY: Duration = Duration::from_secs(2 * 60);
 const WARM_DELAY: Duration = Duration::from_secs(5 * 60);
