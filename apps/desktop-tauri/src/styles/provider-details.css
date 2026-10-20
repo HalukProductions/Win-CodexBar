@@ -288,6 +288,51 @@
   margin-bottom: 12px;
 }
 
+.token-account-claude-dir {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.token-account-claude-dir__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.token-account-claude-dir__label {
+  flex: 1 1 auto;
+  color: var(--text-secondary);
+}
+
+.token-account-claude-dir__actions {
+  display: flex;
+  gap: 6px;
+}
+
+.token-account-claude-dir__path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, Consolas, monospace;
+  color: var(--text-secondary);
+}
+
+.token-account-claude-dir__unavailable {
+  flex: 0 0 auto;
+  color: var(--provider-status-error);
+}
+
+.token-account-claude-dir__hint {
+  margin: 0;
+  color: var(--text-muted);
+}
+
 /* ── Phase 7 — shortcut capture & test-sound row ───────────────────── */
 .shortcut-capture {
   display: flex;
@@ -658,6 +703,66 @@
   stroke-dasharray: 2 2;
   vector-effect: non-scaling-stroke;
   opacity: 0.6;
+}
+
+.openai-tpm__chart {
+  cursor: crosshair;
+  touch-action: none;
+  outline: none;
+}
+
+.openai-tpm__chart:focus-visible {
+  outline: 1px solid var(--provider-accent, #6aa9ff);
+  outline-offset: 2px;
+}
+
+.openai-tpm__bar--selected {
+  stroke: var(--text-primary);
+  stroke-width: 1.5;
+  stroke-dasharray: none;
+  vector-effect: non-scaling-stroke;
+  opacity: 1;
+}
+
+.openai-tpm__summary {
+  margin: 0;
+  min-height: 1.4em;
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Live · Spend switch: both layers share one cell so the card keeps its height. */
+.openai-live-spend {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.openai-live-spend__switch {
+  align-self: flex-start;
+}
+
+.openai-live-spend__stack {
+  display: grid;
+}
+
+.openai-live-spend__layer {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+
+.openai-live-spend__layer > .openai-tpm {
+  margin-top: 0;
+}
+
+.openai-live-spend__layer.is-hidden {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .openai-tpm__legend {

@@ -49,7 +49,8 @@ export type MetricPreference =
   | "credits"
   | "extraUsage"
   | "monthlyPlan"
-  | "average";
+  | "average"
+  | "tokensPerMinute";
 
 export type Language =
   | "english"
@@ -307,6 +308,8 @@ export interface SettingsSnapshot {
   claudeSwapEnabled?: boolean;
   /** Path to the cswap executable (Claude only, empty when unset). */
   claudeSwapExecutablePath?: string;
+  /** Claude web usage reads the Claude desktop app session (automatic cookie source only). */
+  claudeDesktopCookiesEnabled?: boolean;
   codexSparkUsageVisible: boolean;
   /** Absent on older shells. */
   codexOpenaiWebExtras?: boolean;
@@ -462,6 +465,7 @@ export interface SettingsUpdate {
   claudeAllowReadingClaudeCodeCredentials?: boolean;
   claudeSwapEnabled?: boolean;
   claudeSwapExecutablePath?: string;
+  claudeDesktopCookiesEnabled?: boolean;
   codexSparkUsageVisible?: boolean;
   codexOpenaiWebExtras?: boolean;
   codexHistoricalTracking?: boolean;

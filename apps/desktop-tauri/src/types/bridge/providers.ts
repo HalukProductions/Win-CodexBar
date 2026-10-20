@@ -164,6 +164,9 @@ export interface TokenAccountBridge {
   addedAt: string;
   lastUsed: string | null;
   isActive: boolean;
+  /** Claude config directory whose history this account owns for local cost estimates. */
+  claudeConfigDirectory: string | null;
+  claudeConfigDirectoryAvailable: boolean;
 }
 
 export interface ProviderTokenAccountsBridge {
@@ -252,6 +255,8 @@ export interface ProviderDetail {
   tertiaryLabelKey?: string | null;
   /** Extra rate window id holding the monthly plan allowance; offers the Monthly Plan metric (upstream 0.70.0). */
   monthlyPlanWindowId?: string | null;
+  /** Offers the Tokens/min menu bar metric (upstream 0.75.0 #4495). */
+  tokensPerMinuteMetric?: boolean;
   /** Metric picker label for the primary lane when it is not a session window. */
   primaryMetricLabel?: string | null;
   extraRateWindows: Array<{

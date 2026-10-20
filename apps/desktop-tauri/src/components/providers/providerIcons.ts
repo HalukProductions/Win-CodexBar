@@ -40,6 +40,7 @@ import exa from "./icons/ProviderIcon-exa.svg?raw";
 import factory from "./icons/ProviderIcon-factory.svg?raw";
 import fal from "./icons/ProviderIcon-fal.svg?raw";
 import flora from "./icons/ProviderIcon-flora.svg?raw";
+import futureagi from "./icons/ProviderIcon-futureagi.svg?raw";
 import gemini from "./icons/ProviderIcon-gemini.svg?raw";
 import grok from "./icons/ProviderIcon-grok.svg?raw";
 import groq from "./icons/ProviderIcon-groq.svg?raw";
@@ -59,6 +60,7 @@ import meta from "./icons/ProviderIcon-meta.svg?raw";
 import mimo from "./icons/ProviderIcon-mimo.svg?raw";
 import minimax from "./icons/ProviderIcon-minimax.svg?raw";
 import mistral from "./icons/ProviderIcon-mistral.svg?raw";
+import munito from "./icons/ProviderIcon-munito.svg?raw";
 import muse from "./icons/ProviderIcon-muse.svg?raw";
 import museai from "./icons/ProviderIcon-museai.svg?raw";
 import notion from "./icons/ProviderIcon-notion.svg?raw";
@@ -155,6 +157,7 @@ const RAW: Record<string, string> = {
   factory: tint(factory),
   fal: tint(fal),
   flora: tint(flora),
+  futureagi: tint(futureagi),
   gemini: tint(gemini),
   grok: tint(grok),
   groq: tint(groq),
@@ -179,6 +182,7 @@ const RAW: Record<string, string> = {
   xapi: tint(xapi),
   xkiro: tint(xkiro),
   mistral: tint(mistral),
+  munito: tint(munito),
   muse: tint(muse),
   museai: tint(museai),
   workbuddy: tint(workbuddy),
@@ -245,6 +249,7 @@ export const PROVIDER_ICON_REGISTRY: Record<string, ProviderIcon> = {
   factory:     { id: "factory",     brandColor: "#ff6b35", fallbackLetter: "◎", svgPath: RAW.factory },
   fal:         { id: "fal",         brandColor: "#7C3AED", fallbackLetter: "F", svgPath: RAW.fal },
   flora:       { id: "flora",       brandColor: "#111111", fallbackLetter: "F", svgPath: RAW.flora },
+  futureagi:   { id: "futureagi",   brandColor: "#7857FC", fallbackLetter: "F", svgPath: RAW.futureagi },
   gemini:      { id: "gemini",      brandColor: "#ab87ea", fallbackLetter: "✦", svgPath: RAW.gemini },
   grok:        { id: "grok",        brandColor: "#10a37f", fallbackLetter: "G", svgPath: RAW.grok },
   groq:        { id: "groq",        brandColor: "#f56844", fallbackLetter: "G", svgPath: RAW.groq },
@@ -266,6 +271,7 @@ export const PROVIDER_ICON_REGISTRY: Record<string, ProviderIcon> = {
   llmproxy:    { id: "llmproxy",    brandColor: "#24b47e", fallbackLetter: "L", svgPath: RAW.llmproxy },
   minimax:     { id: "minimax",     brandColor: "#fe603c", fallbackLetter: "M", svgPath: RAW.minimax },
   mistral:     { id: "mistral",     brandColor: "#ff5229", fallbackLetter: "M", svgPath: RAW.mistral },
+  munito:      { id: "munito",      brandColor: "#702CF6", fallbackLetter: "M", svgPath: RAW.munito },
   muse:        { id: "muse",        brandColor: "#0668e1", fallbackLetter: "M", svgPath: RAW.muse },
   ollama:      { id: "ollama",      brandColor: "#888888", fallbackLetter: "○", svgPath: RAW.ollama },
   azureopenai: { id: "azureopenai", brandColor: "#0078d4", fallbackLetter: "A" },

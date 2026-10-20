@@ -5,6 +5,7 @@ import type {
   CurrentSurfaceState,
   SettingsSnapshot,
   SettingsUpdate,
+  TokenAccountBridge,
 } from "../types/bridge";
 import {
   parseSettingsTabRequest,
@@ -157,6 +158,8 @@ export function createProofRouter(
 ): ProofRouter {
   const now = options.now ?? new Date();
   let settings: SettingsSnapshot = { ...scenario.settings };
+  let claudeTokenAccounts: TokenAccountBridge[] | null =
+    scenario.claudeTokenAccounts?.map((account) => ({ ...account })) ?? null;
   // Cookie-source picks persist for the session, as the real bridge persists
   // them to settings; `get_provider_detail` then reports the chosen source.
   const cookieSources = new Map<string, string>();
@@ -177,6 +180,23 @@ export function createProofRouter(
       return { mode: "settings", target: { kind: "settings", tab } };
     }
     return { mode: "trayPanel", target: { kind: "summary" } };
+  };
+
+  const tokenAccountSupport = (providerId: string) => ({
+    providerId,
+    displayName: providerId,
+    title: "Token accounts",
+    subtitle: "",
+    placeholder: "",
+  });
+  const tokenAccounts = (providerId: string) => {
+    const accounts = providerId === "claude" ? (claudeTokenAccounts ?? []) : [];
+    return {
+      providerId,
+      support: tokenAccountSupport(providerId),
+      accounts,
+      activeIndex: Math.max(0, accounts.findIndex((account) => account.isActive)),
+    };
   };
 
   // Fixture builders read settings, so they get the patched copy.
@@ -260,23 +280,30 @@ export function createProofRouter(
     get_api_key_providers: () => [],
     has_openrouter_management_api_key: () => false,
     get_manual_cookies: () => [],
-    list_detected_browsers: () => [
+    list_detected_browsers: (args) => [
       { browserType: "edge", displayName: "Microsoft Edge", profileCount: 1 },
       { browserType: "chrome", displayName: "Google Chrome", profileCount: 2 },
+      ...(stringArg(args, "providerId") === "claude"
+        ? [{ browserType: "claude-desktop", displayName: "Claude desktop app", profileCount: 1 }]
+        : []),
     ],
-    get_token_account_providers: () => [],
-    get_token_accounts: (args) => ({
-      providerId: stringArg(args, "providerId"),
-      support: {
-        providerId: stringArg(args, "providerId"),
-        displayName: stringArg(args, "providerId"),
-        title: "Token accounts",
-        subtitle: "",
-        placeholder: "",
-      },
-      accounts: [],
-      activeIndex: 0,
-    }),
+    get_token_account_providers: () =>
+      claudeTokenAccounts ? [tokenAccountSupport("claude")] : [],
+    get_token_accounts: (args) => tokenAccounts(stringArg(args, "providerId")),
+    set_token_account_claude_config_dir: (args) => {
+      const accountId = stringArg(args, "accountId");
+      const directory = typeof args.directory === "string" ? args.directory : null;
+      claudeTokenAccounts = (claudeTokenAccounts ?? []).map((account) =>
+        account.id === accountId
+          ? {
+              ...account,
+              claudeConfigDirectory: directory,
+              claudeConfigDirectoryAvailable: directory !== null,
+            }
+          : account,
+      );
+      return tokenAccounts("claude");
+    },
     get_codex_accounts_state: () => scenario.codexAccounts,
     codex_accounts_list: () => scenario.codexAccounts.accounts,
     codex_account_snapshots: () => scenario.codexAccounts.snapshots,

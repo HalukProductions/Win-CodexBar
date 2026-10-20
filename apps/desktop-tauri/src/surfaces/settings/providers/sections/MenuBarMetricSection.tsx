@@ -125,6 +125,11 @@ function metricOptions(
   if (provider.id === "gemini" && provider.weekly) {
     options.push({ value: "average", label: t("Average") });
   }
+  // Upstream 0.75.0 (#4495): the latest Tokens/min from Live usage. The tray
+  // meter keeps the Automatic lane; the tray status text shows the rate.
+  if (provider.tokensPerMinuteMetric) {
+    options.push({ value: "tokensPerMinute", label: t("MetricTokensPerMinute") });
+  }
   if (!options.some((option) => option.value === selected)) {
     const labelKey = SAVED_ONLY_LABEL_KEYS[selected];
     options.push({
@@ -141,4 +146,5 @@ const SAVED_ONLY_LABEL_KEYS: Partial<Record<MetricPreference, LocaleKey>> = {
   credits: "CreditsLabel",
   extraUsage: "ExtraUsage",
   monthlyPlan: "MetricMonthlyPlan",
+  tokensPerMinute: "MetricTokensPerMinute",
 };

@@ -10,6 +10,8 @@ mod cli_reset;
 mod cli_screen;
 mod cli_text;
 mod cloud_credits;
+pub mod cost_account;
+mod desktop_cookies;
 mod oauth;
 pub mod quota_history;
 mod reset_credits;
@@ -498,7 +500,19 @@ impl ClaudeProvider {
     ) -> Result<ProviderFetchResult, ProviderError> {
         tracing::debug!("Attempting Web API fetch for Claude");
 
-        // Check for manual cookie header first
+        // Selection requires the Automatic cookie source, where the header is
+        // the stored cookie (usually an earlier browser import). The desktop
+        // session replaces it so a desktop account switch is followed on the
+        // next refresh; the Manual source never reaches this branch.
+        if desktop_cookies::selected(&crate::settings::Settings::load()) {
+            tracing::debug!("Using the Claude desktop app cookie store");
+            let cookie_header = desktop_cookies::session_cookie_header()?;
+            return self
+                .web_fetcher
+                .fetch_with_cookie_header(&cookie_header)
+                .await;
+        }
+
         if let Some(ref cookie_header) = ctx.manual_cookie_header {
             tracing::debug!("Using manual cookie header");
             return self

@@ -26,7 +26,7 @@ import DetailSections from "./card/DetailSections";
 import InlineDashboard from "./card/InlineDashboard";
 import ExtraUsageBlock from "./card/ExtraUsageBlock";
 import WayfinderBlock from "./card/WayfinderBlock";
-import { OpenAITokensPerMinuteChart } from "./OpenAITokensPerMinuteChart";
+import { OpenAILiveSpendChart } from "./OpenAILiveSpendChart";
 import { describeCard } from "./card/describeCard";
 import { hideEmailsInText } from "../lib/personalInfo";
 
@@ -299,7 +299,13 @@ export default function MenuCard({
           )}
           {presence.wayfinderUsage && <WayfinderBlock usage={presence.wayfinderUsage} />}
           {presence.openAiThroughput && (
-            <OpenAITokensPerMinuteChart throughput={presence.openAiThroughput} t={t} />
+            <OpenAILiveSpendChart
+              key={provider.providerId}
+              providerId={provider.providerId}
+              throughput={presence.openAiThroughput}
+              usage={provider.openAiApiUsage}
+              t={t}
+            />
           )}
           {dashboard && <InlineDashboard model={dashboard} />}
           {showCost && provider.cost && (

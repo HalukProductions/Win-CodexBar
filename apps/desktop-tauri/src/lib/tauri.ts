@@ -289,8 +289,13 @@ export function removeManualCookie(
   return invoke<CookieInfoBridge[]>("remove_manual_cookie", { providerId });
 }
 
-export function listDetectedBrowsers(): Promise<DetectedBrowserBridge[]> {
-  return invoke<DetectedBrowserBridge[]>("list_detected_browsers");
+/** With `providerId`, also lists a desktop app store only that provider may use. */
+export function listDetectedBrowsers(
+  providerId?: string,
+): Promise<DetectedBrowserBridge[]> {
+  return invoke<DetectedBrowserBridge[]>("list_detected_browsers", {
+    providerId: providerId ?? null,
+  });
 }
 
 export function importBrowserCookies(
@@ -386,6 +391,17 @@ export function setActiveTokenAccount(
   });
 }
 
+export function setTokenAccountClaudeConfigDir(
+  providerId: string,
+  accountId: string,
+  directory: string | null,
+): Promise<ProviderTokenAccountsBridge> {
+  return invoke<ProviderTokenAccountsBridge>("set_token_account_claude_config_dir", {
+    providerId,
+    accountId,
+    directory,
+  });
+}
 // ── Phase 5 — i18n ────────────────────────────────────────────────────
 
 export function getLocaleStrings(
