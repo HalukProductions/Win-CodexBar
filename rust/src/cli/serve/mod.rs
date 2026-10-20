@@ -142,17 +142,8 @@ struct ServeConfig {
 }
 
 pub async fn run(args: ServeArgs) -> anyhow::Result<()> {
-    let mut config = validate_serve_args(&args)?;
-    #[allow(
-        clippy::cast_possible_truncation,
-        reason = "refresh interval is seconds; >u32::MAX secs is meaningless for a dashboard refresh"
-    )]
-    let refresh_interval = args.refresh_interval.max(1) as u32;
-    config.dashboard = Some(dashboard::DashboardState::live(
-        refresh_interval,
-        config.identity,
-    ));
-    let listener = TcpListener::bind((config.host.as_str(), config.port)).await?;
+    let server = bind(args).await?;
+    let config = &server.config;
     eprintln!(
         "CodexBar server listening on http://{}:{}",
         config.host, config.port
@@ -167,7 +158,42 @@ pub async fn run(args: ServeArgs) -> anyhow::Result<()> {
         );
     }
 
-    serve_listener(listener, Arc::new(config), MAX_CONNECTIONS).await
+    server.serve().await
+}
+
+/// A validated server whose listener is already bound, so the caller knows
+/// startup succeeded (or why it failed) before any request is accepted.
+pub struct BoundServer {
+    listener: TcpListener,
+    config: ServeConfig,
+}
+
+impl BoundServer {
+    pub fn local_addr(&self) -> std::io::Result<std::net::SocketAddr> {
+        self.listener.local_addr()
+    }
+
+    /// Serve until the future is dropped; dropping it closes the listener.
+    pub async fn serve(self) -> anyhow::Result<()> {
+        serve_listener(self.listener, Arc::new(self.config), MAX_CONNECTIONS).await
+    }
+}
+
+/// Validate `args` and bind the listener. Library entry for embedding the
+/// server in another process (the desktop app runs it in-process).
+pub async fn bind(args: ServeArgs) -> anyhow::Result<BoundServer> {
+    let mut config = validate_serve_args(&args)?;
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "refresh interval is seconds; >u32::MAX secs is meaningless for a dashboard refresh"
+    )]
+    let refresh_interval = args.refresh_interval.max(1) as u32;
+    config.dashboard = Some(dashboard::DashboardState::live(
+        refresh_interval,
+        config.identity,
+    ));
+    let listener = TcpListener::bind((config.host.as_str(), config.port)).await?;
+    Ok(BoundServer { listener, config })
 }
 
 /// Accept loop with the upstream-parity concurrency gate: at most
