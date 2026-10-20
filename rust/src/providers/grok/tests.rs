@@ -188,6 +188,99 @@ fn isolated_account_auto_skips_ambient_login_and_browser() {
     );
 }
 
+fn isolated_cookie_account_context(cookie_source: &str, usage_source: &str) -> FetchContext {
+    let mut settings = crate::settings::Settings::default();
+    settings.set_cookie_source(ProviderId::Grok, cookie_source);
+    settings.set_usage_source(ProviderId::Grok, usage_source);
+    let account = crate::core::TokenAccount::new("work", "Cookie: sso=account-session");
+    let mut ctx = crate::core::build_fetch_context(
+        ProviderId::Grok,
+        &settings,
+        &crate::settings::ManualCookies::default(),
+        &crate::settings::ApiKeys::default(),
+        Some(&account),
+    );
+    ctx.token_account_isolated = true;
+    ctx
+}
+
+#[test]
+fn isolated_cookie_account_with_cli_source_uses_its_cookie() {
+    let ctx = isolated_cookie_account_context("manual", "cli");
+    assert_eq!(ctx.source_mode, SourceMode::Cli);
+    assert_eq!(
+        grok_isolated_route(&ctx),
+        GrokIsolatedRoute::Cookie("Cookie: sso=account-session")
+    );
+}
+
+#[test]
+fn isolated_cookie_account_with_cookie_source_off_fails_closed() {
+    for usage_source in ["auto", "cli", "oauth"] {
+        let ctx = isolated_cookie_account_context("off", usage_source);
+        assert!(
+            matches!(ctx.source_mode, SourceMode::Cli | SourceMode::OAuth),
+            "{usage_source}: {:?}",
+            ctx.source_mode
+        );
+        assert_eq!(
+            grok_isolated_route(&ctx),
+            GrokIsolatedRoute::Missing,
+            "{usage_source}"
+        );
+    }
+}
+
+#[test]
+fn isolated_cookie_account_with_cookie_source_auto_keeps_its_cookie() {
+    let ctx = isolated_cookie_account_context("auto", "cli");
+    assert_eq!(ctx.source_mode, SourceMode::Cli);
+    assert_eq!(
+        grok_isolated_route(&ctx),
+        GrokIsolatedRoute::Cookie("Cookie: sso=account-session")
+    );
+}
+
+#[test]
+fn isolated_route_prefers_account_bearer_over_cookie() {
+    let ctx = FetchContext {
+        api_key: Some(" bearer-token ".into()),
+        manual_cookie_header: Some("sso=x".into()),
+        token_account_isolated: true,
+        ..FetchContext::default()
+    };
+    assert_eq!(
+        grok_isolated_route(&ctx),
+        GrokIsolatedRoute::Bearer("bearer-token")
+    );
+    let blank = FetchContext {
+        api_key: Some("  ".into()),
+        manual_cookie_header: Some(String::new()),
+        token_account_isolated: true,
+        ..FetchContext::default()
+    };
+    assert_eq!(grok_isolated_route(&blank), GrokIsolatedRoute::Missing);
+}
+
+#[tokio::test]
+async fn isolated_account_without_credential_fails_closed_for_cli_and_oauth() {
+    for source_mode in [SourceMode::Cli, SourceMode::OAuth] {
+        let ctx = FetchContext {
+            source_mode,
+            token_account_isolated: true,
+            ..FetchContext::default()
+        };
+        let error = GrokProvider::new()
+            .fetch_usage(&ctx)
+            .await
+            .expect_err("missing account credential must fail closed");
+        assert!(
+            matches!(&error, ProviderError::Other(message) if message.contains("Grok account")),
+            "{source_mode:?}: {error}"
+        );
+    }
+}
+
 #[test]
 fn cookie_refresh_uses_cache_when_present() {
     assert_eq!(

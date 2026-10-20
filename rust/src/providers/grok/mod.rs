@@ -246,6 +246,29 @@ impl GrokProvider {
         })
     }
 
+    /// A token-account row may be routed to Cli/OAuth by its usage source
+    /// even though the account only carries a cookie. Ambient ~/.grok
+    /// credentials belong to whichever account is switched in, so never
+    /// read them here.
+    async fn fetch_isolated_account(
+        &self,
+        ctx: &FetchContext,
+    ) -> Result<ProviderFetchResult, ProviderError> {
+        match grok_isolated_route(ctx) {
+            GrokIsolatedRoute::Bearer(token) => {
+                let credentials = GrokCredentials::from_bearer(token);
+                self.fetch_with_auth(&credentials, GrokAuthKind::OAuth, ctx)
+                    .await
+            }
+            GrokIsolatedRoute::Cookie(cookie_header) => {
+                self.fetch_with_cookie(cookie_header, ctx).await
+            }
+            GrokIsolatedRoute::Missing => Err(ProviderError::Other(
+                "This Grok account has no saved token or cookie. Add one in Settings.".to_string(),
+            )),
+        }
+    }
+
     async fn fetch_with_oauth_fallback(
         &self,
         credentials: &GrokCredentials,
@@ -572,20 +595,15 @@ impl Provider for GrokProvider {
                 }
                 self.fetch_with_cookie_refresh(ctx).await
             }
+            SourceMode::Cli | SourceMode::OAuth if ctx.token_account_isolated => {
+                self.fetch_isolated_account(ctx).await
+            }
             SourceMode::Cli => {
                 let credentials = Self::load_credentials(GrokAuthKind::Cli).await?;
                 self.fetch_with_auth(&credentials, GrokAuthKind::Cli, ctx)
                     .await
             }
             SourceMode::OAuth => {
-                if ctx.token_account_isolated
-                    && let Some(token) = ctx.api_key.as_deref()
-                {
-                    let credentials = GrokCredentials::from_bearer(token);
-                    return self
-                        .fetch_with_auth(&credentials, GrokAuthKind::OAuth, ctx)
-                        .await;
-                }
                 // Prefer the switched ~/.grok/auth.json over a leftover token
                 // account so Weekly/notifications follow Grok account Switch.
                 let credentials = match Self::load_credentials(GrokAuthKind::OAuth).await {
@@ -665,6 +683,29 @@ fn grok_steps_for_context(
         steps.retain(|step| matches!(step, GrokAutoStep::ApiKey | GrokAutoStep::ManualCookie));
     }
     steps
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GrokIsolatedRoute<'a> {
+    Bearer(&'a str),
+    Cookie(&'a str),
+    Missing,
+}
+
+fn grok_isolated_route(ctx: &FetchContext) -> GrokIsolatedRoute<'_> {
+    fn non_empty(value: &Option<String>) -> Option<&str> {
+        value
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+    }
+    if let Some(token) = non_empty(&ctx.api_key) {
+        return GrokIsolatedRoute::Bearer(token);
+    }
+    if let Some(cookie_header) = non_empty(&ctx.manual_cookie_header) {
+        return GrokIsolatedRoute::Cookie(cookie_header);
+    }
+    GrokIsolatedRoute::Missing
 }
 
 #[derive(Debug, Clone)]
