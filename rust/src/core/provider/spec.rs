@@ -169,7 +169,7 @@ pub(crate) static SPECS: [ProviderSpec; COUNT] = [
         .credits()
         .default_enabled()
         .primary()
-        .dashboard("https://claude.ai/settings/usage")
+        .dashboard("https://platform.claude.com/usage")
         .status("https://status.claude.com/")
         .aliases(&["anthropic"]),
     spec(P::Pi, "pi", "Pi", "#7C3AED")

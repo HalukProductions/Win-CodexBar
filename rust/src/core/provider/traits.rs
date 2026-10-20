@@ -40,6 +40,13 @@ pub trait Provider: Send + Sync {
         self.id().metadata()
     }
 
+    /// Dashboard link for the signed-in account, given its cached login
+    /// method. Providers whose consumer dashboard depends on the account plan
+    /// override this; every other provider uses the static metadata link.
+    fn dashboard_url_for_login_method(&self, _login_method: Option<&str>) -> Option<&'static str> {
+        self.metadata().dashboard_url
+    }
+
     /// Fetch usage data from this provider
     async fn fetch_usage(&self, ctx: &FetchContext) -> Result<ProviderFetchResult, ProviderError>;
 

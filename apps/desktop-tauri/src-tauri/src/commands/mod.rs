@@ -128,7 +128,14 @@ fn canonical_provider_arg(provider_id: &str) -> Result<String, String> {
     Ok(parse_provider_arg(provider_id)?.cli_name().to_string())
 }
 
-fn provider_dashboard_url(id: ProviderId, settings: &Settings) -> Option<String> {
+/// `login_method` is the cached snapshot's plan label; providers whose
+/// dashboard depends on the account plan use it (for example Claude, upstream
+/// #4503). Pass `None` when no snapshot is cached.
+fn provider_dashboard_url(
+    id: ProviderId,
+    settings: &Settings,
+    login_method: Option<&str>,
+) -> Option<String> {
     match id {
         ProviderId::MiniMax => Some(
             codexbar::providers::MiniMaxProvider::dashboard_url_for_region(Some(
@@ -145,8 +152,7 @@ fn provider_dashboard_url(id: ProviderId, settings: &Settings) -> Option<String>
             settings.workspace_id(id),
         ))),
         _ => instantiate_provider(id)
-            .metadata()
-            .dashboard_url
+            .dashboard_url_for_login_method(login_method)
             .map(str::to_string),
     }
 }

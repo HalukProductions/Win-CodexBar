@@ -4,7 +4,7 @@ Codex cli=codex display="Codex" cookie=Some("chatgpt.com") color=#49A3B0 depreca
   sources=[Auto, OAuth, Cli] oauth=true web=false cli=true
 Claude cli=claude display="Claude" cookie=Some("claude.ai") color=#CC7C5E deprecated=false blocking=None
   map=["anthropic", "claude"]
-  metadata=ProviderMetadata { id: Claude, display_name: "Claude", session_label: "Session (5h)", weekly_label: "Weekly", supports_opus: true, supports_credits: true, default_enabled: true, is_primary: true, dashboard_url: Some("https://claude.ai/settings/usage"), status_page_url: Some("https://status.claude.com/"), tertiary_label_key: None }
+  metadata=ProviderMetadata { id: Claude, display_name: "Claude", session_label: "Session (5h)", weekly_label: "Weekly", supports_opus: true, supports_credits: true, default_enabled: true, is_primary: true, dashboard_url: Some("https://platform.claude.com/usage"), status_page_url: Some("https://status.claude.com/"), tertiary_label_key: None }
   sources=[Auto, OAuth, Web, Cli] oauth=true web=true cli=true
 Pi cli=pi display="Pi" cookie=None color=#7C3AED deprecated=false blocking=None
   map=["pi"]
