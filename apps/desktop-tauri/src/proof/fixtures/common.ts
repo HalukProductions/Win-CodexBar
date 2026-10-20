@@ -90,6 +90,7 @@ export const PROOF_PROVIDER_CATALOG: ProviderCatalogEntry[] = [
   { id: "kiro", displayName: "Kiro", cookieDomain: null },
   { id: "zai", displayName: "z.ai", cookieDomain: null },
   { id: "mistral", displayName: "Mistral", cookieDomain: null },
+  { id: "openaiapi", displayName: "OpenAI API", cookieDomain: null },
 ];
 
 export function catalogOrder(): string[] {
@@ -178,6 +179,7 @@ export function baseSettings(overrides: Partial<SettingsSnapshot> = {}): Setting
     claudeAvoidKeychainPrompts: false,
     claudeSwapEnabled: false,
     claudeSwapExecutablePath: "",
+    claudeDesktopCookiesEnabled: false,
     codexSparkUsageVisible: true,
     codexOpenaiWebExtras: false,
     codexHistoricalTracking: true,

@@ -52,12 +52,20 @@ pub enum CookieError {
     AppBoundEncryption,
 }
 
+/// Only the app that wrote App-Bound (`v20`) cookies can decrypt them, so a
+/// browser session or a pasted header is the only way to reuse that sign-in.
+pub const CLAUDE_DESKTOP_APP_BOUND_MESSAGE: &str = "The Claude desktop app protects its cookies with App-Bound Encryption, so CodexBar can't read its sign-in. \
+     Import cookies from a browser signed in to claude.ai, or paste the Cookie header manually.";
+
 impl CookieError {
     /// Format a browser-specific message for UI surfaces that know which browser
     /// the user selected. ABE is a Chromium capability boundary, so name the
     /// concrete browser instead of implying the problem only affects Chrome/Edge.
     pub fn user_message_for_browser(&self, browser_type: BrowserType) -> String {
         match self {
+            Self::AppBoundEncryption if browser_type == BrowserType::ClaudeDesktop => {
+                CLAUDE_DESKTOP_APP_BOUND_MESSAGE.to_string()
+            }
             Self::AppBoundEncryption => format!(
                 "{} is using Chromium App-Bound Encryption, which is blocking automatic cookie import for this profile. \
                  Paste the Cookie header manually, or use Firefox if that browser has the same login.",
@@ -424,6 +432,35 @@ impl CookieExtractor {
             let _ = LocalFree(HLOCAL(output_blob.pbData as *mut _));
 
             Ok(decrypted)
+        }
+    }
+
+    /// DPAPI-protect `plain` for the current user, as Chromium does for the
+    /// `os_crypt.encrypted_key` in Local State. Test fixtures only.
+    #[cfg(all(test, windows))]
+    pub(crate) fn dpapi_protect_for_tests(plain: &[u8]) -> Vec<u8> {
+        use windows::Win32::Foundation::{HLOCAL, LocalFree};
+        use windows::Win32::Security::Cryptography::{CRYPT_INTEGER_BLOB, CryptProtectData};
+
+        #[allow(clippy::cast_possible_truncation, reason = "test keys are 32 bytes")]
+        let input_blob = CRYPT_INTEGER_BLOB {
+            cbData: plain.len() as u32,
+            pbData: plain.as_ptr() as *mut u8,
+        };
+        let mut output_blob = CRYPT_INTEGER_BLOB {
+            cbData: 0,
+            pbData: std::ptr::null_mut(),
+        };
+        // SAFETY: input_blob borrows `plain` for the call; the API-allocated
+        // output buffer is copied before LocalFree releases it.
+        unsafe {
+            CryptProtectData(&input_blob, None, None, None, None, 0, &mut output_blob)
+                .expect("CryptProtectData");
+            let protected =
+                std::slice::from_raw_parts(output_blob.pbData, output_blob.cbData as usize)
+                    .to_vec();
+            let _ = LocalFree(HLOCAL(output_blob.pbData as *mut _));
+            protected
         }
     }
 
