@@ -1776,6 +1776,10 @@ HttpServerErrorTiming = Интервал кэша и тайм-аут запро�
 HttpServerErrorIdentity = Выберите режим конфиденциальности данных пользователя.
 HttpServerErrorToken = Создайте токен или введите непустой токен без пробелов.
 HttpServerErrorPlainHttp = Примите предупреждение о незашифрованном HTTP, прежде чем принимать подключения вне этого ПК.
+HttpServerLoadError = Не удалось загрузить состояние HTTP-сервера.
+HttpServerApplyFailed = Не удалось применить настройки HTTP-сервера.
+HttpServerCorruptWarning = Не удалось прочитать сохранённый файл настроек сервера. Применение заменит его, включая токен.
+HttpServerCorruptConfirm = Заменить нечитаемый файл настроек
 
 # About - Acknowledgements
 AboutLinkAcknowledgements = Благодарности

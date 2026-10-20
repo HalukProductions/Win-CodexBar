@@ -119,7 +119,8 @@ impl HttpServerController {
     }
 
     /// Save `config` and restart the server to match it. An enabled but
-    /// invalid configuration is neither saved nor started.
+    /// invalid configuration is neither saved nor started; a running server
+    /// is stopped first so its port closes instead of serving stale settings.
     pub async fn apply(&self, config: HttpServerConfig) -> HttpServerSnapshot {
         {
             let mut lifecycle = self.lifecycle.lock().await;
@@ -130,6 +131,7 @@ impl HttpServerController {
             if config.enabled
                 && let Some(code) = config.validation_error()
             {
+                self.stop(&mut lifecycle).await;
                 self.set_status(HttpServerStatus::Invalid { code });
                 drop(lifecycle);
                 return self.snapshot().await;
@@ -227,6 +229,12 @@ impl HttpServerController {
 
 pub fn controller() -> Arc<HttpServerController> {
     Arc::new(HttpServerController::new(HttpServerConfig::default_path()))
+}
+
+/// Controller for proof mode: no config path, so `apply` fails with
+/// `SaveFailed` before anything is written to disk or bound to a port.
+pub fn proof_controller() -> Arc<HttpServerController> {
+    Arc::new(HttpServerController::new(None))
 }
 
 pub fn install(controller: Arc<HttpServerController>) {

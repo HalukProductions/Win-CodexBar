@@ -1776,6 +1776,10 @@ HttpServerErrorTiming = 快取間隔和要求逾時必須是有限且非負的�
 HttpServerErrorIdentity = 請選擇身分資訊隱私模式。
 HttpServerErrorToken = 請產生權杖，或輸入不含空格的非空權杖。
 HttpServerErrorPlainHttp = 在此電腦以外接聽之前，請先接受未加密 HTTP 警告。
+HttpServerLoadError = 無法載入 HTTP 伺服器狀態。
+HttpServerApplyFailed = 無法套用 HTTP 伺服器設定。
+HttpServerCorruptWarning = 無法讀取已儲存的伺服器設定檔。套用將取代該檔案，包括其中的權杖。
+HttpServerCorruptConfirm = 取代無法讀取的設定檔
 
 # About - Acknowledgements
 AboutLinkAcknowledgements = 致謝

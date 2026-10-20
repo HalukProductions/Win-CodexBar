@@ -181,7 +181,13 @@ fn main() {
         initial_state.provider_cache_updated_at = Some(seeded_at);
     }
 
-    let http_server_controller = http_server::controller();
+    // Proof runs must never write the real http_server.json or bind a port:
+    // the pathless controller makes apply fail with SaveFailed up front.
+    let http_server_controller = if is_proof_mode {
+        http_server::proof_controller()
+    } else {
+        http_server::controller()
+    };
     let http_server_controller_for_exit = http_server_controller.clone();
 
     let context = tauri::generate_context!();

@@ -1778,6 +1778,10 @@ HttpServerErrorTiming = Інтервал кешу й час очікування
 HttpServerErrorIdentity = Виберіть режим конфіденційності даних користувача.
 HttpServerErrorToken = Створіть токен або введіть непорожній токен без пробілів.
 HttpServerErrorPlainHttp = Прийміть попередження про незашифрований HTTP, перш ніж приймати підключення поза цим ПК.
+HttpServerLoadError = Не вдалося завантажити стан HTTP-сервера.
+HttpServerApplyFailed = Не вдалося застосувати налаштування HTTP-сервера.
+HttpServerCorruptWarning = Не вдалося прочитати збережений файл налаштувань сервера. Застосування замінить його, включно з токеном.
+HttpServerCorruptConfirm = Замінити нечитабельний файл налаштувань
 
 # About - Acknowledgements
 AboutLinkAcknowledgements = Подяки

@@ -1776,6 +1776,10 @@ HttpServerErrorTiming = Önbellek aralığı ve istek zaman aşımı sonlu, nega
 HttpServerErrorIdentity = Bir kimlik gizliliği modu seçin.
 HttpServerErrorToken = Bir belirteç oluşturun veya boşluk içermeyen, boş olmayan bir belirteç girin.
 HttpServerErrorPlainHttp = Bu bilgisayar dışında dinlemeden önce şifrelenmemiş HTTP uyarısını kabul edin.
+HttpServerLoadError = HTTP sunucusu durumu yüklenemedi.
+HttpServerApplyFailed = HTTP sunucusu ayarları uygulanamadı.
+HttpServerCorruptWarning = Kayıtlı sunucu ayarları dosyası okunamadı. Uygulamak, belirteç dahil dosyayı değiştirecektir.
+HttpServerCorruptConfirm = Okunamayan ayar dosyasını değiştir
 
 # About - Acknowledgements
 AboutLinkAcknowledgements = Teşekkürler

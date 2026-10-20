@@ -97,6 +97,60 @@ describe("HttpServerSection", () => {
     expect(await screen.findByText("HttpServerStatusStartFailed")).toBeTruthy();
     expect(screen.getByText("address in use")).toBeTruthy();
   });
+
+  it("shows a load error instead of vanishing when the state cannot be read", async () => {
+    tauriMocks.getHttpServerState.mockRejectedValue(new Error("ipc down"));
+    render(<HttpServerSection />);
+    expect(await screen.findByText("HttpServerLoadError")).toBeTruthy();
+    expect(screen.getByText("HttpServerTitle")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "HttpServerApply" })).toBeNull();
+  });
+
+  it("shows an apply error when the apply call rejects", async () => {
+    tauriMocks.applyHttpServerConfig.mockRejectedValue(new Error("ipc down"));
+    render(<HttpServerSection />);
+    expect(await screen.findByText("HttpServerStatusStopped")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "HttpServerApply" }));
+    expect(await screen.findByText("HttpServerApplyFailed")).toBeTruthy();
+
+    // A later successful apply clears the error.
+    tauriMocks.applyHttpServerConfig.mockResolvedValue({
+      config: defaults,
+      status: { state: "stopped" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "HttpServerApply" }));
+    await waitFor(() => {
+      expect(screen.queryByText("HttpServerApplyFailed")).toBeNull();
+    });
+  });
+
+  it("requires explicit confirmation before replacing an unreadable settings file", async () => {
+    tauriMocks.getHttpServerState.mockResolvedValue({
+      config: defaults,
+      status: { state: "loadFailed" },
+    });
+    tauriMocks.applyHttpServerConfig.mockResolvedValue({
+      config: { ...defaults, enabled: true, token: "t" },
+      status: { state: "running", url: "http://127.0.0.1:8080/" },
+    });
+    render(<HttpServerSection />);
+
+    expect(await screen.findByText("HttpServerStatusLoadFailed")).toBeTruthy();
+    expect(screen.getByText("HttpServerCorruptWarning")).toBeTruthy();
+    const applyButton = screen.getByRole("button", {
+      name: "HttpServerApply",
+    }) as HTMLButtonElement;
+    expect(applyButton.disabled).toBe(true);
+
+    fireEvent.click(screen.getByLabelText("HttpServerCorruptConfirm"));
+    expect(applyButton.disabled).toBe(false);
+    fireEvent.click(applyButton);
+    await waitFor(() => {
+      expect(tauriMocks.applyHttpServerConfig).toHaveBeenCalled();
+    });
+    expect(await screen.findByText("HttpServerStatusRunning")).toBeTruthy();
+  });
 });
 
 describe("HttpServerSection helpers", () => {

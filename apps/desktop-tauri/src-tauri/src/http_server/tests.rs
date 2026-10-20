@@ -96,6 +96,86 @@ fn invalid_enabled_settings_are_neither_saved_nor_started() {
 }
 
 #[test]
+fn invalid_apply_stops_the_running_server_and_keeps_the_saved_config() {
+    run(async {
+        let path = temp_config_path();
+        let controller = HttpServerController::new(Some(path.clone()));
+        let port = free_port();
+        let mut lan = enabled(port);
+        lan.host = "0.0.0.0".to_string();
+        lan.allow_plain_http = true;
+        let snapshot = controller.apply(lan.clone()).await;
+        assert!(
+            matches!(snapshot.status, HttpServerStatus::Running { .. }),
+            "{:?}",
+            snapshot.status
+        );
+        assert_eq!(
+            status_line(port, "/", None).await.as_deref(),
+            Some("HTTP/1.1 200 OK")
+        );
+
+        // The same config without plain-HTTP consent is invalid.
+        let mut invalid = lan.clone();
+        invalid.allow_plain_http = false;
+        let snapshot = controller.apply(invalid).await;
+        assert_eq!(
+            snapshot.status,
+            HttpServerStatus::Invalid {
+                code: HttpServerValidationError::PlainHttpNotAccepted
+            }
+        );
+        assert!(
+            wait_closed(port).await,
+            "an invalid apply closes the running server's port"
+        );
+        assert_eq!(
+            snapshot.config, lan,
+            "the rejected config is not adopted; the snapshot keeps the saved one"
+        );
+        assert_eq!(
+            HttpServerConfig::load_from(&path).expect("saved settings"),
+            lan,
+            "the rejected config is not saved over the working one"
+        );
+
+        // A valid apply recovers from the invalid state.
+        let snapshot = controller.apply(lan.clone()).await;
+        assert!(matches!(snapshot.status, HttpServerStatus::Running { .. }));
+        assert_eq!(
+            status_line(port, "/", None).await.as_deref(),
+            Some("HTTP/1.1 200 OK")
+        );
+        controller.shutdown();
+        assert!(wait_closed(port).await);
+    });
+}
+
+#[test]
+fn pathless_controller_never_saves_nor_binds() {
+    run(async {
+        // Proof mode builds the controller without a config path.
+        let controller = HttpServerController::new(None);
+        let snapshot = controller.start_saved().await;
+        assert_eq!(snapshot.status, HttpServerStatus::Stopped);
+        assert_eq!(snapshot.config, HttpServerConfig::default());
+
+        let port = free_port();
+        let snapshot = controller.apply(enabled(port)).await;
+        assert_eq!(snapshot.status, HttpServerStatus::SaveFailed);
+        assert_eq!(
+            snapshot.config,
+            HttpServerConfig::default(),
+            "a failed save does not adopt the config"
+        );
+        assert!(
+            wait_closed(port).await,
+            "nothing binds without a config path"
+        );
+    });
+}
+
+#[test]
 fn server_starts_restarts_on_change_stops_on_disable_and_on_shutdown() {
     run(async {
         let path = temp_config_path();

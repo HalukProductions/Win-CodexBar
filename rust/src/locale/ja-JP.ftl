@@ -1776,6 +1776,10 @@ HttpServerErrorTiming = キャッシュ間隔とリクエストのタイムア�
 HttpServerErrorIdentity = 識別情報のプライバシーモードを選択してください。
 HttpServerErrorToken = トークンを生成するか、空白を含まないトークンを入力してください。
 HttpServerErrorPlainHttp = このPC以外で待ち受ける前に、暗号化されていないHTTPの警告に同意してください。
+HttpServerLoadError = HTTPサーバーの状態を読み込めませんでした。
+HttpServerApplyFailed = HTTPサーバーの設定を適用できませんでした。
+HttpServerCorruptWarning = 保存されたサーバー設定ファイルを読み取れませんでした。適用すると、トークンを含めて置き換えられます。
+HttpServerCorruptConfirm = 読み取れない設定ファイルを置き換える
 
 # About - Acknowledgements
 AboutLinkAcknowledgements = 謝辞

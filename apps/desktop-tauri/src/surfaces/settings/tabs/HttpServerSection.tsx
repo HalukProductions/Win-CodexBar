@@ -67,6 +67,9 @@ export default function HttpServerSection() {
   const [draft, setDraft] = useState<HttpServerConfig | null>(null);
   const [showToken, setShowToken] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [applyFailed, setApplyFailed] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [overwriteConfirmed, setOverwriteConfirmed] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -76,23 +79,39 @@ export default function HttpServerSection() {
         setSnapshot(state);
         setDraft(state.config);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (active) setLoadFailed(true);
+      });
     return () => {
       active = false;
     };
   }, []);
 
+  if (loadFailed) {
+    return (
+      <SettingsGroup title={t("HttpServerTitle")} footer={<p>{t("HttpServerCaption")}</p>}>
+        <p className="settings-group__error" role="alert">
+          {t("HttpServerLoadError")}
+        </p>
+      </SettingsGroup>
+    );
+  }
   if (!snapshot || !draft) return null;
 
   const update = (patch: Partial<HttpServerConfig>) => setDraft({ ...draft, ...patch });
   const isLoopback = bindHost(draft.host).startsWith("127.");
   const runningUrl = snapshot.status.state === "running" ? snapshot.status.url : null;
+  // A corrupt settings file is only replaced after explicit acknowledgment.
+  const corruptFile = snapshot.status.state === "loadFailed";
 
   const apply = async () => {
     setApplying(true);
+    setApplyFailed(false);
     try {
       // The draft is kept: an invalid or failed apply should not discard edits.
       setSnapshot(await applyHttpServerConfig(draft));
+    } catch {
+      setApplyFailed(true);
     } finally {
       setApplying(false);
     }
@@ -223,11 +242,26 @@ export default function HttpServerSection() {
           </button>
         </Field>
       )}
+      {corruptFile && (
+        <Field label={t("HttpServerCorruptConfirm")} description={t("HttpServerCorruptWarning")}>
+          <Toggle
+            variant="switch"
+            checked={overwriteConfirmed}
+            ariaLabel={t("HttpServerCorruptConfirm")}
+            onChange={setOverwriteConfirmed}
+          />
+        </Field>
+      )}
+      {applyFailed && (
+        <p className="settings-group__error" role="alert">
+          {t("HttpServerApplyFailed")}
+        </p>
+      )}
       <div className="settings-group__row">
         <button
           type="button"
           className="credential-btn"
-          disabled={applying}
+          disabled={applying || (corruptFile && !overwriteConfirmed)}
           onClick={() => void apply()}
         >
           {t("HttpServerApply")}

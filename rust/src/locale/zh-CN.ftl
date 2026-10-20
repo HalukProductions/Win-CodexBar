@@ -1776,6 +1776,10 @@ HttpServerErrorTiming = 缓存间隔和请求超时必须是有限且非负的�
 HttpServerErrorIdentity = 请选择身份信息隐私模式。
 HttpServerErrorToken = 请生成令牌，或输入不含空格的非空令牌。
 HttpServerErrorPlainHttp = 在此电脑以外监听之前，请先接受未加密 HTTP 警告。
+HttpServerLoadError = 无法加载 HTTP 服务器状态。
+HttpServerApplyFailed = 无法应用 HTTP 服务器设置。
+HttpServerCorruptWarning = 无法读取已保存的服务器设置文件。应用将替换该文件，包括其中的令牌。
+HttpServerCorruptConfirm = 替换无法读取的设置文件
 
 # About - Acknowledgements
 AboutLinkAcknowledgements = 致谢

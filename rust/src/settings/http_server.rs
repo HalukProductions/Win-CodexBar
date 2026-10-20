@@ -18,7 +18,7 @@ pub const HTTP_SERVER_CONFIG_FILE: &str = "http_server.json";
 pub const HTTP_SERVER_IDENTITY_REDACTED: &str = "redacted";
 pub const HTTP_SERVER_IDENTITY_FULL: &str = "full";
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct HttpServerConfig {
     pub enabled: bool,
@@ -31,6 +31,22 @@ pub struct HttpServerConfig {
     pub request_timeout_secs: f64,
     pub identity: String,
     pub allow_plain_http: bool,
+}
+
+// The token is a bearer secret; Debug must never print it.
+impl std::fmt::Debug for HttpServerConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HttpServerConfig")
+            .field("enabled", &self.enabled)
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("token", &"<redacted>")
+            .field("refresh_interval_secs", &self.refresh_interval_secs)
+            .field("request_timeout_secs", &self.request_timeout_secs)
+            .field("identity", &self.identity)
+            .field("allow_plain_http", &self.allow_plain_http)
+            .finish()
+    }
 }
 
 impl Default for HttpServerConfig {

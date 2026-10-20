@@ -249,7 +249,7 @@ The proxy password is stored in `settings.json`, which is DPAPI-wrapped. Advance
 
 - Fields: bind address (default `127.0.0.1`; `localhost` means `127.0.0.1`), port (8080), bearer token, cache interval (60 s), request timeout (30 s, 0 disables), dashboard identity (redacted or full), and, off loopback, an "accept unencrypted HTTP" switch.
 - A token is required. **Generate** fills in 32 random bytes as hex. Requests without `Authorization: Bearer <token>` get `401`.
-- **Apply** validates the fields, saves them and restarts the server. Invalid fields show an error and are neither saved nor started; a server that is already running keeps running with the saved settings until a valid apply.
+- **Apply** validates the fields, saves them and restarts the server. Invalid fields show an error and are neither saved nor started; an invalid apply also stops a running server (closing its port) until a valid apply restarts it. If the saved file is corrupt, the server stays stopped and Apply asks for explicit confirmation before replacing the unreadable file.
 - The server starts with the app when enabled and stops when the app quits. The status row shows Stopped, Running (with the dashboard URL), an invalid-field error, a start failure such as a port already in use, or an unexpected exit.
 - Proof mode (`CODEXBAR_PROOF_MODE`) never starts the server.
 

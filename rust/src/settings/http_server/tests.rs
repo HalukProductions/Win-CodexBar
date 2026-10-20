@@ -152,6 +152,15 @@ fn round_trips_privately_and_missing_file_means_defaults() {
 }
 
 #[test]
+fn debug_never_prints_the_token() {
+    let config = with_token();
+    let debug = format!("{config:?}");
+    assert!(!debug.contains(TOKEN), "{debug}");
+    assert!(debug.contains("<redacted>"), "{debug}");
+    assert!(debug.contains("HttpServerConfig"), "{debug}");
+}
+
+#[test]
 fn corrupt_file_is_an_error_and_is_left_untouched() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join(HTTP_SERVER_CONFIG_FILE);

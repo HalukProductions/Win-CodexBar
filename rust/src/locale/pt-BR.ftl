@@ -1780,6 +1780,10 @@ HttpServerErrorTiming = O intervalo de cache e o tempo limite devem ser segundos
 HttpServerErrorIdentity = Escolha um modo de privacidade da identidade.
 HttpServerErrorToken = Gere um token ou informe um token não vazio e sem espaços.
 HttpServerErrorPlainHttp = Aceite o aviso de HTTP sem criptografia antes de escutar fora deste PC.
+HttpServerLoadError = Não foi possível carregar o status do servidor HTTP.
+HttpServerApplyFailed = Não foi possível aplicar as configurações do servidor HTTP.
+HttpServerCorruptWarning = Não foi possível ler o arquivo de configurações salvo do servidor. Aplicar vai substituí-lo, incluindo o token.
+HttpServerCorruptConfirm = Substituir o arquivo de configurações ilegível
 
 # About - Acknowledgements
 AboutLinkAcknowledgements = Agradecimentos

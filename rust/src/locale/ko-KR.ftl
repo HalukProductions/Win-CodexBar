@@ -1775,6 +1775,10 @@ HttpServerErrorTiming = 캐시 간격과 요청 제한 시간은 0 이상의 유
 HttpServerErrorIdentity = 식별 정보 개인정보 보호 모드를 선택하세요.
 HttpServerErrorToken = 토큰을 생성하거나 공백이 없는 토큰을 입력하세요.
 HttpServerErrorPlainHttp = 이 PC 외부에서 수신하기 전에 암호화되지 않은 HTTP 경고에 동의하세요.
+HttpServerLoadError = HTTP 서버 상태를 불러올 수 없습니다.
+HttpServerApplyFailed = HTTP 서버 설정을 적용할 수 없습니다.
+HttpServerCorruptWarning = 저장된 서버 설정 파일을 읽을 수 없습니다. 적용하면 토큰을 포함하여 파일이 대체됩니다.
+HttpServerCorruptConfirm = 읽을 수 없는 설정 파일 바꾸기
 
 # About - Acknowledgements
 AboutLinkAcknowledgements = 감사의 글

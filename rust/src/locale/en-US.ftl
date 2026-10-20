@@ -1778,6 +1778,10 @@ HttpServerErrorTiming = Cache interval and request timeout must be finite, nonne
 HttpServerErrorIdentity = Choose an identity privacy mode.
 HttpServerErrorToken = Generate a token or enter a nonempty token without spaces.
 HttpServerErrorPlainHttp = Accept the unencrypted HTTP warning before listening outside this PC.
+HttpServerLoadError = The HTTP server status could not be loaded.
+HttpServerApplyFailed = The HTTP server settings could not be applied.
+HttpServerCorruptWarning = The saved server settings file could not be read. Applying will replace it, including its token.
+HttpServerCorruptConfirm = Replace the unreadable settings file
 
 # About - Acknowledgements
 AboutLinkAcknowledgements = Acknowledgements
