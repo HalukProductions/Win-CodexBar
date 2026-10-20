@@ -375,7 +375,8 @@ impl TokenAccountSupport {
             | ProviderId::Fal
             | ProviderId::Flora
             | ProviderId::FutureAgi
-            | ProviderId::Munito => None,
+            | ProviderId::Munito
+            | ProviderId::ClaudePlatform => None,
         }
     }
 
