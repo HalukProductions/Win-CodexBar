@@ -91,8 +91,8 @@ type SessionSource = fn() -> BrowserSessions;
 #[derive(Debug, Default)]
 struct BrowserSessions {
     cookies: Vec<String>,
-    /// Chromium App-Bound Encryption hid a browser's cookies (often Chrome,
-    /// the browser WorkBuddy sessions are bound to).
+    /// Chromium App-Bound Encryption hid these browsers' cookies (often Chrome,
+    /// the browser WorkBuddy sessions are bound to), named in one error.
     protected: Option<ProviderError>,
     /// Another browser's cookies could not be read.
     unreadable: Option<ProviderError>,
@@ -448,12 +448,14 @@ fn browser_sessions() -> BrowserSessions {
 }
 
 /// One Cookie header per browser that holds a `www.workbuddy.cn` session,
-/// in browser order, plus the first App-Bound Encryption skip and the first
-/// other read failure. A browser without cookies is not a failure.
+/// in browser order. Every browser that App-Bound Encryption blocked is named
+/// in one protected error (scan order, no repeats), and the first other read
+/// failure is kept. A browser without cookies is not a failure.
 fn collect_sessions(
     scan: impl IntoIterator<Item = (BrowserType, Result<Vec<Cookie>, CookieError>)>,
 ) -> BrowserSessions {
     let mut found = BrowserSessions::default();
+    let mut blocked: Option<Vec<BrowserType>> = None;
     for (browser, cookies) in scan {
         let error = match cookies {
             Ok(cookies) => {
@@ -464,23 +466,30 @@ fn collect_sessions(
             }
             Err(error) => error,
         };
-        let protected = matches!(error, CookieError::AppBoundEncryption { .. });
+        if matches!(error, CookieError::AppBoundEncryption { .. }) {
+            tracing::debug!(
+                browser = browser.display_name(),
+                "WorkBuddy could not read this browser's cookies (App-Bound Encryption)"
+            );
+            let names = blocked.get_or_insert_with(Vec::new);
+            if !names.contains(&browser) {
+                names.push(browser);
+            }
+            continue;
+        }
         let error = crate::providers::map_browser_cookie_error(error);
         if matches!(error, ProviderError::NoCookies) {
             continue;
         }
         tracing::debug!(
             browser = browser.display_name(),
-            protected,
             "WorkBuddy could not read this browser's cookies"
         );
-        let slot = if protected {
-            &mut found.protected
-        } else {
-            &mut found.unreadable
-        };
-        slot.get_or_insert(error);
+        found.unreadable.get_or_insert(error);
     }
+    found.protected = blocked.map(|browsers| {
+        crate::providers::map_browser_cookie_error(CookieError::AppBoundEncryption { browsers })
+    });
     found
 }
 

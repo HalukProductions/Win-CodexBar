@@ -62,15 +62,31 @@ fn app_bound_encryption_message(browsers: &[BrowserType]) -> String {
                 Paste the Cookie header manually, or use Firefox if that browser has the same login."
             .to_string();
     }
-    let names = browsers
+    let names: Vec<&str> = browsers
         .iter()
         .map(|browser| browser.display_name())
-        .collect::<Vec<_>>()
-        .join(", ");
-    format!(
-        "Chromium App-Bound Encryption blocked automatic import from {names}. \
-         Paste the Cookie header manually, or use Firefox if that browser has the same login."
-    )
+        .collect();
+    let list = join_names(&names);
+    if browsers.len() == 1 {
+        format!(
+            "Chromium App-Bound Encryption blocked automatic import from {list}. \
+             Paste the Cookie header manually, or use Firefox if that browser has the same login."
+        )
+    } else {
+        format!(
+            "Chromium App-Bound Encryption blocked automatic import from {list}. \
+             Paste the Cookie header manually, or sign in with Firefox instead."
+        )
+    }
+}
+
+/// Join display names as "A", "A and B", or "A, B and C".
+fn join_names(names: &[&str]) -> String {
+    match names {
+        [] => String::new(),
+        [only] => (*only).to_string(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    }
 }
 
 /// Only the app that wrote App-Bound (`v20`) cookies can decrypt them, so a
@@ -922,8 +938,30 @@ mod tests {
         );
         assert_eq!(
             msg,
-            "Chromium App-Bound Encryption blocked automatic import from Google Chrome, Microsoft Edge. \
+            "Chromium App-Bound Encryption blocked automatic import from Google Chrome and Microsoft Edge. \
+             Paste the Cookie header manually, or sign in with Firefox instead."
+        );
+    }
+
+    /// One blocked browser keeps the singular remedy; three or more join with
+    /// commas and a final "and".
+    #[test]
+    fn test_abe_error_wording_for_one_and_three_browsers() {
+        assert_eq!(
+            CookieError::AppBoundEncryption {
+                browsers: vec![BrowserType::Chrome],
+            }
+            .to_string(),
+            "Chromium App-Bound Encryption blocked automatic import from Google Chrome. \
              Paste the Cookie header manually, or use Firefox if that browser has the same login."
+        );
+        assert_eq!(
+            CookieError::AppBoundEncryption {
+                browsers: vec![BrowserType::Chrome, BrowserType::Edge, BrowserType::Arc,],
+            }
+            .to_string(),
+            "Chromium App-Bound Encryption blocked automatic import from Google Chrome, \
+             Microsoft Edge and Arc. Paste the Cookie header manually, or sign in with Firefox instead."
         );
     }
 
