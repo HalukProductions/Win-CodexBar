@@ -1,3 +1,4 @@
+import type { ClaudeSwapAccountSource } from "./codexAccounts";
 import type { ModelRateLimitSnapshot } from "./usage";
 
 // Surface targets, persisted settings, spend reports and bootstrap DTOs.
@@ -310,6 +311,8 @@ export interface SettingsSnapshot {
   claudeSwapEnabled?: boolean;
   /** Path to the cswap executable (Claude only, empty when unset). */
   claudeSwapExecutablePath?: string;
+  /** Which tool the executable path names. Absent on older shells. */
+  claudeSwapSource?: ClaudeSwapAccountSource;
   /** Claude web usage reads the Claude desktop app session (automatic cookie source only). */
   claudeDesktopCookiesEnabled?: boolean;
   codexSparkUsageVisible: boolean;
@@ -468,6 +471,7 @@ export interface SettingsUpdate {
   claudeAllowReadingClaudeCodeCredentials?: boolean;
   claudeSwapEnabled?: boolean;
   claudeSwapExecutablePath?: string;
+  claudeSwapSource?: ClaudeSwapAccountSource;
   claudeDesktopCookiesEnabled?: boolean;
   codexSparkUsageVisible?: boolean;
   codexOpenaiWebExtras?: boolean;

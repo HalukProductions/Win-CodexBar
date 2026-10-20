@@ -9,6 +9,7 @@ fn list_fixture() -> Value {
             {
                 "number": 1,
                 "email": "same@example.com",
+                "organizationUuid": " 0b6c-work ",
                 "organizationName": "Work",
                 "active": false,
                 "usageStatus": "ok",
@@ -47,6 +48,8 @@ fn parses_schema_v1_and_normalizes_windows() {
     let first = &parsed.accounts[0];
     assert_eq!(first.number, 1);
     assert_eq!(first.organization_name, "Work");
+    assert_eq!(first.organization_uuid, "0b6c-work");
+    assert_eq!(parsed.accounts[1].organization_uuid, "");
     // Out-of-range percentages are clamped like upstream.
     assert_eq!(first.usage.five_hour.as_ref().unwrap().used_percent, 100.0);
     assert!(first.usage.five_hour.as_ref().unwrap().resets_at.is_some());

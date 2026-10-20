@@ -1685,6 +1685,16 @@ ProviderCodexBatterySaver = Экономия заряда для веб-OpenAI
 ProviderCodexBatterySaverHelp = Ограничивает фоновые обновления chatgpt.com, чтобы снизить расход батареи и трафика. Дополнения панели могут устаревать, пока вы не обновите их вручную.
 ProviderOptionNotUsedOnWindows = Пока не используется в Windows; выбор сохраняется на будущее.
 ClaudeSwapExecutablePathHelp = Путь к исполняемому файлу cswap (github.com/realiti4/claude-swap).
+ClaudeSwapSource = Источник
+ClaudeTcrHint = Показывает использование из tcr; не переключает аккаунты, потому что tcr выбирает аккаунт для каждого запроса. Учетными данными управляет tcr; CodexBar никогда их не читает.
+ClaudeTcrExecutablePath = Путь к tcr
+ClaudeTcrExecutablePathHelp = Путь к исполняемому файлу tcr (github.com/dhkts1/teamclaude-rs).
+ClaudeTcrExecutablePathPlaceholder = ~\.cargo\bin\tcr.exe
+ClaudeTcrTitle = Аккаунты Claude в tcr
+ClaudeTcrStatusNoExecutable = Укажите путь к tcr, чтобы показать аккаунты.
+ClaudeTcrStatusReady = Внешние аккаунты из tcr.
+ClaudeTcrEmpty = tcr не вернул ни одного аккаунта.
+ClaudeTcrDisabled = Выключен в tcr
 # Claude cloud credits
 ProviderLabelCloudCredits = Облачные кредиты
 ProviderTextExpired = Истёк

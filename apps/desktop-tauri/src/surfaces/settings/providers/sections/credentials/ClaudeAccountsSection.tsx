@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import type { ClaudeAccount } from "../../../../../types/bridge";
+import type { ClaudeAccount, ClaudeSwapAccountSource } from "../../../../../types/bridge";
 import type { ClaudeReconciliationSnapshot } from "../../../../../types/bridge";
 import type { Language } from "../../../../../types/bridge";
 import type { LocaleKey } from "../../../../../i18n/keys";
@@ -32,6 +32,7 @@ export function ClaudeAccountsSection({
   resetTimeRelative = true,
   claudeSwapEnabled = false,
   claudeSwapExecutablePath = "",
+  claudeSwapSource = "claude-swap",
 }: {
   t: (key: LocaleKey) => string;
   language?: Language;
@@ -41,6 +42,7 @@ export function ClaudeAccountsSection({
   /** Settings `claudeSwapEnabled`; the claude-swap list renders only while on. */
   claudeSwapEnabled?: boolean;
   claudeSwapExecutablePath?: string;
+  claudeSwapSource?: ClaudeSwapAccountSource;
 }) {
   const [accounts, setAccounts] = useState<ClaudeAccount[]>([]);
   const [busy, setBusy] = useState(false);
@@ -215,6 +217,7 @@ export function ClaudeAccountsSection({
         language={language}
         enabled={claudeSwapEnabled}
         executablePath={claudeSwapExecutablePath}
+        source={claudeSwapSource}
       />
     </>
   );

@@ -29,7 +29,9 @@ use windows::Win32::System::Threading::{OpenThread, ResumeThread, THREAD_SUSPEND
 use windows::core::PCWSTR;
 
 use super::parser::{parse_account_list, parse_switch_result, validate_switch_target};
-use super::{ClaudeSwapAccountList, ClaudeSwapError, ClaudeSwapSwitchResult};
+use super::{
+    ClaudeSwapAccountList, ClaudeSwapAccountSource, ClaudeSwapError, ClaudeSwapSwitchResult,
+};
 
 /// Upstream rejects list output larger than 256 KiB before parsing.
 pub const MAX_OUTPUT_BYTES: usize = 262_144;
@@ -51,8 +53,8 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const CHILD_REAP_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Exact argument arrays. Pure so the no-shell contract is testable.
-pub fn list_arguments() -> Vec<String> {
-    vec!["--list".to_string(), "--json".to_string()]
+pub fn list_arguments(source: ClaudeSwapAccountSource) -> Vec<String> {
+    source.list_arguments()
 }
 
 pub fn switch_arguments(slot: u32) -> Vec<String> {
@@ -453,20 +455,24 @@ fn run_bounded(
     Ok(String::from_utf8_lossy(&stdout.stdout).into_owned())
 }
 
-/// Read-only `cswap --list --json`.
-pub fn read_account_list(configured_path: &str) -> Result<ClaudeSwapAccountList, ClaudeSwapError> {
-    read_account_list_with_timeout(configured_path, DEFAULT_TIMEOUT)
+/// Read-only `cswap --list --json` or `tcr list --json`, chosen by `source`.
+pub fn read_account_list(
+    configured_path: &str,
+    source: ClaudeSwapAccountSource,
+) -> Result<ClaudeSwapAccountList, ClaudeSwapError> {
+    read_account_list_with_timeout(configured_path, source, DEFAULT_TIMEOUT)
 }
 
 pub fn read_account_list_with_timeout(
     configured_path: &str,
+    source: ClaudeSwapAccountSource,
     timeout: Duration,
 ) -> Result<ClaudeSwapAccountList, ClaudeSwapError> {
     let program = resolve_executable_path(configured_path)?;
     validate_executable_path(&program)?;
-    // Handled cswap failures print a schema-v1 error envelope to stdout and exit
+    // Handled failures print a schema-v1 error envelope to stdout and exit
     // non-zero, so parse stdout regardless of the exit status.
-    let output = run_bounded(&program, &list_arguments(), timeout)?;
+    let output = run_bounded(&program, &list_arguments(source), timeout)?;
     parse_account_list(&output)
 }
 
@@ -494,12 +500,54 @@ mod tests {
 
     #[test]
     fn exact_argument_arrays_never_use_a_shell() {
-        assert_eq!(list_arguments(), vec!["--list", "--json"]);
+        assert_eq!(
+            list_arguments(ClaudeSwapAccountSource::ClaudeSwap),
+            vec!["--list", "--json"]
+        );
+        assert_eq!(
+            list_arguments(ClaudeSwapAccountSource::Tcr),
+            vec!["list", "--json"]
+        );
         assert_eq!(switch_arguments(7), vec!["--switch-to", "7", "--json"]);
         // A slot is rendered as a plain decimal token, so it cannot smuggle
         // extra arguments or shell metacharacters.
-        assert_eq!(list_arguments().len(), 2);
         assert_eq!(switch_arguments(1).len(), 3);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn tcr_source_runs_exactly_tcr_list_json() {
+        let dir = std::env::temp_dir().join(format!(
+            "codexbar-tcr-source-{}-{}",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let script = dir.join("tcr.cmd");
+        // The fake refuses every argv except `list --json`, so a success proves
+        // the source chose the arguments.
+        std::fs::write(
+            &script,
+            "@echo off\r\n\
+             if not \"%~1\"==\"list\" exit /b 2\r\n\
+             if not \"%~2\"==\"--json\" exit /b 2\r\n\
+             if not \"%~3\"==\"\" exit /b 2\r\n\
+             echo {\"schemaVersion\": 1, \"activeAccountNumber\": null, \"supportsAccountSwitching\": false, \"accounts\": [{\"number\": 1, \"email\": \"alice@example.com\", \"active\": false, \"usageStatus\": \"ok\"}]}\r\n",
+        )
+        .expect("write fake tcr");
+        let path = script.to_string_lossy().to_string();
+
+        let list = read_account_list(&path, ClaudeSwapAccountSource::Tcr).unwrap();
+        assert_eq!(
+            list.accounts
+                .iter()
+                .map(|row| row.number)
+                .collect::<Vec<_>>(),
+            vec![1]
+        );
+        assert!(!list.supports_account_switching);
+        assert!(read_account_list(&path, ClaudeSwapAccountSource::ClaudeSwap).is_err());
+        drop(std::fs::remove_dir_all(&dir));
     }
 
     #[test]
@@ -523,7 +571,7 @@ mod tests {
             "/definitely/not/here/cswap"
         };
         assert!(matches!(
-            read_account_list(missing),
+            read_account_list(missing, ClaudeSwapAccountSource::ClaudeSwap),
             Err(ClaudeSwapError::ExecutableNotFound)
         ));
     }

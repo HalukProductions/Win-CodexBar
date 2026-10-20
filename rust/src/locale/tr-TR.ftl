@@ -1685,6 +1685,16 @@ ProviderCodexBatterySaver = OpenAI web pil tasarrufu
 ProviderCodexBatterySaverHelp = Pil ve ağ kullanımını azaltmak için arka plandaki chatgpt.com yenilemelerini sınırlar. Pano ekstraları siz elle yenileyene kadar eski kalabilir.
 ProviderOptionNotUsedOnWindows = Henüz Windows'ta kullanılmıyor; seçim, desteklendiğinde kullanılmak üzere kaydedilir.
 ClaudeSwapExecutablePathHelp = cswap yürütülebilir dosyasının yolu (github.com/realiti4/claude-swap).
+ClaudeSwapSource = Kaynak
+ClaudeTcrHint = Kullanımı tcr üzerinden gösterir; hesaplar arasında geçiş yapmaz, çünkü tcr her istek için hesabı kendisi seçer. Kimlik bilgileri tcr tarafından yönetilmeye devam eder; CodexBar bunları asla okumaz.
+ClaudeTcrExecutablePath = tcr yürütülebilir dosyası
+ClaudeTcrExecutablePathHelp = tcr yürütülebilir dosyasının yolu (github.com/dhkts1/teamclaude-rs).
+ClaudeTcrExecutablePathPlaceholder = ~\.cargo\bin\tcr.exe
+ClaudeTcrTitle = tcr içindeki Claude hesapları
+ClaudeTcrStatusNoExecutable = Hesapları listelemek için tcr yürütülebilir dosya yolunu ayarlayın.
+ClaudeTcrStatusReady = tcr tarafından bildirilen harici hesaplar.
+ClaudeTcrEmpty = tcr hesap bildirmedi.
+ClaudeTcrDisabled = tcr'de devre dışı
 # Claude cloud credits
 ProviderLabelCloudCredits = Bulut kredileri
 ProviderTextExpired = Süresi doldu

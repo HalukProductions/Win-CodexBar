@@ -311,6 +311,27 @@
       ]
     },
     {
+      "name": "settings-claude-swap-tcr",
+      "query": "window=settings&tab=providers:claude&fixture=claude-swap-tcr&theme=dark",
+      "size": [880, 900],
+      "steps": [
+        { "expectText": ["Claude accounts in tcr", "External accounts reported by tcr.", "pool-a@example.com", "pool-b@example.com", "Estimated: 5 session quotas left"] },
+        { "expectText": ["tcr executable", "Path to the tcr executable (github.com/dhkts1/teamclaude-rs).", "it does not switch accounts"] },
+        { "expectField": { "label": "Source", "value": "tcr", "options": ["claude-swap", "tcr"] } },
+        { "expectNoText": ["Switch via claude-swap", "Re-authenticate via claude-swap", "claude-swap accounts"] },
+        { "click": { "selector": "h4", "label": "Claude accounts in tcr" } },
+        { "screenshot": "settings-claude-swap-tcr-cards" },
+        { "click": { "selector": ".settings-field__label", "label": "tcr executable" } },
+        { "screenshot": "settings-claude-swap-tcr-options" },
+        { "select": { "label": "Source", "value": "claude-swap" } },
+        { "expectCall": { "cmd": "update_settings", "args": { "patch": { "claudeSwapSource": "claude-swap" } } } },
+        { "expectText": ["claude-swap accounts", "claude-swap reported no accounts.", "claude-swap executable"] },
+        { "expectNoText": ["pool-a@example.com", "Claude accounts in tcr"] },
+        { "click": { "selector": "h4", "label": "claude-swap accounts" } },
+        { "screenshot": "settings-claude-swap-tcr-back-to-cswap" }
+      ]
+    },
+    {
       "name": "floatbar",
       "query": "window=floatbar",
       "size": [520, 120],

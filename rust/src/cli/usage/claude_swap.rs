@@ -8,14 +8,16 @@ use super::{
 };
 use crate::core::ProviderId;
 use crate::providers::claude::claude_swap::{
-    self, ClaudeSwapAccount, ClaudeSwapAccountAction, ClaudeSwapHistoricalUsageDto,
-    ClaudeSwapScopedWindowDto, ClaudeSwapSpendWindowDto, ClaudeSwapUsageWindowDto,
+    self, ClaudeSwapAccount, ClaudeSwapAccountAction, ClaudeSwapAccountSource,
+    ClaudeSwapHistoricalUsageDto, ClaudeSwapScopedWindowDto, ClaudeSwapSpendWindowDto,
+    ClaudeSwapUsageWindowDto,
 };
 use crate::settings::Settings;
 use crate::status::{ProviderStatus as StatusInfo, fetch_provider_status};
 /// Settings-derived context for the read-only claude-swap `--all-accounts` path.
 struct ClaudeSwapCliContext {
     executable_path: String,
+    source: ClaudeSwapAccountSource,
     hide_personal_info: bool,
 }
 
@@ -32,6 +34,7 @@ fn claude_swap_cli_context() -> Option<ClaudeSwapCliContext> {
     }
     Some(ClaudeSwapCliContext {
         executable_path,
+        source: settings.claude_swap_source(),
         hide_personal_info: settings.hide_personal_info,
     })
 }
@@ -40,8 +43,8 @@ fn claude_swap_cli_context() -> Option<ClaudeSwapCliContext> {
 /// boundary: only the allow-listed projection is returned, and failures become
 /// plain error strings (already sanitized by the adapter).
 fn read_claude_swap_accounts(ctx: &ClaudeSwapCliContext) -> Result<Vec<ClaudeSwapAccount>, String> {
-    claude_swap::read_account_list(&ctx.executable_path)
-        .map(|list| claude_swap::project_accounts(&list, ctx.hide_personal_info))
+    claude_swap::read_account_list(&ctx.executable_path, ctx.source)
+        .map(|list| claude_swap::project_accounts(&list, ctx.source, ctx.hide_personal_info))
         .map_err(|error| error.to_string())
 }
 
@@ -95,7 +98,7 @@ pub(super) fn claude_swap_json_payload(
 ) -> serde_json::Value {
     let mut payload = serde_json::json!({
         "provider": ProviderId::Claude.cli_name(),
-        "source": "claude-swap",
+        "source": account.source.label(),
         "account": ClaudeSwapCliAccount::from(account),
     });
     if let Some(status) = status {
@@ -166,8 +169,9 @@ pub(super) fn render_claude_swap_text(
     let active = if account.is_active { " (active)" } else { "" };
     let status_indicator = render_status_indicator(status, use_color);
     lines.push(format!(
-        "{} (claude-swap)  {}{}{}",
+        "{} ({})  {}{}{}",
         ProviderId::Claude.display_name(),
+        account.source.label(),
         account.label,
         active,
         status_indicator
@@ -196,7 +200,7 @@ pub(super) fn render_claude_swap_text(
         }
     }
     if account.is_disabled {
-        lines.push("  Disabled by claude-swap.".to_string());
+        lines.push(format!("  Disabled by {}.", account.source.label()));
     }
     if let Some(error) = &account.error {
         lines.push(format!("  {error}"));
@@ -205,6 +209,7 @@ pub(super) fn render_claude_swap_text(
 }
 
 pub(super) fn render_claude_swap_brief(
+    source: ClaudeSwapAccountSource,
     accounts: &[ClaudeSwapAccount],
     status: Option<&StatusInfo>,
     use_color: bool,
@@ -234,8 +239,9 @@ pub(super) fn render_claude_swap_brief(
         .map(|status| format!(" | Status {}", status.summary()))
         .unwrap_or_default();
     format!(
-        "{} (claude-swap){}: {}{}",
+        "{} ({}){}: {}{}",
         ProviderId::Claude.display_name(),
+        source.label(),
         status_indicator,
         accounts_text,
         provider_status
@@ -270,7 +276,11 @@ async fn provider_json_rows(
                 .iter()
                 .map(|account| claude_swap_json_payload(account, status.as_ref()))
                 .collect(),
-            Err(error) => vec![claude_swap_error_payload(&error, status.as_ref())],
+            Err(error) => vec![claude_swap_error_payload(
+                ctx.source,
+                &error,
+                status.as_ref(),
+            )],
         };
     }
     vec![fetch_provider_json_output(provider_id, command).await]
@@ -288,10 +298,14 @@ async fn collect_json_results(command: &UsageCommand) -> Vec<serde_json::Value> 
 
 /// JSON row for a failed claude-swap account read. Like every usage error
 /// row it carries `errorKind`; an external tool failure is `unknown`.
-fn claude_swap_error_payload(error: &str, status: Option<&StatusInfo>) -> serde_json::Value {
+fn claude_swap_error_payload(
+    source: ClaudeSwapAccountSource,
+    error: &str,
+    status: Option<&StatusInfo>,
+) -> serde_json::Value {
     let mut payload = serde_json::json!({
         "provider": ProviderId::Claude.cli_name(),
-        "source": "claude-swap",
+        "source": source.label(),
         "error": error,
         "errorKind": crate::cli::error_kind::ERROR_KIND_UNKNOWN,
     });
@@ -311,6 +325,7 @@ async fn provider_text_sections(provider_id: ProviderId, command: &UsageCommand)
             Ok(accounts) => {
                 if command.brief {
                     vec![render_claude_swap_brief(
+                        ctx.source,
                         &accounts,
                         status.as_ref(),
                         command.use_color,
@@ -355,13 +370,17 @@ pub(super) async fn collect_usage_output(command: &UsageCommand) -> UsageOutput 
 
 #[cfg(test)]
 mod tests {
-    use super::claude_swap_error_payload;
+    use super::{ClaudeSwapAccountSource, claude_swap_error_payload};
     use serde_json::json;
 
     #[test]
     fn claude_swap_error_rows_carry_an_error_kind() {
         assert_eq!(
-            claude_swap_error_payload("claude-swap exited with status 2", None),
+            claude_swap_error_payload(
+                ClaudeSwapAccountSource::ClaudeSwap,
+                "claude-swap exited with status 2",
+                None
+            ),
             json!({
                 "provider": "claude",
                 "source": "claude-swap",

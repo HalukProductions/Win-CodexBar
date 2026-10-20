@@ -618,6 +618,10 @@ fn strategy_ids_are_stable_and_reject_unknown_sources() {
         Some(AntigravityStrategyId::Cli)
     );
     assert_eq!(
+        strategy_from_source_label("oauth"),
+        Some(AntigravityStrategyId::OAuth)
+    );
+    assert_eq!(
         strategy_from_source_label("offline"),
         Some(AntigravityStrategyId::Offline)
     );
