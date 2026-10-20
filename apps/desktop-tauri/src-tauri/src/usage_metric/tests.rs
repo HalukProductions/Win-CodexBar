@@ -739,3 +739,227 @@ fn icon_fallback_hints_are_ignored_while_the_core_lane_is_present() {
     assert_eq!(resolved.primary.used_percent, 10.0);
     assert_eq!(resolved.secondary.as_ref().unwrap().used_percent, 20.0);
 }
+
+fn claude_extra(id: &str, used_percent: f64) -> crate::commands::NamedRateWindowSnapshot {
+    crate::commands::NamedRateWindowSnapshot {
+        id: id.to_string(),
+        title: id.to_string(),
+        window: window(used_percent),
+        fallback_lane: false,
+        icon_fallback: None,
+    }
+}
+
+/// Shape of a Claude account that reports only model-scoped weekly limits
+/// (upstream #4126): a session placeholder, no weekly lane, scoped extras.
+fn claude_scoped_only_snapshot() -> ProviderUsageSnapshot {
+    let mut snapshot = snapshot();
+    snapshot.provider_id = "claude".to_string();
+    snapshot.primary = RateWindowSnapshot {
+        is_informational: true,
+        ..window(0.0)
+    };
+    snapshot.secondary = None;
+    snapshot.extra_rate_windows = vec![
+        claude_extra("claude-weekly-scoped-fable", 12.0),
+        claude_extra("claude-weekly-scoped-sonnet", 40.0),
+        claude_extra("claude-routines", 70.0),
+    ];
+    snapshot
+}
+
+#[test]
+fn claude_automatic_selects_the_most_constrained_scoped_weekly_without_core_lanes() {
+    let snapshot = claude_scoped_only_snapshot();
+    let settings = Settings::default();
+
+    let selected = selected_usage_window(&snapshot, &settings);
+    assert!(!selected.is_informational);
+    assert_eq!(selected.used_percent, 40.0);
+    let (top, bottom) = selected_usage_icon_windows(&snapshot, &settings);
+    assert_eq!(top.used_percent, 40.0);
+    assert!(bottom.is_none());
+}
+
+#[test]
+fn claude_session_and_weekly_preferences_fall_back_to_the_scoped_weekly() {
+    let snapshot = claude_scoped_only_snapshot();
+    for preference in [MetricPreference::Session, MetricPreference::Weekly] {
+        let mut settings = Settings::default();
+        settings.set_provider_metric(ProviderId::Claude, preference);
+
+        assert_eq!(
+            selected_usage_window(&snapshot, &settings).used_percent,
+            40.0,
+            "{preference:?}"
+        );
+    }
+}
+
+#[test]
+fn claude_scoped_weekly_does_not_replace_a_reported_weekly_lane() {
+    let mut snapshot = claude_scoped_only_snapshot();
+    snapshot.secondary = Some(window(30.0));
+
+    assert_eq!(
+        selected_usage_window(&snapshot, &Settings::default()).used_percent,
+        30.0
+    );
+}
+
+#[test]
+fn scoped_weekly_fallback_is_claude_owned() {
+    let mut snapshot = claude_scoped_only_snapshot();
+    snapshot.provider_id = "codex".to_string();
+
+    assert!(selected_usage_window(&snapshot, &Settings::default()).is_informational);
+}
+
+fn depletion_now() -> DateTime<Utc> {
+    use chrono::TimeZone;
+    Utc.with_ymd_and_hms(2026, 8, 16, 12, 0, 0).unwrap()
+}
+
+/// A window of `minutes` at `used_percent` that resets `remaining_minutes`
+/// after [`depletion_now`].
+fn timed_window(used_percent: f64, minutes: u32, remaining_minutes: i64) -> RateWindowSnapshot {
+    let resets_at = depletion_now() + chrono::Duration::minutes(remaining_minutes);
+    RateWindowSnapshot {
+        window_minutes: Some(minutes),
+        ..derived_window(used_percent, Some(resets_at.to_rfc3339()))
+    }
+}
+
+/// Session at 60% one hour into five (runs out in 40 minutes) beside a
+/// weekly at 90% one day into seven (runs out in about 2.7 hours).
+fn depleting_session_snapshot() -> ProviderUsageSnapshot {
+    ProviderUsageSnapshot {
+        primary: timed_window(60.0, 300, 240),
+        secondary: Some(timed_window(90.0, 10_080, 6 * 1_440)),
+        ..snapshot()
+    }
+}
+
+fn automatic_at(snapshot: &ProviderUsageSnapshot) -> f64 {
+    selected_usage_window_at(snapshot, &Settings::default(), depletion_now()).used_percent
+}
+
+#[test]
+fn automatic_prefers_the_window_that_runs_out_first_over_the_fuller_one() {
+    assert_eq!(automatic_at(&depleting_session_snapshot()), 60.0);
+}
+
+#[test]
+fn automatic_ranks_a_forecast_depletion_above_a_window_that_lasts() {
+    let mut snapshot = depleting_session_snapshot();
+    // 40% three days into seven lasts to its reset.
+    snapshot.secondary = Some(timed_window(40.0, 10_080, 4 * 1_440));
+    snapshot.primary = timed_window(30.0, 300, 240);
+
+    assert_eq!(automatic_at(&snapshot), 30.0);
+}
+
+#[test]
+fn automatic_ignores_an_immature_forecast() {
+    let mut snapshot = depleting_session_snapshot();
+    // Five minutes into a five-hour session expects under 3% use.
+    snapshot.primary = timed_window(10.0, 300, 295);
+    snapshot.secondary = Some(timed_window(40.0, 10_080, 4 * 1_440));
+
+    assert_eq!(automatic_at(&snapshot), 40.0);
+}
+
+#[test]
+fn automatic_keeps_an_exhausted_window_ahead_of_a_forecast() {
+    let mut snapshot = depleting_session_snapshot();
+    snapshot.secondary = Some(timed_window(100.0, 10_080, 6 * 1_440));
+
+    assert_eq!(automatic_at(&snapshot), 100.0);
+}
+
+#[test]
+fn automatic_does_not_forecast_without_authoritative_pace() {
+    let mut snapshot = depleting_session_snapshot();
+    snapshot.pace_authoritative = false;
+
+    assert_eq!(automatic_at(&snapshot), 90.0);
+}
+
+#[test]
+fn automatic_does_not_forecast_a_window_without_its_own_length() {
+    let mut snapshot = depleting_session_snapshot();
+    snapshot.primary.window_minutes = None;
+
+    assert_eq!(automatic_at(&snapshot), 90.0);
+}
+
+#[test]
+fn equal_automatic_ranks_keep_the_earlier_lane() {
+    let mut snapshot = snapshot();
+    snapshot.primary = window(50.0);
+    snapshot.primary.reset_description = Some("session".to_string());
+    snapshot.secondary = Some(window(50.0));
+
+    assert_eq!(
+        selected_usage_window(&snapshot, &Settings::default())
+            .reset_description
+            .as_deref(),
+        Some("session")
+    );
+}
+
+fn gemini_snapshot(pro: f64, flash: f64) -> ProviderUsageSnapshot {
+    ProviderUsageSnapshot {
+        provider_id: "gemini".to_string(),
+        display_name: "Gemini".to_string(),
+        primary: window(pro),
+        secondary: None,
+        model_specific: Some(window(flash)),
+        ..snapshot()
+    }
+}
+
+#[test]
+fn gemini_automatic_keeps_the_pro_tier_over_a_fuller_flash_tier() {
+    assert_eq!(automatic_at(&gemini_snapshot(30.0, 80.0)), 30.0);
+}
+
+#[test]
+fn gemini_automatic_selects_an_exhausted_tier_first() {
+    assert_eq!(automatic_at(&gemini_snapshot(30.0, 100.0)), 100.0);
+}
+
+#[test]
+fn kiro_automatic_keeps_plan_credits_until_a_lane_is_exhausted() {
+    let mut snapshot = snapshot();
+    snapshot.provider_id = "kiro".to_string();
+    snapshot.primary = window(20.0);
+    snapshot.secondary = Some(window(90.0));
+    assert_eq!(automatic_at(&snapshot), 20.0);
+
+    snapshot.secondary = Some(window(100.0));
+    assert_eq!(automatic_at(&snapshot), 100.0);
+}
+
+#[test]
+fn highest_usage_rank_forecasts_only_an_automatic_metric() {
+    let now = depletion_now();
+    let depleting = depleting_session_snapshot();
+    let mut fuller = snapshot();
+    fuller.provider_id = "claude".to_string();
+    fuller.primary = window(80.0);
+    fuller.secondary = None;
+
+    let automatic = Settings::default();
+    assert!(
+        highest_usage_rank(&depleting, &automatic, now)
+            .outranks(&highest_usage_rank(&fuller, &automatic, now))
+    );
+
+    let mut explicit = Settings::default();
+    explicit.set_provider_metric(ProviderId::Codex, MetricPreference::Session);
+    assert!(
+        highest_usage_rank(&fuller, &explicit, now)
+            .outranks(&highest_usage_rank(&depleting, &explicit, now))
+    );
+}

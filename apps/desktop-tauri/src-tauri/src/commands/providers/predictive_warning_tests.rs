@@ -16,6 +16,7 @@ fn limit_reset_snapshot() -> ProviderUsageSnapshot {
         source_label: "OAuth".to_string(),
         has_successful_claude_cli_quota: false,
         pace_authoritative: true,
+        quota_estimated: false,
         account_identity: None,
         last_good_owner: None,
     };

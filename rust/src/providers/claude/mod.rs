@@ -376,6 +376,12 @@ impl Provider for ClaudeProvider {
         false
     }
 
+    /// Upstream #4126: a scoped-only account shows its model-scoped weekly
+    /// quota instead of the empty session placeholder.
+    fn automatic_metric_absent_core_window_prefix(&self) -> Option<&'static str> {
+        Some(scoped_weekly::SCOPED_WEEKLY_ID_PREFIX)
+    }
+
     fn id(&self) -> ProviderId {
         ProviderId::Claude
     }

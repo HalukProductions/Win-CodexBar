@@ -133,6 +133,23 @@ pub trait Provider: Send + Sync {
         false
     }
 
+    /// Id prefix of extra rate windows that Automatic metric selection falls
+    /// back to when the provider reports no core quota lane (an informational
+    /// primary and no secondary, model-specific or tertiary lane). The most
+    /// constrained matching window is selected instead of the placeholder.
+    /// `None` keeps the placeholder.
+    fn automatic_metric_absent_core_window_prefix(&self) -> Option<&'static str> {
+        None
+    }
+
+    /// Whether Automatic metric selection follows the core lane order
+    /// (primary, secondary, model-specific, tertiary) instead of ranking the
+    /// lanes by depletion risk: the first exhausted lane wins, otherwise the
+    /// first reported lane. For providers whose lanes are ordered tiers.
+    fn automatic_metric_follows_lane_order(&self) -> bool {
+        false
+    }
+
     /// Id of the extra rate window that holds this provider's monthly plan
     /// allowance. The `MonthlyPlan` menu bar metric selects that window
     /// (upstream 0.70.0 #4072). `None` means the provider offers no Monthly
