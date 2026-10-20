@@ -14,16 +14,22 @@ export function parseFtlEntries(text: string): Record<string, string> {
 
 let cached: LocaleStrings | null = null;
 
-/** English bundle; keys missing from the file fall back to the key name, as the UI does. */
-export function englishLocaleStrings(): LocaleStrings {
-  if (cached) return cached;
-  const parsed = parseFtlEntries(englishFtl);
-  const entries: Record<string, string> = {};
-  for (const key of ALL_LOCALE_KEYS) {
-    entries[key] = parsed[key] ?? key;
+/**
+ * English bundle; keys missing from the file fall back to the key name, as the UI does.
+ * `overrides` replaces single keys for one scenario, so a fixture can stand in a
+ * longer translation to check layout (the proof has no other locales).
+ */
+export function englishLocaleStrings(overrides: Record<string, string> = {}): LocaleStrings {
+  if (!cached) {
+    const parsed = parseFtlEntries(englishFtl);
+    const entries: Record<string, string> = {};
+    for (const key of ALL_LOCALE_KEYS) {
+      entries[key] = parsed[key] ?? key;
+    }
+    cached = { language: "english", entries: { ...parsed, ...entries } };
   }
-  cached = { language: "english", entries: { ...parsed, ...entries } };
-  return cached;
+  if (Object.keys(overrides).length === 0) return cached;
+  return { ...cached, entries: { ...cached.entries, ...overrides } };
 }
 
 export const PROOF_LANGUAGES: LanguageOption[] = [
