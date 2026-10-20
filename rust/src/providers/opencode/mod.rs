@@ -1,23 +1,31 @@
 //! OpenCode provider implementation
 //!
 //! Fetches usage data from OpenCode (opencode.ai)
-//! Uses browser cookies for authentication
+//! Uses browser cookies for authentication. A Console session cookie reads
+//! the Console APIs first (`console_spend`); the legacy `_server` functions
+//! serve legacy-only cookies and Console failures a legacy session can cover.
 
 pub mod billing;
+mod console_spend;
+#[cfg(test)]
+mod console_tests;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use reqwest::Client;
 use serde_json::Value;
+use std::time::Duration;
 use uuid::Uuid;
 
 use crate::core::{
     FetchContext, Provider, ProviderError, ProviderFetchResult, ProviderId, RateWindow, SourceMode,
     UsageSnapshot,
 };
+use crate::providers::opencodego::WebCookieSession;
 
 pub(super) const BASE_URL: &str = "https://opencode.ai";
-pub(super) const SERVER_URL: &str = "https://opencode.ai/_server";
+#[cfg(test)]
+const SERVER_URL: &str = "https://opencode.ai/_server";
 const MAX_RESET_SECONDS: i64 = 366 * 24 * 60 * 60;
 const WORKSPACES_SERVER_ID: &str =
     "def39973159c7f0483d8793a822b8dbb10d067e12c65455fcb4608459ba0234f";
@@ -26,6 +34,8 @@ const SUBSCRIPTION_SERVER_ID: &str =
 /// OpenCode provider
 pub struct OpenCodeProvider {
     pub(super) client: Client,
+    /// `https://opencode.ai`; tests point it at a local mock server.
+    origin: String,
 }
 
 impl OpenCodeProvider {
@@ -35,16 +45,77 @@ impl OpenCodeProvider {
                 .timeout(std::time::Duration::from_secs(30))
                 .build()
                 .unwrap_or_else(|_| Client::new()),
+            origin: BASE_URL.to_string(),
         }
     }
 
-    /// Fetch usage with cookie header
+    #[cfg(test)]
+    fn with_origin(origin: impl Into<String>) -> Self {
+        Self {
+            origin: origin.into(),
+            ..Self::new()
+        }
+    }
+
+    /// Fetch usage with cookie header. Console cookies use the Console APIs;
+    /// the legacy path runs only for legacy-only cookies or for a Console
+    /// failure that a legacy session cookie can recover.
     async fn fetch_with_cookies(
         &self,
         cookie_header: &str,
-    ) -> Result<UsageSnapshot, ProviderError> {
-        // First get workspace ID
-        let workspace_id = self.fetch_workspace_id(cookie_header).await?;
+        timeout: Duration,
+    ) -> Result<ProviderFetchResult, ProviderError> {
+        let cookies = WebCookieSession::new(cookie_header);
+        if !cookies.has_console_session() {
+            return self.fetch_legacy(cookie_header, None).await;
+        }
+        let workspace_id = match self
+            .fetch_console_workspace_id(cookie_header, timeout)
+            .await
+        {
+            Ok(workspace_id) => workspace_id,
+            Err(error) => {
+                return self
+                    .recover_console_with_legacy(&cookies, error, None)
+                    .await;
+            }
+        };
+        match self
+            .fetch_console_usage(&workspace_id, cookie_header, timeout)
+            .await
+        {
+            Ok(result) => Ok(result),
+            Err(error) => {
+                self.recover_console_with_legacy(&cookies, error, Some(&workspace_id))
+                    .await
+            }
+        }
+    }
+
+    /// A failed legacy read never turns a Console access failure into
+    /// invalid credentials; only a Console 401 lets the legacy error through.
+    async fn recover_console_with_legacy(
+        &self,
+        cookies: &WebCookieSession,
+        console_error: ProviderError,
+        workspace_id: Option<&str>,
+    ) -> Result<ProviderFetchResult, ProviderError> {
+        if !cookies.can_recover_with_legacy(&console_error) {
+            return Err(console_error);
+        }
+        let legacy = self.fetch_legacy(cookies.header(), workspace_id).await;
+        cookies.select_legacy_result(console_error, legacy)
+    }
+
+    async fn fetch_legacy(
+        &self,
+        cookie_header: &str,
+        workspace_id: Option<&str>,
+    ) -> Result<ProviderFetchResult, ProviderError> {
+        let workspace_id = match workspace_id {
+            Some(workspace_id) => workspace_id.to_string(),
+            None => self.fetch_workspace_id(cookie_header).await?,
+        };
 
         // Then fetch subscription info. Pay-as-you-go workspaces have no
         // subscription object, so the subscription server answers null or
@@ -58,7 +129,7 @@ impl OpenCodeProvider {
                     .await
                 {
                     Err(auth_err) => return Err(auth_err),
-                    Ok(Some(snapshot)) => return Ok(snapshot),
+                    Ok(Some(snapshot)) => return Ok(ProviderFetchResult::new(snapshot, "web")),
                     Ok(None) => return Err(err),
                 }
             }
@@ -67,6 +138,7 @@ impl OpenCodeProvider {
 
         // Parse the response
         self.parse_subscription(&subscription)
+            .map(|usage| ProviderFetchResult::new(usage, "web"))
     }
 
     /// GET a SolidStart server function, optionally with a one-element
@@ -78,7 +150,7 @@ impl OpenCodeProvider {
         cookie_header: &str,
         referer: &str,
     ) -> reqwest::RequestBuilder {
-        let mut url = format!("{}?id={}", SERVER_URL, server_id);
+        let mut url = format!("{}/_server?id={}", self.origin, server_id);
         if let Some(workspace_id) = workspace_arg {
             let args = serde_json::json!([workspace_id]);
             url.push_str("&args=");
@@ -556,14 +628,14 @@ impl OpenCodeProvider {
     where
         F: FnOnce() -> Result<String, ProviderError>,
     {
+        let timeout = Duration::from_secs(ctx.web_timeout.max(1));
         if let Some(ref cookie_header) = ctx.manual_cookie_header {
-            let usage = self.fetch_with_cookies(cookie_header).await?;
-            return Ok(ProviderFetchResult::new(usage, "web"));
+            return self.fetch_with_cookies(cookie_header, timeout).await;
         }
 
         match resolve_browser_cookie() {
-            Ok(cookie_header) => match self.fetch_with_cookies(&cookie_header).await {
-                Ok(usage) => return Ok(ProviderFetchResult::new(usage, "web")),
+            Ok(cookie_header) => match self.fetch_with_cookies(&cookie_header, timeout).await {
+                Ok(result) => return Ok(result),
                 Err(ProviderError::AuthRequired) => {}
                 Err(e) => return Err(e),
             },

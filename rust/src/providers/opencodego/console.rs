@@ -7,13 +7,15 @@ use crate::core::{ProviderError, RateWindow, UsageSnapshot};
 
 use super::USER_AGENT;
 
-const CONSOLE_WORKSPACES_URL: &str = "https://opencode.ai/console/api/orgs";
-const CONSOLE_GO_STATUS_URL: &str = "https://opencode.ai/console/api/go/status";
-const CONSOLE_BILLING_STATUS_URL: &str = "https://opencode.ai/console/api/billing/status";
+// Shared with the OpenCode provider, whose migrated Console workspaces read
+// the same endpoints.
+const CONSOLE_WORKSPACES_PATH: &str = "/console/api/orgs";
+const CONSOLE_GO_STATUS_PATH: &str = "/console/api/go/status";
+pub(crate) const CONSOLE_BILLING_STATUS_PATH: &str = "/console/api/billing/status";
 const CONSOLE_WORKSPACE_HEADER: &str = "x-org-id";
 const BILLING_SCALE: f64 = 100_000_000.0;
 
-pub(super) enum ConsoleUsage {
+pub(crate) enum ConsoleUsage {
     Snapshot(Box<UsageSnapshot>),
     NoSubscription,
 }
@@ -47,14 +49,15 @@ fn is_workspace_id(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
 }
 
-pub(super) async fn fetch_workspace_id(
+pub(crate) async fn fetch_workspace_id(
     client: &Client,
+    origin: &str,
     cookie_header: &str,
     timeout: Duration,
 ) -> Result<String, ProviderError> {
     let text = fetch_text(
         client,
-        CONSOLE_WORKSPACES_URL,
+        &format!("{origin}{CONSOLE_WORKSPACES_PATH}"),
         None,
         cookie_header,
         timeout,
@@ -67,15 +70,16 @@ pub(super) async fn fetch_workspace_id(
         .ok_or_else(|| missing("workspace ID"))
 }
 
-pub(super) async fn fetch_usage(
+pub(crate) async fn fetch_usage(
     client: &Client,
+    origin: &str,
     workspace_id: &str,
     cookie_header: &str,
     timeout: Duration,
 ) -> Result<ConsoleUsage, ProviderError> {
     let text = fetch_text(
         client,
-        CONSOLE_GO_STATUS_URL,
+        &format!("{origin}{CONSOLE_GO_STATUS_PATH}"),
         Some(workspace_id),
         cookie_header,
         timeout,
@@ -93,7 +97,7 @@ pub(super) async fn fetch_balance(
 ) -> Result<Option<f64>, ProviderError> {
     let text = fetch_text(
         client,
-        CONSOLE_BILLING_STATUS_URL,
+        &format!("{}{CONSOLE_BILLING_STATUS_PATH}", super::BASE_URL),
         Some(workspace_id),
         cookie_header,
         timeout,
@@ -103,7 +107,10 @@ pub(super) async fn fetch_balance(
     parse_balance(&text)
 }
 
-async fn fetch_text(
+/// GET one Console endpoint. Only the workspace-discovery call omits the
+/// `x-org-id` header. A 401 is invalid credentials; any other non-200 is an
+/// API error, because a Console scope or permission failure is not expired auth.
+pub(crate) async fn fetch_text(
     client: &Client,
     url: &str,
     workspace_id: Option<&str>,
@@ -202,7 +209,7 @@ fn meter_window(
     ))
 }
 
-fn parse_balance(text: &str) -> Result<Option<f64>, ProviderError> {
+pub(crate) fn parse_balance(text: &str) -> Result<Option<f64>, ProviderError> {
     let root: Value = serde_json::from_str(text).map_err(|_| invalid("billing payload"))?;
     let billing_mode = root
         .get("billingMode")
