@@ -18,10 +18,10 @@ Factory cli=factory display="Factory" cookie=Some("app.factory.ai") color=#FF6B3
   map=["factory"]
   metadata=ProviderMetadata { id: Factory, display_name: "Droid", session_label: "Standard", weekly_label: "Premium", supports_opus: false, supports_credits: true, default_enabled: false, is_primary: false, dashboard_url: Some("https://app.factory.ai"), status_page_url: Some("https://status.factory.ai"), tertiary_label_key: None }
   sources=[Auto, OAuth, Web] oauth=false web=true cli=true
-Gemini cli=gemini display="Gemini" cookie=Some("aistudio.google.com") color=#AB87EA deprecated=false blocking=None
+Gemini cli=gemini display="Gemini" cookie=Some("gemini.google.com") color=#AB87EA deprecated=false blocking=None
   map=["gemini", "google"]
   metadata=ProviderMetadata { id: Gemini, display_name: "Gemini", session_label: "Daily", weekly_label: "Daily", supports_opus: false, supports_credits: false, default_enabled: true, is_primary: false, dashboard_url: Some("https://aistudio.google.com"), status_page_url: Some("https://status.cloud.google.com"), tertiary_label_key: None }
-  sources=[Auto, Cli] oauth=false web=false cli=true
+  sources=[Auto, Cli, Web] oauth=false web=true cli=true
 Antigravity cli=antigravity display="Antigravity" cookie=Some("antigravity.ai") color=#60BA7E deprecated=false blocking=None
   map=["agy", "antigravity"]
   metadata=ProviderMetadata { id: Antigravity, display_name: "Antigravity", session_label: "Claude", weekly_label: "Gemini Pro", supports_opus: true, supports_credits: false, default_enabled: false, is_primary: false, dashboard_url: None, status_page_url: None, tertiary_label_key: None }

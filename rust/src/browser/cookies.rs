@@ -87,6 +87,39 @@ impl Cookie {
     }
 }
 
+/// The cookies a browser sends with a request to `host`, for sites whose
+/// session cookies live on a parent domain shared with unrelated sites.
+///
+/// A plain domain read returns the domain and every subdomain, so reading the
+/// parent (`google.com`) would also pick up cookies for unrelated sibling
+/// hosts. The scope reads `scan_domain` and keeps only cookies stored for
+/// `host` itself or for one of its parent domains.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CookieRequestScope {
+    /// Domain whose cookie rows are read (the host or one of its parents).
+    pub scan_domain: &'static str,
+    /// Host the request goes to.
+    pub host: &'static str,
+}
+
+impl CookieRequestScope {
+    /// Whether a cookie stored under `host_key` is sent to the scope's host.
+    pub fn applies_to(&self, host_key: &str) -> bool {
+        let stored = host_key
+            .trim()
+            .trim_start_matches('.')
+            .trim_end_matches('.')
+            .to_ascii_lowercase();
+        let host = self.host.to_ascii_lowercase();
+        !stored.is_empty() && (host == stored || host.ends_with(&format!(".{stored}")))
+    }
+
+    /// Keep only the cookies sent to the scope's host.
+    pub fn retain(&self, cookies: &mut Vec<Cookie>) {
+        cookies.retain(|cookie| self.applies_to(&cookie.domain));
+    }
+}
+
 /// Cookie extractor for browsers
 pub struct CookieExtractor;
 
@@ -723,6 +756,22 @@ pub fn get_cookie_header_for_domains(domains: &[&str]) -> Result<String, CookieE
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn request_scope_keeps_host_and_parent_cookies_only() {
+        let scope = CookieRequestScope {
+            scan_domain: "example.com",
+            host: "app.example.com",
+        };
+        assert!(scope.applies_to("app.example.com"));
+        assert!(scope.applies_to(".app.example.com"));
+        assert!(scope.applies_to(".example.com"));
+        assert!(scope.applies_to("EXAMPLE.COM."));
+        assert!(!scope.applies_to("mail.example.com"));
+        assert!(!scope.applies_to("deep.app.example.com"));
+        assert!(!scope.applies_to("badexample.com"));
+        assert!(!scope.applies_to(""));
+    }
 
     #[test]
     fn domain_matching_requires_boundary() {

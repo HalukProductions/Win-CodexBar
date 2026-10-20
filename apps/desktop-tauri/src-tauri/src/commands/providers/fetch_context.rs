@@ -109,6 +109,14 @@ pub(crate) fn build_fetch_context(
             _ if provider.web_is_opt_in() && usage_source != SourceMode::Web => {
                 (usage_source, None, false)
             }
+            // Off with an explicit Web source fails closed on Web instead of
+            // mapping to Cli, when Cli is a different account's credential lane.
+            "off"
+                if usage_source == SourceMode::Web
+                    && provider.explicit_web_survives_cookie_off() =>
+            {
+                (SourceMode::Web, None, true)
+            }
             // Charm Hyper: the cookie source only picks the session, and
             // the usage source keeps routing. Off and an empty Manual
             // source never import a browser session, while Auto keeps its
