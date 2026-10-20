@@ -1736,3 +1736,12 @@ OpenAiOrgLimitsLoad = プロジェクト上限を読み込む
 OpenAiOrgLimitsEmpty = プロジェクト上限は見つかりませんでした。
 OpenAiOrgLimitsScoped = プロジェクト上限は組織全体に適用されます。読み込むにはプロジェクト ID を空にしてください。
 OpenAiOrgLimitsTruncated = 一部のプロジェクトのみ確認しました。
+
+# About - Acknowledgements
+AboutLinkAcknowledgements = 謝辞
+AcknowledgementsFooter = CodexBar は以下のオープンソースプロジェクトを使用しています。
+AcknowledgementsOthers = ほか { "{}" } 名
+AcknowledgementsAuthor = 作者
+AcknowledgementsAuthors = 作者
+AcknowledgementsLicense = ライセンス
+AcknowledgementsStandardText = 標準のライセンス文です。このパッケージにはライセンスファイルが含まれていません。

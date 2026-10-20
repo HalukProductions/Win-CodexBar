@@ -54,6 +54,7 @@ if ($Slice -eq 'ci') {
         Invoke-Step "Rust clippy (workspace)" "cargo" @("clippy", "--workspace", "--all-targets", "--", "-D", "warnings")
         Invoke-Step "Rust tests (workspace)" "cargo" @("test", "--workspace")
         Invoke-Step "Frontend install" "pnpm" @("--dir", "apps\desktop-tauri", "install", "--frozen-lockfile")
+        Invoke-Step "Third-party notices freshness" "pnpm" @("--dir", "apps\desktop-tauri", "run", "notices:check")
         Invoke-Step "Frontend Oxlint" "pnpm" @("--dir", "apps\desktop-tauri", "run", "lint")
         Invoke-Step "Anti-slop tooling type check" "pnpm" @("--dir", "apps\desktop-tauri", "run", "check:anti-slop")
         Invoke-Step "Anti-slop rule tests" "pnpm" @("--dir", "apps\desktop-tauri", "run", "test:anti-slop")

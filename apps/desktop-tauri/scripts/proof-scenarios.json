@@ -139,6 +139,23 @@
       ]
     },
     {
+      "name": "settings-about-acknowledgements",
+      "query": "window=settings&tab=about&theme=dark",
+      "size": [880, 620],
+      "steps": [
+        { "expectText": "Acknowledgements" },
+        { "click": { "selector": ".settings-link-row span", "label": "Acknowledgements" } },
+        { "expectText": ["CodexBar is built with these open-source projects.", "tauri", "react", "codexcontrol"] },
+        { "screenshot": "settings-about-acknowledgements" },
+        { "click": { "selector": ".acknowledgement__name", "label": "tauri" } },
+        { "expectText": ["Apache License", "https://github.com/tauri-apps/tauri"] },
+        { "screenshot": "settings-about-acknowledgement-open" },
+        { "click": { "selector": ".acknowledgement__name", "label": "webview2-com" } },
+        { "expectText": ["Standard license text. This package ships no license file.", "Copyright (c) webview2-com contributors"] },
+        { "screenshot": "settings-about-acknowledgement-standard" }
+      ]
+    },
+    {
       "name": "settings-openaiapi-tokens-per-minute-metric",
       "query": "window=settings&tab=providers:openaiapi&theme=dark",
       "size": [880, 620],

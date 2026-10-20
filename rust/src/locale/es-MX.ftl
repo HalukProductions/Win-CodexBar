@@ -1735,3 +1735,12 @@ OpenAiOrgLimitsLoad = Cargar límites de proyectos
 OpenAiOrgLimitsEmpty = No se encontraron límites de proyectos.
 OpenAiOrgLimitsScoped = Los límites de proyecto se aplican a toda la organización. Borra el ID de proyecto para cargarlos.
 OpenAiOrgLimitsTruncated = Solo se revisaron algunos proyectos.
+
+# About - Acknowledgements
+AboutLinkAcknowledgements = Agradecimientos
+AcknowledgementsFooter = CodexBar está construido con estos proyectos de código abierto.
+AcknowledgementsOthers = { "{}" } más
+AcknowledgementsAuthor = Autor
+AcknowledgementsAuthors = Autores
+AcknowledgementsLicense = Licencia
+AcknowledgementsStandardText = Texto de licencia estándar. El paquete no incluye un archivo de licencia.
