@@ -299,8 +299,13 @@ export function removeManualCookie(
   return invoke<CookieInfoBridge[]>("remove_manual_cookie", { providerId });
 }
 
-export function listDetectedBrowsers(): Promise<DetectedBrowserBridge[]> {
-  return invoke<DetectedBrowserBridge[]>("list_detected_browsers");
+/** With `providerId`, also lists a desktop app store only that provider may use. */
+export function listDetectedBrowsers(
+  providerId?: string,
+): Promise<DetectedBrowserBridge[]> {
+  return invoke<DetectedBrowserBridge[]>("list_detected_browsers", {
+    providerId: providerId ?? null,
+  });
 }
 
 export function importBrowserCookies(

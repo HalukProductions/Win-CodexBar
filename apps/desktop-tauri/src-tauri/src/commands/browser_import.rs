@@ -13,14 +13,17 @@ pub struct DetectedBrowserBridge {
 }
 
 /// List all browsers detected on this machine that CodexBar can read cookies from.
+/// With a `provider_id`, a detected desktop app store that only that provider
+/// may use (the Claude desktop app for Claude) is listed last.
 ///
 /// On non-Windows platforms (e.g. Linux CI) this returns an empty list because
 /// DPAPI is unavailable; the UI should hide/disable the import button in that case.
 #[tauri::command]
-pub fn list_detected_browsers() -> Vec<DetectedBrowserBridge> {
-    use codexbar::browser::detection::BrowserDetector;
-
-    BrowserDetector::detect_all()
+pub fn list_detected_browsers(provider_id: Option<String>) -> Vec<DetectedBrowserBridge> {
+    let provider = provider_id
+        .as_deref()
+        .and_then(|id| parse_provider_arg(id).ok());
+    importable_cookie_stores(provider)
         .into_iter()
         .map(|b| DetectedBrowserBridge {
             browser_type: b.browser_type.key().to_string(),
@@ -28,6 +31,20 @@ pub fn list_detected_browsers() -> Vec<DetectedBrowserBridge> {
             profile_count: b.profiles.len(),
         })
         .collect()
+}
+
+fn importable_cookie_stores(
+    provider: Option<codexbar::core::ProviderId>,
+) -> Vec<codexbar::browser::detection::DetectedBrowser> {
+    use codexbar::browser::detection::BrowserDetector;
+
+    let mut stores = BrowserDetector::detect_all();
+    stores.extend(
+        provider
+            .and_then(|id| id.app_cookie_store())
+            .and_then(BrowserDetector::detect),
+    );
+    stores
 }
 
 /// Import cookies for `provider_id` from the named browser and persist them as
@@ -43,7 +60,6 @@ pub fn import_browser_cookies(
     browser_type: String,
 ) -> Result<Vec<CookieInfoBridge>, String> {
     use codexbar::browser::cookies::CookieExtractor;
-    use codexbar::browser::detection::BrowserDetector;
 
     // Resolve the provider to get its cookie domain.
     let pid = parse_provider_arg(&provider_id)?;
@@ -59,8 +75,7 @@ pub fn import_browser_cookies(
     };
 
     // Find the requested browser.
-    let browsers = BrowserDetector::detect_all();
-    let browser = browsers
+    let browser = importable_cookie_stores(Some(pid))
         .into_iter()
         .find(|b| b.browser_type.key() == browser_type.as_str())
         .ok_or_else(|| format!("Browser '{browser_type}' not found or not installed"))?;

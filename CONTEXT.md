@@ -57,12 +57,13 @@ It runs these steps in order:
 3. `cargo clippy --workspace --all-targets -- -D warnings`
 4. `cargo test --workspace`
 5. `pnpm --dir apps/desktop-tauri install --frozen-lockfile`
-6. `pnpm --dir apps/desktop-tauri run lint` (oxlint)
-7. `pnpm --dir apps/desktop-tauri run check:anti-slop`
-8. `pnpm --dir apps/desktop-tauri run test:anti-slop`
-9. `pnpm --dir apps/desktop-tauri test`
-10. `pnpm --dir apps/desktop-tauri run build`
-11. `node --test .github/scripts/interaction-guard.test.mjs`
+6. `pnpm --dir apps/desktop-tauri run notices:check` (third-party notices are current)
+7. `pnpm --dir apps/desktop-tauri run lint` (oxlint)
+8. `pnpm --dir apps/desktop-tauri run check:anti-slop`
+9. `pnpm --dir apps/desktop-tauri run test:anti-slop`
+10. `pnpm --dir apps/desktop-tauri test`
+11. `pnpm --dir apps/desktop-tauri run build`
+12. `node --test .github/scripts/interaction-guard.test.mjs`
 
 The slice doesn't build the installer or release assets, and it doesn't prove UI behavior.
 
