@@ -486,6 +486,7 @@ fn provider_status_label(
     }
 
     let label = tokens_per_minute_status(snapshot, settings, language)
+        .or_else(|| balance_status_label(snapshot))
         .unwrap_or_else(|| headline_status_label(snapshot, language));
     (
         snapshot.provider_id.clone(),
