@@ -3,11 +3,13 @@ import type {
   CostSummaryDisplayStyle,
   ProviderChartData,
   ProviderUsageSnapshot,
+  UsageSpendSummary,
   WorkdayTickStyle,
 } from "../types/bridge";
-import { getProviderChartData } from "../lib/tauri";
+import { getProviderChartData, getUsageSpendSummary } from "../lib/tauri";
 import { useLocale } from "../hooks/useLocale";
-import { providerSupportsChartData } from "../lib/providerCharts";
+import { providerListsConversations, providerSupportsChartData } from "../lib/providerCharts";
+import { cardConversationsModel } from "../lib/cardConversations";
 import { providerAllowsPace } from "../lib/providerPace";
 import { hideOpenAiApiProjectId } from "../lib/openAiApiIdentity";
 import {
@@ -25,6 +27,7 @@ import CardMetricRow, { type MetricEntry } from "./card/CardMetricRow";
 import DetailSections from "./card/DetailSections";
 import InlineDashboard from "./card/InlineDashboard";
 import ExtraUsageBlock from "./card/ExtraUsageBlock";
+import CardConversations from "./card/CardConversations";
 import WayfinderBlock from "./card/WayfinderBlock";
 import { OpenAITokensPerMinuteChart } from "./OpenAITokensPerMinuteChart";
 import { describeCard } from "./card/describeCard";
@@ -48,6 +51,8 @@ export interface MenuCardDisplayOptions {
   workdayTickStyle?: WorkdayTickStyle;
   /** Settings "Track costs"; a change re-reads the chart so local estimates follow it. */
   costTrackingEnabled?: boolean;
+  /** Saved History window (raw); a change re-reads the Conversations list. */
+  costReportingPeriod?: string;
 }
 
 interface MenuCardProps {
@@ -137,7 +142,8 @@ function cardMetrics(
 /**
  * Provider card, following upstream `UsageMenuCardView` (0.70.0), top to bottom:
  * header, divider, rate-window rows, key-value sections, the inline usage
- * dashboard, then the extra usage block. Account switching, pace budgets,
+ * dashboard, the local Conversations list (upstream's Cost submenu list),
+ * then the extra usage block. Account switching, pace budgets,
  * forecasts, burndown and pricing details live in Settings > Providers.
  */
 export default function MenuCard({
@@ -160,6 +166,7 @@ export default function MenuCard({
     weeklyProgressWorkDays = null,
     workdayTickStyle = "subtle",
     costTrackingEnabled = true,
+    costReportingPeriod,
   } = display;
   const { t, language } = useLocale();
   const provider = projectClaudeSections(reportedProvider.providerId, reportedProvider);
@@ -195,6 +202,38 @@ export default function MenuCard({
     // "Track costs" flips local estimates on or off; the backend answers for the new value.
   }, [provider.providerId, provider.accountEmail, localDay, costTrackingEnabled, onLayoutChange]);
 
+  // The Conversations list reads the same backend-cached summary as Usage & Spend,
+  // which masks titles itself; a summary fetched under the other Hide Personal
+  // Info value is never shown.
+  const listsConversations =
+    !compactOverview && costTrackingEnabled && providerListsConversations(provider.providerId);
+  const [spend, setSpend] = useState<{ summary: UsageSpendSummary; hidden: boolean } | null>(null);
+  useEffect(() => {
+    if (!listsConversations) {
+      setSpend(null);
+      return;
+    }
+    let cancelled = false;
+    let frame: number | undefined;
+    getUsageSpendSummary()
+      .then((summary) => {
+        if (cancelled) return;
+        setSpend({ summary, hidden: hideEmail });
+        frame = requestAnimationFrame(() => onLayoutChange?.());
+      })
+      .catch(() => {
+        if (!cancelled) setSpend(null);
+      });
+    return () => {
+      cancelled = true;
+      if (frame !== undefined) cancelAnimationFrame(frame);
+    };
+  }, [listsConversations, hideEmail, costReportingPeriod, localDay, onLayoutChange]);
+  const conversations =
+    listsConversations && spend && spend.hidden === hideEmail
+      ? cardConversationsModel(provider.providerId, spend.summary, t)
+      : null;
+
   const isWayfinder = provider.providerId === "wayfinder";
   const email = isWayfinder ? null : headerAccount(provider, hideEmail);
   const plan = isWayfinder
@@ -217,6 +256,7 @@ export default function MenuCard({
     costSummaryDisplayStyle,
     compactOverview,
     claudePlanDateNote(provider.providerId, provider.subscription, t),
+    conversations,
   );
   const dashboard =
     !compactOverview && presence.localUsage
@@ -302,13 +342,20 @@ export default function MenuCard({
             <OpenAITokensPerMinuteChart throughput={presence.openAiThroughput} t={t} />
           )}
           {dashboard && <InlineDashboard model={dashboard} />}
+          {presence.conversations && (
+            <CardConversations
+              model={presence.conversations}
+              onToggle={() => requestAnimationFrame(() => onLayoutChange?.())}
+            />
+          )}
           {showCost && provider.cost && (
             <>
               {(presence.hasMetrics ||
                 presence.planDateNote ||
                 showDetailSections ||
                 presence.openAiThroughput ||
-                dashboard) && (
+                dashboard ||
+                presence.conversations) && (
                 <div className="menu-card__separator" />
               )}
               <ExtraUsageBlock

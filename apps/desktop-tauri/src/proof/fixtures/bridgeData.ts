@@ -14,6 +14,7 @@ import type {
 } from "../../types/bridge";
 import type { LocalSpendFixture, ProofScenario } from "./scenarios";
 import { dayKey } from "./common";
+import { shortSessionId } from "../../lib/cardConversations";
 
 const EMPTY_COVERAGE: CostCoverageCounts = { priced: 0, unpriced: 0, unmetered: 0, estimated: 0 };
 
@@ -191,6 +192,27 @@ export function spendContract(providerId: string, reportingPeriod: string): Spen
   };
 }
 
+/**
+ * The Codex contract with conversations. Like `redact_for_privacy`, Hide
+ * personal information replaces every title with `Session <short id>`.
+ */
+function codexConversationsContract(scenario: ProofScenario, reportingPeriod: string): SpendContract | null {
+  const conversations = scenario.codexConversations;
+  if (!conversations) return null;
+  const masked = scenario.settings.hidePersonalInfo
+    ? conversations.map((session) => ({
+        ...session,
+        displayTitle: `Session ${shortSessionId(session.id)}`,
+        cwd: null,
+      }))
+    : conversations;
+  return {
+    ...spendContract("codex", reportingPeriod),
+    conversationCount: masked.length,
+    conversations: masked,
+  };
+}
+
 export function usageSpendSummary(scenario: ProofScenario, now: Date): UsageSpendSummary {
   const reportingPeriod = scenario.settings.spendDashboardPeriod ?? "rolling:30";
   const rows: UsageSpendRow[] = scenario.catalog.flatMap((entry) => {
@@ -218,7 +240,7 @@ export function usageSpendSummary(scenario: ProofScenario, now: Date): UsageSpen
   });
   return {
     rows,
-    contract: spendContract("all", reportingPeriod),
+    contract: codexConversationsContract(scenario, reportingPeriod) ?? spendContract("all", reportingPeriod),
     reportingPeriod,
     reportingDay: dayKey(now, 0),
     dashboardTimezone: "UTC",
