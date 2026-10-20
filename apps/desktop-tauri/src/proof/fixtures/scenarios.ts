@@ -1,5 +1,7 @@
 import type {
   ClaudeAccount,
+  ClaudeSwapAccount,
+  ClaudeSwapAccountsState,
   CodexAccount,
   CodexAccountsStateBridge,
   CodexAccountUsageSnapshot,
@@ -29,6 +31,7 @@ export const PROOF_SCENARIO_NAMES = [
   "openai-live-spend",
   "claude-plan-hidden",
   "codex-tool-activity",
+  "claude-swap-tcr",
   "codex-conversations",
   "codex-conversations-private",
   "claude-reset-credits",
@@ -51,6 +54,8 @@ export interface ProofScenario {
   localSpend: LocalSpendFixture[];
   /** Claude token accounts; absent means Claude offers no token accounts. */
   claudeTokenAccounts?: TokenAccountBridge[];
+  /** External claude-swap/tcr accounts; absent means the adapter is off. */
+  claudeSwapAccounts?: ClaudeSwapAccountsState;
   /** Quota-window history served with chart data; absent means none. */
   quotaWindowHistory?: QuotaWindowHistoryBridge[];
   /** Synthetic replacements for single locale keys; absent means the shipped English strings. */
@@ -585,6 +590,66 @@ function codexToolActivityScenario(now: Date): ProofScenario {
   };
 }
 
+/** A synthetic tcr pool read through the claude-swap adapter: two read-only cards, no active account. */
+function tcrPoolAccount(
+  now: Date,
+  slot: number,
+  email: string,
+  fiveHour: number,
+  sevenDay: number,
+): ClaudeSwapAccount {
+  return {
+    id: `tcr:${slot}`,
+    source: "tcr",
+    slot,
+    label: email,
+    email,
+    organization: null,
+    alias: null,
+    isActive: false,
+    action: null,
+    isDisabled: false,
+    status: "ok",
+    error: null,
+    fiveHour: { usedPercent: fiveHour, resetsAt: isoAfter(now, 95) },
+    sevenDay: { usedPercent: sevenDay, resetsAt: isoAfter(now, 4 * 24 * 60) },
+    scoped: [],
+    spend: null,
+    historicalUsage: null,
+  };
+}
+
+function claudeSwapTcrScenario(now: Date): ProofScenario {
+  const base = defaultScenario(now);
+  // Only pool-a has enough recorded history for a forecast; pool-b stays without one.
+  const forecasted = tcrPoolAccount(now, 1, "pool-a@example.com", 42, 18);
+  forecasted.sessionEquivalentForecast = {
+    estimatedWindowsToExhaustWeekly: 5,
+    windowsUntilReset: 12,
+    availableWindowsUntilReset: 10,
+    sampleCount: 3,
+    weeklyResetsAt: isoAfter(now, 4 * 24 * 60),
+    weeklyUsedPercent: 18,
+  };
+  return {
+    ...base,
+    name: "claude-swap-tcr",
+    settings: {
+      ...base.settings,
+      claudeSwapEnabled: true,
+      claudeSwapExecutablePath: "C:\\tools\\tcr.exe",
+      claudeSwapSource: "tcr",
+    },
+    claudeSwapAccounts: {
+      enabled: true,
+      source: "tcr",
+      executableConfigured: true,
+      accounts: [forecasted, tcrPoolAccount(now, 2, "pool-b@example.com", 7, 63)],
+      error: null,
+    },
+  };
+}
+
 function codexConversation(
   now: Date,
   id: string,
@@ -716,6 +781,7 @@ const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   "openai-live-spend": openAiLiveSpendScenario,
   "claude-plan-hidden": claudePlanHiddenScenario,
   "codex-tool-activity": codexToolActivityScenario,
+  "claude-swap-tcr": claudeSwapTcrScenario,
   "codex-conversations": codexConversationsScenario,
   "codex-conversations-private": codexConversationsPrivateScenario,
   "claude-reset-credits": (now) => claudeResetCreditsScenario(now, false),

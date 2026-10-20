@@ -99,8 +99,12 @@ enum BucketKind {
 }
 
 pub(super) fn parse_usage_snapshot(data: &[u8]) -> Result<UsageSnapshot, ProviderError> {
-    let envelope: QuotaSummaryEnvelope = serde_json::from_slice(data)
-        .map_err(|error| ProviderError::Parse(format!("Antigravity quota summary: {error}")))?;
+    // serde error text quotes string values from the response, so a decode
+    // failure reduces to a fixed category: response content must not reach
+    // user-facing errors or logs.
+    let envelope: QuotaSummaryEnvelope = serde_json::from_slice(data).map_err(|_| {
+        ProviderError::Parse("Antigravity quota summary: unexpected response shape".into())
+    })?;
     let payload = envelope
         .response
         .or(envelope.summary)
@@ -543,6 +547,14 @@ mod tests {
             br#"{"groups":[{"displayName":"Gemini","buckets":[{"bucketId":"weekly","displayName":"Weekly"}]}]}"#
         )
         .is_err());
+    }
+
+    #[test]
+    fn parse_failure_is_a_fixed_category_without_response_text() {
+        let error = parse_usage_snapshot(br#"{"groups": "proj-secret-leak"}"#).unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains("unexpected response shape"), "{message}");
+        assert!(!message.contains("proj-secret-leak"), "{message}");
     }
 
     #[test]

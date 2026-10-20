@@ -42,6 +42,11 @@ const POLICIES: Readonly<Record<string, UsageSourcePolicy>> = {
         label: "Local API / agy CLI",
         description: "Uses the local Antigravity app or agy's signed-in account, which may differ from the selected Google account.",
       },
+      {
+        value: "oauth",
+        label: "Google OAuth",
+        description: "Reads quota from the Google API with the Antigravity OAuth credentials saved in ~/.codexbar/antigravity/oauth_creds.json.",
+      },
     ],
   },
   nous: {
