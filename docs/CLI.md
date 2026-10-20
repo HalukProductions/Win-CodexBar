@@ -222,6 +222,8 @@ codexbar serve --port 8080
 
 `serve` binds to `127.0.0.1:8080` by default. A non-loopback `--host` needs a dashboard token and `--allow-plain-http`, because the token then crosses the network over cleartext HTTP. Set the token in `CODEXBAR_DASHBOARD_TOKEN` rather than on the command line.
 
+The desktop app can run the same server for you from Settings > Advanced > HTTP server, without a console window. See [CONFIGURATION.md](./CONFIGURATION.md#advanced).
+
 | Route | What it returns |
 | --- | --- |
 | `/` | The dashboard page. |

@@ -35,6 +35,7 @@ pub const SUBSCRIPTION_USAGE_ITEM_ID: &str = "section:subscription";
 mod api_keys;
 mod config_path;
 mod cost_time_zone;
+mod http_server;
 mod manual_cookies;
 mod model_rate_limits;
 mod optional_details;
@@ -54,6 +55,7 @@ pub use config_path::{
     settings_file_override,
 };
 pub use cost_time_zone::*;
+pub use http_server::*;
 pub use manual_cookies::*;
 pub use model_rate_limits::{ModelRateLimit, rate_limit_number};
 pub use optional_details::provider_has_optional_details;

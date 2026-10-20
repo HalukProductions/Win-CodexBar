@@ -1788,6 +1788,45 @@ OpenAiOrgLimitsEmpty = Proje limiti bulunamadı.
 OpenAiOrgLimitsScoped = Proje limitleri tüm kuruluş için geçerlidir. Yüklemek için proje kimliğini temizleyin.
 OpenAiOrgLimitsTruncated = Yalnızca bazı projeler kontrol edildi.
 
+# App-managed HTTP server
+HttpServerTitle = HTTP sunucusu
+HttpServerCaption = Varsayılan olarak kapalıdır. CodexBar ile başlar ve kapatıldığında durur. Ayarlar ve belirteç bu bilgisayarda DPAPI ile korunan bir dosyada kalır ve tercihlerin dışa aktarımına dahil edilmez. Uzaktan erişim için bilgisayarı uyanık tutun.
+HttpServerEnableLabel = HTTP sunucusunu etkinleştir
+HttpServerBindLabel = Bağlanılacak IPv4 adresi
+HttpServerPortLabel = Bağlantı noktası
+HttpServerTokenLabel = Sunucu belirteci
+HttpServerShowToken = Göster
+HttpServerHideToken = Gizle
+HttpServerGenerateToken = Oluştur
+HttpServerCopy = Kopyala
+HttpServerCacheLabel = Önbellek aralığı (saniye)
+HttpServerTimeoutLabel = İstek zaman aşımı (saniye; 0 devre dışı bırakır)
+HttpServerIdentityLabel = Panodaki kimlik
+HttpServerIdentityRedacted = Gizlenmiş
+HttpServerIdentityFull = Tam
+HttpServerWarning = Kullanım, maliyet, hesap ve proje bilgilerini paylaşır; sağlayıcı kimlik bilgilerini asla paylaşmaz. HTTP sunucu belirtecini şifrelemeden gönderir. Yalnızca güvenilir bir VPN veya Tailscale bağlantısı kullanın.
+HttpServerPlainHttpLabel = Bu bilgisayar dışında şifrelenmemiş HTTP’ye izin ver
+HttpServerStatusLabel = Durum
+HttpServerDashboardLabel = Pano
+HttpServerWildcardNote = Diğer cihazlarda 0.0.0.0 yerine bu bilgisayarın VPN veya Tailscale IPv4 adresini kullanın.
+HttpServerApply = Uygula
+HttpServerStatusStopped = Durduruldu
+HttpServerStatusRunning = Çalışıyor
+HttpServerStatusStartFailed = Sunucu başlatılamadı. Bağlanılacak adresi ve bağlantı noktasını kontrol edin.
+HttpServerStatusExited = Sunucu beklenmedik şekilde durdu.
+HttpServerStatusLoadFailed = HTTP sunucusu ayarları okunamadı. Sunucu durduruldu.
+HttpServerStatusSaveFailed = HTTP sunucusu ayarları kaydedilemedi.
+HttpServerErrorHost = localhost veya bir IPv4 adresi girin.
+HttpServerErrorPort = Bağlantı noktası 1 ile 65535 arasında olmalıdır.
+HttpServerErrorTiming = Önbellek aralığı ve istek zaman aşımı sonlu, negatif olmayan saniyeler olmalıdır.
+HttpServerErrorIdentity = Bir kimlik gizliliği modu seçin.
+HttpServerErrorToken = Bir belirteç oluşturun veya boşluk içermeyen, boş olmayan bir belirteç girin.
+HttpServerErrorPlainHttp = Bu bilgisayar dışında dinlemeden önce şifrelenmemiş HTTP uyarısını kabul edin.
+HttpServerLoadError = HTTP sunucusu durumu yüklenemedi.
+HttpServerApplyFailed = HTTP sunucusu ayarları uygulanamadı.
+HttpServerCorruptWarning = Kayıtlı sunucu ayarları dosyası okunamadı. Uygulamak, belirteç dahil dosyayı değiştirecektir.
+HttpServerCorruptConfirm = Okunamayan ayar dosyasını değiştir
+
 # About - Acknowledgements
 AboutLinkAcknowledgements = Teşekkürler
 AcknowledgementsFooter = CodexBar bu açık kaynak projelerle geliştirilmiştir.

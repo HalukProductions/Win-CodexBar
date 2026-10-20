@@ -1788,6 +1788,45 @@ OpenAiOrgLimitsEmpty = Лимиты проектов не найдены.
 OpenAiOrgLimitsScoped = Лимиты проектов действуют на всю организацию. Очистите ID проекта, чтобы загрузить их.
 OpenAiOrgLimitsTruncated = Проверены не все проекты.
 
+# App-managed HTTP server
+HttpServerTitle = HTTP-сервер
+HttpServerCaption = По умолчанию выключен. Запускается с CodexBar и останавливается при выходе. Настройки и токен хранятся на этом ПК в файле, защищённом DPAPI, и не попадают в экспорт настроек. Для удалённого доступа ПК не должен засыпать.
+HttpServerEnableLabel = Включить HTTP-сервер
+HttpServerBindLabel = IPv4-адрес привязки
+HttpServerPortLabel = Порт
+HttpServerTokenLabel = Токен сервера
+HttpServerShowToken = Показать
+HttpServerHideToken = Скрыть
+HttpServerGenerateToken = Создать
+HttpServerCopy = Копировать
+HttpServerCacheLabel = Интервал кэша (секунды)
+HttpServerTimeoutLabel = Тайм-аут запроса (секунды; 0 отключает)
+HttpServerIdentityLabel = Данные пользователя в панели
+HttpServerIdentityRedacted = Скрыты
+HttpServerIdentityFull = Полностью
+HttpServerWarning = Открывает доступ к использованию, расходам и сведениям об аккаунтах и проектах, но не к учётным данным провайдеров. HTTP передаёт токен сервера без шифрования. Используйте только доверенное соединение VPN или Tailscale.
+HttpServerPlainHttpLabel = Разрешить незашифрованный HTTP вне этого ПК
+HttpServerStatusLabel = Состояние
+HttpServerDashboardLabel = Панель
+HttpServerWildcardNote = На других устройствах замените 0.0.0.0 на IPv4-адрес VPN или Tailscale этого ПК.
+HttpServerApply = Применить
+HttpServerStatusStopped = Остановлен
+HttpServerStatusRunning = Работает
+HttpServerStatusStartFailed = Не удалось запустить сервер. Проверьте адрес привязки и порт.
+HttpServerStatusExited = Сервер неожиданно остановился.
+HttpServerStatusLoadFailed = Не удалось прочитать настройки HTTP-сервера. Сервер остановлен.
+HttpServerStatusSaveFailed = Не удалось сохранить настройки HTTP-сервера.
+HttpServerErrorHost = Введите localhost или IPv4-адрес.
+HttpServerErrorPort = Порт должен быть от 1 до 65535.
+HttpServerErrorTiming = Интервал кэша и тайм-аут запроса должны быть конечным неотрицательным числом секунд.
+HttpServerErrorIdentity = Выберите режим конфиденциальности данных пользователя.
+HttpServerErrorToken = Создайте токен или введите непустой токен без пробелов.
+HttpServerErrorPlainHttp = Примите предупреждение о незашифрованном HTTP, прежде чем принимать подключения вне этого ПК.
+HttpServerLoadError = Не удалось загрузить состояние HTTP-сервера.
+HttpServerApplyFailed = Не удалось применить настройки HTTP-сервера.
+HttpServerCorruptWarning = Не удалось прочитать сохранённый файл настроек сервера. Применение заменит его, включая токен.
+HttpServerCorruptConfirm = Заменить нечитаемый файл настроек
+
 # About - Acknowledgements
 AboutLinkAcknowledgements = Благодарности
 AcknowledgementsFooter = CodexBar создан с использованием этих проектов с открытым исходным кодом.

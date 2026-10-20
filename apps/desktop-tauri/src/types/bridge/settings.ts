@@ -867,3 +867,37 @@ export interface BootstrapState {
   providers: ProviderCatalogEntry[];
   settings: SettingsSnapshot;
 }
+
+/** Machine-local HTTP server settings (`http_server.json`, DPAPI-protected). */
+export interface HttpServerConfig {
+  enabled: boolean;
+  host: string;
+  port: number;
+  token: string;
+  refreshIntervalSecs: number;
+  requestTimeoutSecs: number;
+  identity: "redacted" | "full";
+  allowPlainHttp: boolean;
+}
+
+export type HttpServerValidationError =
+  | "invalidHost"
+  | "invalidPort"
+  | "invalidTiming"
+  | "invalidIdentity"
+  | "invalidToken"
+  | "plainHttpNotAccepted";
+
+export type HttpServerStatus =
+  | { state: "stopped" }
+  | { state: "running"; url: string }
+  | { state: "invalid"; code: HttpServerValidationError }
+  | { state: "startFailed"; detail: string }
+  | { state: "exited"; detail: string }
+  | { state: "loadFailed" }
+  | { state: "saveFailed" };
+
+export interface HttpServerSnapshot {
+  config: HttpServerConfig;
+  status: HttpServerStatus;
+}

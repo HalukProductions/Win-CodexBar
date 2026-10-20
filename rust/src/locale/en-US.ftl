@@ -1790,6 +1790,45 @@ OpenAiOrgLimitsEmpty = No project caps were found.
 OpenAiOrgLimitsScoped = Project caps apply to the whole organization. Clear the project ID to load them.
 OpenAiOrgLimitsTruncated = Only some projects were checked.
 
+# App-managed HTTP server
+HttpServerTitle = HTTP server
+HttpServerCaption = Off by default. Starts with CodexBar and stops when it quits. Settings and token stay on this PC in a DPAPI-protected file and are excluded from preferences export. Keep the PC awake for remote access.
+HttpServerEnableLabel = Enable HTTP server
+HttpServerBindLabel = Bind IPv4 address
+HttpServerPortLabel = Port
+HttpServerTokenLabel = Server token
+HttpServerShowToken = Show
+HttpServerHideToken = Hide
+HttpServerGenerateToken = Generate
+HttpServerCopy = Copy
+HttpServerCacheLabel = Cache interval (seconds)
+HttpServerTimeoutLabel = Request timeout (seconds; 0 disables)
+HttpServerIdentityLabel = Dashboard identity
+HttpServerIdentityRedacted = Redacted
+HttpServerIdentityFull = Full
+HttpServerWarning = Exposes usage, costs, account and project information — never provider credentials. HTTP sends the server token unencrypted. Use only on a trusted VPN or Tailscale connection.
+HttpServerPlainHttpLabel = Allow unencrypted HTTP outside this PC
+HttpServerStatusLabel = Status
+HttpServerDashboardLabel = Dashboard
+HttpServerWildcardNote = On other devices, replace 0.0.0.0 with this PC's VPN or Tailscale IPv4 address.
+HttpServerApply = Apply
+HttpServerStatusStopped = Stopped
+HttpServerStatusRunning = Running
+HttpServerStatusStartFailed = Could not start the server. Check the bind address and port.
+HttpServerStatusExited = The server stopped unexpectedly.
+HttpServerStatusLoadFailed = Could not read HTTP server settings. The server is stopped.
+HttpServerStatusSaveFailed = Could not save HTTP server settings.
+HttpServerErrorHost = Enter localhost or an IPv4 address.
+HttpServerErrorPort = Port must be between 1 and 65535.
+HttpServerErrorTiming = Cache interval and request timeout must be finite, nonnegative seconds.
+HttpServerErrorIdentity = Choose an identity privacy mode.
+HttpServerErrorToken = Generate a token or enter a nonempty token without spaces.
+HttpServerErrorPlainHttp = Accept the unencrypted HTTP warning before listening outside this PC.
+HttpServerLoadError = The HTTP server status could not be loaded.
+HttpServerApplyFailed = The HTTP server settings could not be applied.
+HttpServerCorruptWarning = The saved server settings file could not be read. Applying will replace it, including its token.
+HttpServerCorruptConfirm = Replace the unreadable settings file
+
 # About - Acknowledgements
 AboutLinkAcknowledgements = Acknowledgements
 AcknowledgementsFooter = CodexBar is built with these open-source projects.

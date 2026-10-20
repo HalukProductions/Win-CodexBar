@@ -1787,6 +1787,45 @@ OpenAiOrgLimitsEmpty = No se encontraron límites de proyectos.
 OpenAiOrgLimitsScoped = Los límites de proyecto se aplican a toda la organización. Borra el ID de proyecto para cargarlos.
 OpenAiOrgLimitsTruncated = Solo se revisaron algunos proyectos.
 
+# App-managed HTTP server
+HttpServerTitle = Servidor HTTP
+HttpServerCaption = Desactivado por defecto. Se inicia con CodexBar y se detiene al cerrarlo. La configuración y el token permanecen en este PC en un archivo protegido con DPAPI y se excluyen de la exportación de preferencias. Mantén el PC activo para el acceso remoto.
+HttpServerEnableLabel = Activar servidor HTTP
+HttpServerBindLabel = Dirección IPv4 de escucha
+HttpServerPortLabel = Puerto
+HttpServerTokenLabel = Token del servidor
+HttpServerShowToken = Mostrar
+HttpServerHideToken = Ocultar
+HttpServerGenerateToken = Generar
+HttpServerCopy = Copiar
+HttpServerCacheLabel = Intervalo de caché (segundos)
+HttpServerTimeoutLabel = Tiempo límite de solicitud (segundos; 0 lo desactiva)
+HttpServerIdentityLabel = Identidad en el panel
+HttpServerIdentityRedacted = Oculta
+HttpServerIdentityFull = Completa
+HttpServerWarning = Expone uso, costes e información de cuentas y proyectos; nunca credenciales de proveedores. HTTP envía el token del servidor sin cifrar. Úsalo solo mediante una conexión VPN o Tailscale de confianza.
+HttpServerPlainHttpLabel = Permitir HTTP sin cifrar fuera de este PC
+HttpServerStatusLabel = Estado
+HttpServerDashboardLabel = Panel
+HttpServerWildcardNote = En otros dispositivos, sustituye 0.0.0.0 por la dirección IPv4 de VPN o Tailscale de este PC.
+HttpServerApply = Aplicar
+HttpServerStatusStopped = Detenido
+HttpServerStatusRunning = En ejecución
+HttpServerStatusStartFailed = No se pudo iniciar el servidor. Revisa la dirección de escucha y el puerto.
+HttpServerStatusExited = El servidor se detuvo inesperadamente.
+HttpServerStatusLoadFailed = No se pudo leer la configuración del servidor HTTP. El servidor está detenido.
+HttpServerStatusSaveFailed = No se pudo guardar la configuración del servidor HTTP.
+HttpServerErrorHost = Introduce localhost o una dirección IPv4.
+HttpServerErrorPort = El puerto debe estar entre 1 y 65535.
+HttpServerErrorTiming = El intervalo de caché y el tiempo límite deben ser segundos finitos y no negativos.
+HttpServerErrorIdentity = Elige un modo de privacidad de identidad.
+HttpServerErrorToken = Genera un token o introduce uno no vacío y sin espacios.
+HttpServerErrorPlainHttp = Acepta la advertencia de HTTP sin cifrar antes de escuchar fuera de este PC.
+HttpServerLoadError = No se pudo cargar el estado del servidor HTTP.
+HttpServerApplyFailed = No se pudo aplicar la configuración del servidor HTTP.
+HttpServerCorruptWarning = No se pudo leer el archivo de configuración guardado del servidor. Al aplicar se reemplazará, incluido su token.
+HttpServerCorruptConfirm = Reemplazar el archivo de configuración ilegible
+
 # About - Acknowledgements
 AboutLinkAcknowledgements = Agradecimientos
 AcknowledgementsFooter = CodexBar está construido con estos proyectos de código abierto.
