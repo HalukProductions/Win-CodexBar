@@ -91,7 +91,7 @@ impl<'a> TrayPresentationPlan<'a> {
         let has_error = healthy.is_empty() && !snapshots.is_empty();
         // The retired Display mode "minimal" is folded into this flag once on load.
         let prefer_highest = settings.menu_bar_shows_highest_usage;
-        let selected = pick_tray_provider(&healthy, prefer_highest);
+        let selected = pick_tray_provider(&healthy, prefer_highest, settings, now);
         let icon_pace = tray_pace_color(settings, selected, now);
         let single_tint = provider_tint(settings, selected);
 
@@ -100,8 +100,8 @@ impl<'a> TrayPresentationPlan<'a> {
                 if let Some((top, bottom)) = pick_stacked_tray_providers(&healthy, settings) {
                     (
                         TrayIconPlan::Stacked {
-                            top_percent: selected_tray_percents(top, settings).0,
-                            bottom_percent: selected_tray_percents(bottom, settings).0,
+                            top_percent: selected_tray_percents_at(top, settings, now).0,
+                            bottom_percent: selected_tray_percents_at(bottom, settings, now).0,
                             has_error,
                             top_tint: provider_tint(settings, Some(top)),
                             bottom_tint: provider_tint(settings, Some(bottom)),
@@ -119,7 +119,7 @@ impl<'a> TrayPresentationPlan<'a> {
                     )
                 } else {
                     let percents = selected
-                        .map(|snapshot| selected_tray_percents(snapshot, settings))
+                        .map(|snapshot| selected_tray_percents_at(snapshot, settings, now))
                         .unwrap_or((0.0, None));
                     let rows = healthy
                         .first()
@@ -143,8 +143,8 @@ impl<'a> TrayPresentationPlan<'a> {
             }
             TrayIconMode::PerProvider => {
                 let percents = selected
-                    .map(|snapshot| selected_tray_percents(snapshot, settings))
-                    .unwrap_or_else(|| fallback_percents(&healthy, settings));
+                    .map(|snapshot| selected_tray_percents_at(snapshot, settings, now))
+                    .unwrap_or_else(|| fallback_percents(&healthy, settings, now));
                 let rows = healthy
                     .iter()
                     .copied()
@@ -166,8 +166,8 @@ impl<'a> TrayPresentationPlan<'a> {
             }
             TrayIconMode::Single => {
                 let percents = selected
-                    .map(|snapshot| selected_tray_percents(snapshot, settings))
-                    .unwrap_or_else(|| fallback_percents(&healthy, settings));
+                    .map(|snapshot| selected_tray_percents_at(snapshot, settings, now))
+                    .unwrap_or_else(|| fallback_percents(&healthy, settings, now));
                 let rows = selected
                     .map(|snapshot| TrayStatusRow {
                         key: TrayStatusKey::Summary,
@@ -338,7 +338,7 @@ fn tray_pace_color(
         return None;
     }
     let snapshot = selected?;
-    let window = menu_bar_pace_window(snapshot, settings)?;
+    let window = menu_bar_pace_window(snapshot, settings, now)?;
     let pace = menu_bar_pace(snapshot, &window, settings.weekly_progress_work_days, now)?;
     TrayPaceColor::from_stage(crate::commands::pace::stage_str(pace.stage))
 }
@@ -348,13 +348,16 @@ fn tray_pace_color(
 fn menu_bar_pace_window(
     snapshot: &ProviderUsageSnapshot,
     settings: &Settings,
+    now: DateTime<Utc>,
 ) -> Option<RateWindowSnapshot> {
     let declared = ProviderId::from_cli_name(&snapshot.provider_id)
         .and_then(|id| codexbar::core::instantiate_provider(id).menu_bar_pace_lane());
     match declared {
         Some(IconLane::Primary) => Some(snapshot.primary.clone()),
         Some(IconLane::Secondary) => snapshot.secondary.clone(),
-        None => Some(crate::usage_metric::selected_usage_icon_windows(snapshot, settings).0),
+        None => {
+            Some(crate::usage_metric::selected_usage_icon_windows_at(snapshot, settings, now).0)
+        }
     }
 }
 
@@ -397,11 +400,12 @@ fn menu_bar_pace(
 fn fallback_percents(
     healthy: &[&ProviderUsageSnapshot],
     settings: &Settings,
+    now: DateTime<Utc>,
 ) -> (f64, Option<f64>) {
     (
         healthy
             .iter()
-            .map(|snapshot| selected_tray_percents(snapshot, settings).0)
+            .map(|snapshot| selected_tray_percents_at(snapshot, settings, now).0)
             .fold(0.0_f64, f64::max),
         None,
     )
@@ -530,28 +534,51 @@ fn pick_stacked_tray_providers<'a>(
     Some((top, bottom))
 }
 
+/// The first healthy provider, or with `prefer_highest` the one whose
+/// selected metric is closest to depletion. Equal ranks keep display order.
 pub(crate) fn pick_tray_provider<'a>(
     healthy: &[&'a ProviderUsageSnapshot],
     prefer_highest: bool,
+    settings: &Settings,
+    now: DateTime<Utc>,
 ) -> Option<&'a ProviderUsageSnapshot> {
-    if prefer_highest {
-        healthy.iter().copied().max_by(|a, b| {
-            a.primary
-                .used_percent
-                .partial_cmp(&b.primary.used_percent)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
-    } else {
-        healthy.first().copied()
+    if !prefer_highest {
+        return healthy.first().copied();
     }
+    healthy
+        .iter()
+        .copied()
+        .map(|snapshot| {
+            (
+                snapshot,
+                crate::usage_metric::highest_usage_rank(snapshot, settings, now),
+            )
+        })
+        .fold(
+            None,
+            |best: Option<(_, crate::usage_metric::AutomaticRank)>, candidate| match best {
+                Some(best) if !candidate.1.outranks(&best.1) => Some(best),
+                _ => Some(candidate),
+            },
+        )
+        .map(|(snapshot, _)| snapshot)
 }
 
+#[cfg(test)]
 pub(crate) fn selected_tray_percents(
     snapshot: &ProviderUsageSnapshot,
     settings: &Settings,
 ) -> (f64, Option<f64>) {
+    selected_tray_percents_at(snapshot, settings, Utc::now())
+}
+
+fn selected_tray_percents_at(
+    snapshot: &ProviderUsageSnapshot,
+    settings: &Settings,
+    now: DateTime<Utc>,
+) -> (f64, Option<f64>) {
     let (selected, companion) =
-        crate::usage_metric::selected_usage_icon_windows(snapshot, settings);
+        crate::usage_metric::selected_usage_icon_windows_at(snapshot, settings, now);
     (
         display_metric_percent(&selected, settings.show_as_used),
         companion

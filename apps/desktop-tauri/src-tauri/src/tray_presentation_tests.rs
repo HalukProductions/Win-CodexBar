@@ -619,7 +619,7 @@ fn automatic_prefers_exhausted_weekly_over_low_session() {
 #[test]
 fn automatic_picks_highest_among_model_and_extra_windows() {
     let settings = used_view_settings();
-    let mut snapshot = fake_snapshot_with("gemini", "Gemini", 10.0, Some(30.0), Some(40.0), None);
+    let mut snapshot = fake_snapshot_with("factory", "Droid", 10.0, Some(30.0), Some(40.0), None);
     snapshot.model_specific = Some(crate::commands::RateWindowSnapshot {
         used_percent: 55.0,
         remaining_percent: 45.0,
@@ -1251,8 +1251,13 @@ fn pick_tray_provider_highest_picks_max_primary() {
     let b = fake_snapshot("claude", "Claude", 72.5);
     let c = fake_snapshot("gemini", "Gemini", 50.0);
     let refs: Vec<&ProviderUsageSnapshot> = vec![&a, &b, &c];
-    let picked = pick_tray_provider(&refs, /* prefer_highest = */ true)
-        .expect("highest mode should pick a provider");
+    let picked = pick_tray_provider(
+        &refs,
+        /* prefer_highest = */ true,
+        &Settings::default(),
+        Utc::now(),
+    )
+    .expect("highest mode should pick a provider");
     assert_eq!(picked.provider_id, "claude");
 }
 
@@ -1261,14 +1266,44 @@ fn pick_tray_provider_first_preserves_catalog_order() {
     let a = fake_snapshot("codex", "Codex", 30.0);
     let b = fake_snapshot("claude", "Claude", 72.5);
     let refs: Vec<&ProviderUsageSnapshot> = vec![&a, &b];
-    let picked = pick_tray_provider(&refs, /* prefer_highest = */ false)
-        .expect("non-highest mode should still pick the first entry");
+    let picked = pick_tray_provider(
+        &refs,
+        /* prefer_highest = */ false,
+        &Settings::default(),
+        Utc::now(),
+    )
+    .expect("non-highest mode should still pick the first entry");
     assert_eq!(picked.provider_id, "codex");
 }
 
 #[test]
 fn pick_tray_provider_none_when_empty() {
     let refs: Vec<&ProviderUsageSnapshot> = vec![];
-    assert!(pick_tray_provider(&refs, true).is_none());
-    assert!(pick_tray_provider(&refs, false).is_none());
+    let settings = Settings::default();
+    assert!(pick_tray_provider(&refs, true, &settings, Utc::now()).is_none());
+    assert!(pick_tray_provider(&refs, false, &settings, Utc::now()).is_none());
+}
+
+#[test]
+fn pick_tray_provider_highest_ranks_the_selected_metric_by_depletion() {
+    use chrono::TimeZone;
+    let now = Utc.with_ymd_and_hms(2026, 8, 16, 12, 0, 0).unwrap();
+    let timed = |used: f64, minutes: u32, remaining_minutes: i64| RateWindowSnapshot {
+        used_percent: used,
+        remaining_percent: 100.0 - used,
+        window_minutes: Some(minutes),
+        resets_at: Some((now + chrono::Duration::minutes(remaining_minutes)).to_rfc3339()),
+        ..Default::default()
+    };
+    // Codex: a 10% session beside a weekly at 60% one hour into a five-hour
+    // window, which runs out in 40 minutes.
+    let mut codex = fake_snapshot("codex", "Codex", 10.0);
+    codex.primary = timed(10.0, 300, 240);
+    codex.secondary = Some(timed(60.0, 300, 240));
+    let claude = fake_snapshot("claude", "Claude", 80.0);
+    let refs: Vec<&ProviderUsageSnapshot> = vec![&claude, &codex];
+
+    let picked = pick_tray_provider(&refs, true, &Settings::default(), now)
+        .expect("highest mode should pick a provider");
+    assert_eq!(picked.provider_id, "codex");
 }
