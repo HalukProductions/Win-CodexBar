@@ -621,6 +621,35 @@ mod tests {
         );
     }
 
+    /// On Windows every Firefox channel writes its profiles to the shared
+    /// `Mozilla/Firefox/Profiles` folder, so Beta (`.default-beta`) and
+    /// Nightly (`.default-nightly`) profiles need no separate browser entry:
+    /// the single Firefox choice reads each channel's profile on its own.
+    #[test]
+    fn firefox_beta_and_nightly_profiles_are_detected_without_release() {
+        for channel_profile in ["a1b2c3d4.default-beta", "e5f6g7h8.default-nightly"] {
+            let temp = tempfile::tempdir().unwrap();
+            let roaming = temp.path().join("Roaming");
+            let profile_dir = roaming
+                .join("Mozilla/Firefox/Profiles")
+                .join(channel_profile);
+            std::fs::create_dir_all(&profile_dir).unwrap();
+            std::fs::write(profile_dir.join("cookies.sqlite"), "").unwrap();
+
+            let detected = BrowserDetector::detect_in_roots(
+                BrowserType::Firefox,
+                temp.path(),
+                Some(roaming.as_path()),
+            )
+            .unwrap_or_else(|| panic!("{channel_profile} should make Firefox detectable"));
+
+            assert_eq!(detected.profiles.len(), 1);
+            assert_eq!(detected.profiles[0].name, channel_profile);
+            assert_eq!(detected.profiles[0].path, profile_dir);
+            assert!(detected.profiles[0].is_default);
+        }
+    }
+
     #[test]
     fn test_browser_detection() {
         let browsers = BrowserDetector::detect_all();
