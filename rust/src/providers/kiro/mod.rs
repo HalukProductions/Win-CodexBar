@@ -415,6 +415,12 @@ impl Provider for KiroProvider {
         ProviderId::Kiro
     }
 
+    // Plan credits (primary) represent Kiro; the bonus pool (secondary)
+    // only takes over once a lane is exhausted.
+    fn automatic_metric_follows_lane_order(&self) -> bool {
+        true
+    }
+
     async fn fetch_usage(&self, ctx: &FetchContext) -> Result<ProviderFetchResult, ProviderError> {
         tracing::debug!("Fetching Kiro usage");
 

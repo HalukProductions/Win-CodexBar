@@ -344,6 +344,28 @@ pub fn render_percent_icon_rgba_tinted(
     pace_color: Option<TrayPaceColor>,
     provider_tint: Option<(u8, u8, u8)>,
 ) -> (Vec<u8>, u32, u32) {
+    render_percent_icon(percent, has_error, pace_color, provider_tint, false)
+}
+
+/// [`render_percent_icon_rgba_tinted`] for a locally estimated quota: the
+/// percentage is prefixed with `~` (upstream #4410) so it is never mistaken
+/// for a provider-reported meter.
+pub fn render_estimated_percent_icon_rgba_tinted(
+    percent: f64,
+    has_error: bool,
+    pace_color: Option<TrayPaceColor>,
+    provider_tint: Option<(u8, u8, u8)>,
+) -> (Vec<u8>, u32, u32) {
+    render_percent_icon(percent, has_error, pace_color, provider_tint, true)
+}
+
+fn render_percent_icon(
+    percent: f64,
+    has_error: bool,
+    pace_color: Option<TrayPaceColor>,
+    provider_tint: Option<(u8, u8, u8)>,
+    estimated: bool,
+) -> (Vec<u8>, u32, u32) {
     const SZ: u32 = TRAY_ICON_SIZE;
     let mut img = new_icon_canvas(has_error);
 
@@ -353,18 +375,19 @@ pub fn render_percent_icon_rgba_tinted(
         reason = "percent is clamped to 0–100 and rounded; the integer fits u32"
     )]
     let pct = percent.clamp(0.0, 100.0).round() as u32;
+    let marker = if estimated { "~" } else { "" };
     let text = if pct >= 100 {
-        "100".to_string()
+        format!("{marker}100")
     } else {
-        format!("{pct}%")
+        format!("{marker}{pct}%")
     };
     let glyph_width = 3u32;
     let glyph_gap = 1u32;
     let scale = if text.len() >= 3 { 2u32 } else { 3u32 };
-    // text is "100" or at most "NN%", so its length is ≤ 4 and fits u32.
+    // text is at most "~100" or "~NN%", so its length is ≤ 4 and fits u32.
     #[allow(
         clippy::cast_possible_truncation,
-        reason = "text is \"100\" or \"NN%\", so len ≤ 4 and fits u32"
+        reason = "text is at most \"~100\" or \"~NN%\", so len ≤ 4 and fits u32"
     )]
     let text_len = text.len() as u32;
     let text_width = text_len * glyph_width * scale + (text_len - 1) * glyph_gap;
@@ -424,6 +447,7 @@ fn glyph_rows(ch: char) -> Option<[u8; 5]> {
         '8' => [0b111, 0b101, 0b111, 0b101, 0b111],
         '9' => [0b111, 0b101, 0b111, 0b001, 0b111],
         '%' => [0b101, 0b001, 0b010, 0b100, 0b101],
+        '~' => [0b000, 0b110, 0b011, 0b000, 0b000],
         _ => return None,
     })
 }
@@ -524,6 +548,34 @@ mod tests {
                 .iter()
                 .any(|px| px[3] == 255 && px[0] != 60)
         );
+    }
+
+    #[test]
+    fn estimated_percent_icon_draws_a_leading_tilde() {
+        let (estimated, _, _) = render_estimated_percent_icon_rgba_tinted(42.0, false, None, None);
+        let (exact, _, _) = render_percent_icon_rgba(42.0, false);
+        let glyph = usage_color(42.0, false, None, None).0;
+
+        // "~42%" at scale 2 starts at x=2, y=11; the tilde's upper stroke
+        // fills columns 0-1 of glyph row 1 and its lower stroke columns 1-2
+        // of row 2.
+        assert_eq!(pixel_at(&estimated, 2, 13), glyph);
+        assert_eq!(pixel_at(&estimated, 6, 15), glyph);
+        assert_ne!(pixel_at(&estimated, 2, 15), glyph);
+        assert_ne!(pixel_at(&estimated, 6, 13), glyph);
+        // The exact "42%" is narrower and leaves that column empty.
+        assert_ne!(pixel_at(&exact, 2, 13), glyph);
+        assert_ne!(estimated, exact);
+    }
+
+    #[test]
+    fn estimated_full_icon_keeps_the_tilde_and_fits() {
+        let (estimated, w, h) = render_estimated_percent_icon_rgba_tinted(100.0, false, None, None);
+        assert_eq!(u32::try_from(estimated.len()).unwrap(), w * h * 4);
+        let glyph = usage_color(100.0, false, None, None).0;
+        assert_eq!(pixel_at(&estimated, 2, 13), glyph);
+        // The last "0" ends inside the canvas: glyph 4 spans x=23-28.
+        assert_eq!(pixel_at(&estimated, 28, 11), glyph);
     }
 
     #[test]

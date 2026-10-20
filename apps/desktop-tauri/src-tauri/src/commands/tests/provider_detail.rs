@@ -184,7 +184,8 @@ fn local_opencodego_estimates_keep_quota_windows_but_drop_derived_pace() {
         usage,
         codexbar::providers::opencodego::LOCAL_ESTIMATE_SOURCE_LABEL,
     )
-    .with_non_authoritative_pace();
+    .with_non_authoritative_pace()
+    .with_estimated_quota();
     let metadata = instantiate_provider(ProviderId::OpenCodeGo)
         .metadata()
         .clone();
@@ -197,6 +198,9 @@ fn local_opencodego_estimates_keep_quota_windows_but_drop_derived_pace() {
     );
 
     assert_eq!(snapshot.source_label, "local estimate");
+    assert!(snapshot.quota_estimated);
+    let encoded = serde_json::to_value(&snapshot).unwrap();
+    assert_eq!(encoded["quotaEstimated"], true);
     assert_eq!(snapshot.primary.used_percent, 12.0);
     assert_eq!(snapshot.secondary.as_ref().unwrap().used_percent, 23.0);
     assert_eq!(snapshot.tertiary.as_ref().unwrap().used_percent, 34.0);
