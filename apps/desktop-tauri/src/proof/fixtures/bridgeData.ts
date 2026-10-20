@@ -1,7 +1,6 @@
 import type {
   AppInfoBridge,
   CodexSessionToolActivity,
-  CodexWorkspacesSessionUsage,
   CostCoverageCounts,
   CurrencyRatesSnapshot,
   HooksConfigSnapshot,
@@ -16,6 +15,7 @@ import type {
 } from "../../types/bridge";
 import type { LocalSpendFixture, ProofScenario } from "./scenarios";
 import { dayKey } from "./common";
+import { shortSessionId } from "../../lib/cardConversations";
 
 const EMPTY_COVERAGE: CostCoverageCounts = { priced: 0, unpriced: 0, unmetered: 0, estimated: 0 };
 
@@ -102,6 +102,8 @@ export function providerDetail(
     secondaryLabel: snapshot?.secondaryLabel ?? null,
     modelSpecific: snapshot?.modelSpecific ?? null,
     tertiary: snapshot?.tertiary ?? null,
+    // Mirrors `Provider::reports_tokens_per_minute`: only OpenAI API reports throughput.
+    tokensPerMinuteMetric: providerId === "openaiapi",
     extraRateWindows: snapshot?.extraRateWindows ?? [],
     usageItems: [],
     hiddenUsageItemIds: [],
@@ -163,11 +165,7 @@ export function providerChartData(
   };
 }
 
-export function spendContract(
-  providerId: string,
-  reportingPeriod: string,
-  conversations: CodexWorkspacesSessionUsage[] = [],
-): SpendContract {
+export function spendContract(providerId: string, reportingPeriod: string): SpendContract {
   return {
     providerId,
     historyDays: 30,
@@ -185,10 +183,10 @@ export function spendContract(
       cacheCreationTokens: null,
       reasoningTokens: null,
     },
-    conversationCount: conversations.length,
+    conversationCount: 0,
     models: [],
     projects: [],
-    conversations,
+    conversations: [],
     daily: [],
     hourlyActivity: [],
     projectSourceStatus: null,
@@ -202,8 +200,7 @@ export function codexSessionToolActivity(
   scenario: ProofScenario,
   sessionId: string,
 ): CodexSessionToolActivity {
-  const found = scenario.codexConversations?.find((conversation) => conversation.session.id === sessionId);
-  const activity = found?.toolActivity ?? {
+  const activity = scenario.codexToolActivity?.find((candidate) => candidate.sessionId === sessionId) ?? {
     sessionId,
     operations: [],
     ignoredRecordCount: 0,
@@ -215,6 +212,27 @@ export function codexSessionToolActivity(
     ...activity,
     redacted: true,
     operations: activity.operations.map((operation) => ({ ...operation, name: operation.kind, preview: null })),
+  };
+}
+
+/**
+ * The Codex contract with conversations. Like `redact_for_privacy`, Hide
+ * personal information replaces every title with `Session <short id>`.
+ */
+function codexConversationsContract(scenario: ProofScenario, reportingPeriod: string): SpendContract | null {
+  const conversations = scenario.codexConversations;
+  if (!conversations) return null;
+  const masked = scenario.settings.hidePersonalInfo
+    ? conversations.map((session) => ({
+        ...session,
+        displayTitle: `Session ${shortSessionId(session.id)}`,
+        cwd: null,
+      }))
+    : conversations;
+  return {
+    ...spendContract("codex", reportingPeriod),
+    conversationCount: masked.length,
+    conversations: masked,
   };
 }
 
@@ -245,11 +263,7 @@ export function usageSpendSummary(scenario: ProofScenario, now: Date): UsageSpen
   });
   return {
     rows,
-    contract: spendContract(
-      "all",
-      reportingPeriod,
-      (scenario.codexConversations ?? []).map((conversation) => conversation.session),
-    ),
+    contract: codexConversationsContract(scenario, reportingPeriod) ?? spendContract("all", reportingPeriod),
     reportingPeriod,
     reportingDay: dayKey(now, 0),
     dashboardTimezone: "UTC",

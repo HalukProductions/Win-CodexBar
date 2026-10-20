@@ -134,6 +134,12 @@ pub trait Provider: Send + Sync {
         None
     }
 
+    /// Whether refreshes can carry per-minute token throughput, which offers
+    /// the Tokens/min menu bar metric (upstream 0.75.0 #4495).
+    fn reports_tokens_per_minute(&self) -> bool {
+        self.id().reports_tokens_per_minute()
+    }
+
     /// Label for the primary lane in the menu bar metric picker when the
     /// lane is not a session window (upstream `menuBarLayoutPrimaryLabel`).
     /// `None` keeps the generic session label.

@@ -447,3 +447,53 @@ fn parallel_exposes_a_cookie_source_picker_and_routes_each_choice() {
     assert_eq!(ctx.source_mode, SourceMode::Cli);
     assert!(ctx.manual_cookie_header.is_none());
 }
+
+/// Claude Platform is web-only like Parallel: a pasted header always wins, an
+/// empty manual source fails closed, and off reaches the provider as Cli.
+#[test]
+fn claude_platform_exposes_a_cookie_source_picker_and_routes_each_choice() {
+    let settings = Settings::default();
+    assert_eq!(
+        super::provider_cookie_source_lookup(&settings, "claudeplatform").as_deref(),
+        Some("auto")
+    );
+    let values: Vec<_> = super::cookie_source_options_for("claudeplatform", Language::English)
+        .into_iter()
+        .map(|option| option.value)
+        .collect();
+    assert_eq!(values, vec!["auto", "manual", "off"]);
+
+    let cookie = "sessionKey=sk-ant-sid01-fixture";
+    for source in ["auto", "manual"] {
+        let ctx = session_context(
+            ProviderId::ClaudePlatform,
+            Some(source),
+            "auto",
+            Some(cookie),
+        );
+        assert!(
+            matches!(ctx.source_mode, SourceMode::Auto | SourceMode::Web),
+            "{source}"
+        );
+        assert_eq!(
+            ctx.manual_cookie_header.as_deref(),
+            Some(cookie),
+            "{source}"
+        );
+        assert!(!ctx.manual_cookie_missing, "{source}");
+    }
+
+    let ctx = session_context(ProviderId::ClaudePlatform, Some("manual"), "auto", None);
+    assert_eq!(ctx.source_mode, SourceMode::Web);
+    assert!(ctx.manual_cookie_header.is_none());
+    assert!(ctx.manual_cookie_missing);
+
+    let ctx = session_context(
+        ProviderId::ClaudePlatform,
+        Some("off"),
+        "auto",
+        Some(cookie),
+    );
+    assert_eq!(ctx.source_mode, SourceMode::Cli);
+    assert!(ctx.manual_cookie_header.is_none());
+}

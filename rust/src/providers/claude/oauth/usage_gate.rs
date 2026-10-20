@@ -18,6 +18,8 @@
 //!   and served again for 3 minutes to that same account. The response holds
 //!   only utilization percentages, reset timestamps and credit amounts (see
 //!   `OAuthUsageResponse` in `oauth/mod.rs`), no token or account identity.
+//!   Saved limit-reset grants are stored as counts and dates only; their
+//!   redemption handles are removed first (`reset_credits::redact_usage_body`).
 //!   Precedent: the CLI probe screen is persisted across processes the same way.
 //!   The token itself is never written; keys are truncated SHA-256 digests.
 //! * Blocks and cached bodies are bounded to `MAX_CACHED_SIGN_INS` accounts.

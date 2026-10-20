@@ -455,10 +455,43 @@ fn provider_status_label(
         );
     }
 
-    let label = crate::commands::compact_tray_status_label(headline_window(snapshot), language);
+    let label = tokens_per_minute_status(snapshot, settings, language).unwrap_or_else(|| {
+        crate::commands::compact_tray_status_label(headline_window(snapshot), language)
+    });
     (
         snapshot.provider_id.clone(),
         format!("{} {}", snapshot.display_name, label),
+    )
+}
+
+/// Tray status text for the Tokens/min metric: the latest reported minute
+/// ("12K/min"), or an explicit unavailable label when no minute has been
+/// reported (Live usage off, no Admin key, or nothing complete yet). `None`
+/// when the provider's metric is not Tokens/min or the provider cannot report
+/// a rate, so a saved value never leaks onto another provider's row.
+pub(crate) fn tokens_per_minute_status(
+    snapshot: &ProviderUsageSnapshot,
+    settings: &Settings,
+    language: Language,
+) -> Option<String> {
+    let provider = ProviderId::from_cli_name(&snapshot.provider_id)?;
+    if !provider.reports_tokens_per_minute()
+        || settings.get_provider_metric(provider) != MetricPreference::TokensPerMinute
+    {
+        return None;
+    }
+    Some(
+        match snapshot
+            .throughput
+            .as_ref()
+            .and_then(|throughput| throughput.latest_tokens_per_minute)
+        {
+            Some(tokens) => codexbar::core::tokens_per_minute_label(tokens),
+            None => codexbar::locale::get_text(
+                language,
+                codexbar::locale::LocaleKey::TrayTokensPerMinuteUnavailable,
+            ),
+        },
     )
 }
 

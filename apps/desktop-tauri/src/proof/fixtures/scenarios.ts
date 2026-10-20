@@ -25,8 +25,14 @@ export const PROOF_SCENARIO_NAMES = [
   "two-codex-accounts",
   "errors",
   "empty",
+  "openai-live-spend",
   "claude-plan-hidden",
   "codex-tool-activity",
+  "codex-conversations",
+  "codex-conversations-private",
+  "claude-reset-credits",
+  "claude-reset-credits-hidden",
+  "claudeplatform",
 ] as const;
 
 export type ProofScenarioName = (typeof PROOF_SCENARIO_NAMES)[number];
@@ -43,14 +49,10 @@ export interface ProofScenario {
   localSpend: LocalSpendFixture[];
   /** Claude token accounts; absent means Claude offers no token accounts. */
   claudeTokenAccounts?: TokenAccountBridge[];
-  /** Codex conversations in the spend contract, each with its tool activity. */
-  codexConversations?: ProofCodexConversation[];
-}
-
-export interface ProofCodexConversation {
-  session: CodexWorkspacesSessionUsage;
-  /** Unredacted; the router removes names and previews under Hide personal information. */
-  toolActivity: CodexSessionToolActivity;
+  /** Local Codex conversations in the Usage & Spend contract, unmasked. */
+  codexConversations?: CodexWorkspacesSessionUsage[];
+  /** Per-session Codex tool activity, unredacted; the router redacts it under Hide personal information. */
+  codexToolActivity?: CodexSessionToolActivity[];
 }
 
 export interface LocalSpendFixture {
@@ -174,6 +176,25 @@ function copilotSnapshot(now: Date): ProviderUsageSnapshot {
       planName: "Business",
       accountEmail: "copilot.user@example.com",
       sourceLabel: "api",
+    },
+  );
+}
+
+/** Console prepaid credits; siloed from Claude: no plan or email, ever. */
+function claudePlatformSnapshot(now: Date): ProviderUsageSnapshot {
+  return providerSnapshot(
+    {
+      providerId: "claudeplatform",
+      displayName: "Claude Platform",
+      primary: rateWindow(now, 38, MONTH_MINUTES, 21 * DAY_MINUTES),
+      primaryLabel: "API credit",
+      updatedAt: isoBefore(now, 2),
+    },
+    {
+      secondary: rateWindow(now, 12, MONTH_MINUTES, 45 * DAY_MINUTES),
+      secondaryLabel: "Purchased credit",
+      accountOrganization: "Example Studio",
+      sourceLabel: "web",
     },
   );
 }
@@ -369,6 +390,88 @@ function emptyScenario(): ProofScenario {
   };
 }
 
+const MINUTE_SECONDS = 60;
+const DAY_SECONDS = 86_400;
+
+/**
+ * OpenAI API card with both a Tokens/min window and daily spend, so the card
+ * offers the Live · Spend switch. The last two minutes are still reporting.
+ */
+function openAiApiSnapshot(now: Date): ProviderUsageSnapshot {
+  const nowSeconds = Math.floor(now.getTime() / 1000);
+  const firstMinute = Math.floor(nowSeconds / MINUTE_SECONDS) * MINUTE_SECONDS - 59 * MINUTE_SECONDS;
+  const minutes = Array.from({ length: 60 }, (_, i) => {
+    const isPending = i >= 58;
+    const totalTokens = isPending ? 0 : 6_000 + ((i * 7_919) % 18_000);
+    return {
+      start: firstMinute + i * MINUTE_SECONDS,
+      totalTokens,
+      requests: isPending ? 0 : 2 + (i % 5),
+      isPending,
+    };
+  });
+  const reported = minutes.filter((minute) => !minute.isPending);
+  const peak = reported.reduce((best, minute) => (minute.totalTokens > best.totalTokens ? minute : best));
+  const lastFive = reported.slice(-5);
+  const firstDay = Math.floor(nowSeconds / DAY_SECONDS) * DAY_SECONDS - 29 * DAY_SECONDS;
+  const daily = Array.from({ length: 30 }, (_, i) => {
+    const costUsd = Math.round((1.5 + ((i * 37) % 11) * 0.45) * 100) / 100;
+    const totalTokens = Math.round(costUsd * 190_000);
+    return {
+      startTime: firstDay + i * DAY_SECONDS,
+      endTime: firstDay + (i + 1) * DAY_SECONDS,
+      costUsd,
+      requests: 120 + i,
+      inputTokens: Math.round(totalTokens * 0.7),
+      cachedInputTokens: Math.round(totalTokens * 0.1),
+      outputTokens: Math.round(totalTokens * 0.3),
+      totalTokens,
+      lineItems: [{ name: "Text tokens", costUsd }],
+      models: [],
+    };
+  });
+  return providerSnapshot(
+    {
+      providerId: "openaiapi",
+      displayName: "OpenAI API",
+      primary: rateWindow(now, 0, null, null),
+      primaryLabel: "Spend",
+      updatedAt: isoBefore(now, 1),
+    },
+    {
+      planName: "Admin API",
+      sourceLabel: "api",
+      throughput: {
+        minutes,
+        frontier: reported[reported.length - 1].start,
+        latestTokensPerMinute: reported[reported.length - 1].totalTokens,
+        peakTokensPerMinute: peak.totalTokens,
+        peakAt: peak.start,
+        fiveMinuteAverageTokensPerMinute: Math.round(
+          lastFive.reduce((sum, minute) => sum + minute.totalTokens, 0) / lastFive.length,
+        ),
+        models: [],
+        windowMinutes: 60,
+        fetchedAt: nowSeconds,
+        projectId: null,
+      },
+      openAiApiUsage: { historyDays: 30, projectId: null, daily },
+    },
+  );
+}
+
+function openAiLiveSpendScenario(now: Date): ProofScenario {
+  return {
+    name: "openai-live-spend",
+    settings: baseSettings({ enabledProviders: ["openaiapi"] }),
+    catalog: PROOF_PROVIDER_CATALOG,
+    providers: [openAiApiSnapshot(now)],
+    codexAccounts: emptyCodexAccounts(),
+    claudeAccounts: [],
+    localSpend: [],
+  };
+}
+
 /** Default data with the Claude "Plan renewal / expiry" usage item hidden (`section:subscription`). */
 function claudePlanHiddenScenario(now: Date): ProofScenario {
   const base = defaultScenario(now);
@@ -405,9 +508,8 @@ function toolOperation(
   };
 }
 
-function codexToolActivityConversation(now: Date): ProofCodexConversation {
-  const sessionId = "proof-session-tools";
-  const operations = [
+function codexToolActivityOperations(now: Date): CodexToolOperation[] {
+  return [
     toolOperation(now, 1, { preview: "pnpm test --run", durationMilliseconds: 48_200, isSlow: true }),
     toolOperation(now, 2, {
       preview: "cargo clippy --all-targets",
@@ -443,29 +545,123 @@ function codexToolActivityConversation(now: Date): ProofCodexConversation {
       timing: null,
     }),
   ];
-  return {
-    session: {
-      id: sessionId,
-      projectId: "proof-project",
-      displayTitle: "Fix the proof harness",
-      cwd: null,
-      startedAt: isoBefore(now, 120),
-      latestActivity: isoBefore(now, 40),
-      totals: { inputTokens: 182_000, cachedInputTokens: 96_000, outputTokens: 14_500, totalTokens: 196_500 },
-      costEstimate: { knownUsd: 1.42, unknownTokens: 0 },
-      topModel: "gpt-5-codex",
-      turnPerformance: null,
-    },
-    toolActivity: { sessionId, operations, ignoredRecordCount: 1, isPartial: true, redacted: false },
-  };
 }
 
 /** Default data plus one Codex conversation with native tool operations (upstream #4363). */
 function codexToolActivityScenario(now: Date): ProofScenario {
+  const sessionId = "proof-session-tools";
   return {
     ...defaultScenario(now),
     name: "codex-tool-activity",
-    codexConversations: [codexToolActivityConversation(now)],
+    codexConversations: [
+      {
+        id: sessionId,
+        projectId: "proof-project",
+        displayTitle: "Fix the proof harness",
+        cwd: null,
+        startedAt: isoBefore(now, 120),
+        latestActivity: isoBefore(now, 40),
+        totals: { inputTokens: 182_000, cachedInputTokens: 96_000, outputTokens: 14_500, totalTokens: 196_500 },
+        costEstimate: { knownUsd: 1.42, unknownTokens: 0 },
+        topModel: "gpt-5-codex",
+        turnPerformance: null,
+      },
+    ],
+    codexToolActivity: [
+      {
+        sessionId,
+        operations: codexToolActivityOperations(now),
+        ignoredRecordCount: 1,
+        isPartial: true,
+        redacted: false,
+      },
+    ],
+  };
+}
+
+function codexConversation(
+  now: Date,
+  id: string,
+  displayTitle: string,
+  minutesAgo: number,
+  knownUsd: number,
+  unknownTokens = 0,
+): CodexWorkspacesSessionUsage {
+  return {
+    id,
+    projectId: "proof-project",
+    displayTitle,
+    cwd: null,
+    startedAt: isoBefore(now, minutesAgo + 30),
+    latestActivity: isoBefore(now, minutesAgo),
+    totals: { inputTokens: 184_000, cachedInputTokens: 120_000, outputTokens: 9_400, totalTokens: 193_400 },
+    costEstimate: { knownUsd, unknownTokens },
+    topModel: "gpt-5-codex",
+    turnPerformance: null,
+  };
+}
+
+/** Default data plus three synthetic Codex conversations for the tray card list. */
+function codexConversationsScenario(now: Date): ProofScenario {
+  return {
+    ...defaultScenario(now),
+    name: "codex-conversations",
+    codexConversations: [
+      codexConversation(now, "019f0000-0000-7000-8000-00000000a001", "Port the tray conversations list", 600, 3.12),
+      codexConversation(now, "019f0000-0000-7000-8000-00000000a002", "Session 019f...0000a002", 45, 0.87, 2_000),
+      codexConversation(now, "019f0000-0000-7000-8000-00000000a003", "Fix the parser fixture", 5, 1.46),
+    ],
+  };
+}
+
+/** The same conversations with Hide personal information on. */
+function codexConversationsPrivateScenario(now: Date): ProofScenario {
+  const base = codexConversationsScenario(now);
+  return {
+    ...base,
+    name: "codex-conversations-private",
+    settings: { ...base.settings, hidePersonalInfo: true },
+  };
+}
+
+/**
+ * Default data with a saved Claude limit-reset credit (`reset-credits` inventory
+ * item, as the OAuth and Web sources produce). `hidden` adds the Claude
+ * "Limit reset credits" section to `hiddenUsageItemIds`.
+ */
+function claudeResetCreditsScenario(now: Date, hidden: boolean): ProofScenario {
+  const base = defaultScenario(now);
+  return {
+    ...base,
+    name: hidden ? "claude-reset-credits-hidden" : "claude-reset-credits",
+    providers: base.providers.map((snapshot) =>
+      snapshot.providerId === "claude"
+        ? {
+            ...snapshot,
+            inventory: [
+              {
+                id: "reset-credits",
+                title: "Limit Reset Credits",
+                availableCount: 2,
+                nextExpiresAt: isoAfter(now, 3 * DAY_MINUTES),
+              },
+            ],
+            hiddenUsageItemIds: hidden ? ["section:claude-reset-credits"] : [],
+          }
+        : snapshot,
+    ),
+  };
+}
+
+function claudePlatformScenario(now: Date): ProofScenario {
+  return {
+    name: "claudeplatform",
+    settings: baseSettings({ enabledProviders: ["claudeplatform"] }),
+    catalog: PROOF_PROVIDER_CATALOG,
+    providers: [claudePlatformSnapshot(now)],
+    codexAccounts: emptyCodexAccounts(),
+    claudeAccounts: [],
+    localSpend: [],
   };
 }
 
@@ -474,8 +670,14 @@ const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   "two-codex-accounts": twoCodexAccountsScenario,
   errors: errorsScenario,
   empty: emptyScenario,
+  "openai-live-spend": openAiLiveSpendScenario,
   "claude-plan-hidden": claudePlanHiddenScenario,
   "codex-tool-activity": codexToolActivityScenario,
+  "codex-conversations": codexConversationsScenario,
+  "codex-conversations-private": codexConversationsPrivateScenario,
+  "claude-reset-credits": (now) => claudeResetCreditsScenario(now, false),
+  "claude-reset-credits-hidden": (now) => claudeResetCreditsScenario(now, true),
+  claudeplatform: claudePlatformScenario,
 };
 
 export function isProofScenarioName(value: string): value is ProofScenarioName {
