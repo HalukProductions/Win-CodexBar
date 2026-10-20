@@ -228,6 +228,62 @@ fn foreign_user_version_is_rejected() {
     );
 }
 
+fn append_tool_operation(path: &Path, owner: &str, item_id: &str, timestamp: &str) {
+    let mut file = fs::OpenOptions::new().append(true).open(path).unwrap();
+    writeln!(
+        file,
+        r#"{{"timestamp":"{timestamp}","type":"event_msg","payload":{{"type":"item_completed","thread_id":"{owner}","turn_id":"turn","item":{{"type":"CommandExecution","id":"{item_id}","command":["cargo","test"],"exit_code":0,"duration":{{"secs":2,"nanos":0}}}}}}}}"#
+    )
+    .unwrap();
+}
+
+#[test]
+fn session_tool_activity_reads_only_that_sessions_rollouts_in_the_window() {
+    let tmp = TempDir::new().unwrap();
+    let home = tmp.path().join("codex");
+    let sessions = home.join("sessions");
+    let now = Utc::now();
+    let day = cost_bucket_zone().date(now).format("%Y-%m-%d").to_string();
+    let cwd = tmp.path().join("proj").to_string_lossy().into_owned();
+    write_session(&sessions, &day, "sess-tools.jsonl", &cwd, "gpt-5", 10, 5);
+    write_session(&sessions, &day, "sess-other.jsonl", &cwd, "gpt-5", 10, 5);
+    let folder = day
+        .split('-')
+        .fold(sessions.clone(), |path, part| path.join(part));
+    let recent = (now - chrono::Duration::minutes(1)).to_rfc3339();
+    let stale = (now - chrono::Duration::days(400)).to_rfc3339();
+    let tools = folder.join("sess-tools.jsonl");
+    append_tool_operation(&tools, "sess-tools", "recent", &recent);
+    append_tool_operation(&tools, "sess-tools", "stale", &stale);
+    append_tool_operation(&tools, "sess-other", "copied", &recent);
+    append_tool_operation(
+        &folder.join("sess-other.jsonl"),
+        "sess-other",
+        "other",
+        &recent,
+    );
+
+    let index = CodexWorkspacesIndex::new(30)
+        .with_codex_home(&home)
+        .with_sidecar_path(tmp.path().join("side.sqlite"));
+    let activity = index
+        .load_session_tool_activity_at("sess-tools", now)
+        .unwrap();
+
+    let ids: Vec<_> = activity
+        .operations
+        .iter()
+        .map(|operation| operation.item_id.as_str())
+        .collect();
+    assert_eq!(ids, ["recent"]);
+    assert_eq!(activity.operations[0].duration_milliseconds, Some(2000.0));
+    assert!(!activity.is_partial);
+    assert!(
+        !tmp.path().join("side.sqlite").exists(),
+        "tool activity never writes the sidecar"
+    );
+}
+
 #[test]
 fn missing_catalog_reports_catalog_missing() {
     let tmp = TempDir::new().unwrap();

@@ -311,6 +311,43 @@
       ]
     },
     {
+      "name": "settings-usage-spend-tool-activity",
+      "query": "window=settings&tab=usageSpend&fixture=codex-tool-activity&theme=dark",
+      "size": [880, 900],
+      "steps": [
+        { "click": { "selector": "[role=tab]", "label": "Sessions" } },
+        { "expectText": "Fix the proof harness" },
+        { "expectNoText": "Timing available" },
+        { "click": { "selector": "button", "label": "Tool activity" } },
+        {
+          "expectCall": {
+            "cmd": "get_codex_session_tool_activity",
+            "args": { "sessionId": "proof-session-tools", "historyDays": 30 }
+          }
+        },
+        {
+          "expectText": [
+            "Operations: 6 · Needs review: 2 · Timing available: 5 / 6",
+            "Longest execution: 48.2 s · shell",
+            "Partial coverage: some records are incomplete",
+            "pnpm test --run",
+            "Nonzero exit · Exit code 101",
+            "2.4 s (Recorded interval)",
+            "95 ms"
+          ]
+        },
+        { "screenshot": "settings-usage-spend-tool-activity-all" },
+        { "click": { "selector": "button", "label": "Needs review" } },
+        { "expectText": ["cargo clippy --all-targets", "docs/search", "Tool error"] },
+        { "expectNoText": ["pnpm test --run", "git status --short"] },
+        { "screenshot": "settings-usage-spend-tool-activity-review" },
+        { "click": { "selector": "button", "label": "Slow (≥10 s)" } },
+        { "expectText": ["pnpm test --run", "cargo clippy --all-targets"] },
+        { "expectNoText": ["docs/search", "git status --short"] },
+        { "screenshot": "settings-usage-spend-tool-activity-slow" }
+      ]
+    },
+    {
       "name": "settings-claude-swap-tcr",
       "query": "window=settings&tab=providers:claude&fixture=claude-swap-tcr&theme=dark",
       "size": [880, 900],
