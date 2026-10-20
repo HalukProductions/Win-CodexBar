@@ -8,6 +8,7 @@ import type {
   CodexSessionToolActivity,
   CodexToolOperation,
   CodexWorkspacesSessionUsage,
+  DetectedBrowserBridge,
   ProviderCatalogEntry,
   ProviderUsageSnapshot,
   QuotaWindowHistoryBridge,
@@ -38,6 +39,7 @@ export const PROOF_SCENARIO_NAMES = [
   "claude-reset-credits-hidden",
   "kpi-long-titles",
   "claudeplatform",
+  "cookie-no-browsers",
 ] as const;
 
 export type ProofScenarioName = (typeof PROOF_SCENARIO_NAMES)[number];
@@ -64,6 +66,8 @@ export interface ProofScenario {
   codexConversations?: CodexWorkspacesSessionUsage[];
   /** Per-session Codex tool activity, unredacted; the router redacts it under Hide personal information. */
   codexToolActivity?: CodexSessionToolActivity[];
+  /** Browsers the cookie section detects; absent means the router's default pair. */
+  detectedBrowsers?: DetectedBrowserBridge[];
 }
 
 export interface LocalSpendFixture {
@@ -773,6 +777,18 @@ function claudePlatformScenario(now: Date): ProofScenario {
   };
 }
 
+/**
+ * Default data on a machine with no importable browser, so the cookie section
+ * shows its empty-state hint beside the paste box.
+ */
+function cookieNoBrowsersScenario(now: Date): ProofScenario {
+  return {
+    ...defaultScenario(now),
+    name: "cookie-no-browsers",
+    detectedBrowsers: [],
+  };
+}
+
 const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   default: defaultScenario,
   "two-codex-accounts": twoCodexAccountsScenario,
@@ -788,6 +804,7 @@ const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   "claude-reset-credits-hidden": (now) => claudeResetCreditsScenario(now, true),
   "kpi-long-titles": kpiLongTitlesScenario,
   claudeplatform: claudePlatformScenario,
+  "cookie-no-browsers": cookieNoBrowsersScenario,
 };
 
 export function isProofScenarioName(value: string): value is ProofScenarioName {

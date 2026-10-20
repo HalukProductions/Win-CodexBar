@@ -93,7 +93,8 @@ pub struct BrowserCookieScan<S: BrowserCookieStore = SystemCookieStore> {
     outer_index: usize,
     inner_index: usize,
     yielded: Vec<(BrowserType, String)>,
-    app_bound_encryption_seen: bool,
+    /// Browsers App-Bound Encryption blocked, in scan order without repeats.
+    app_bound_encryption_blocked: Vec<BrowserType>,
 }
 
 impl BrowserCookieScan<SystemCookieStore> {
@@ -116,7 +117,7 @@ impl<S: BrowserCookieStore> BrowserCookieScan<S> {
             outer_index: 0,
             inner_index: 0,
             yielded: Vec::new(),
-            app_bound_encryption_seen: false,
+            app_bound_encryption_blocked: Vec::new(),
         }
     }
 
@@ -144,11 +145,13 @@ impl<S: BrowserCookieStore> BrowserCookieScan<S> {
     }
 
     /// The error that describes why the scan produced nothing (more): App-Bound
-    /// Encryption when it blocked any browser, `BrowserNotInstalled` when no
+    /// Encryption naming every browser it blocked, `BrowserNotInstalled` when no
     /// browser was found, otherwise `NotFound` for the scanned domains.
     pub fn exhaustion_error(&self) -> CookieError {
-        if self.app_bound_encryption_seen {
-            CookieError::AppBoundEncryption
+        if !self.app_bound_encryption_blocked.is_empty() {
+            CookieError::AppBoundEncryption {
+                browsers: self.app_bound_encryption_blocked.clone(),
+            }
         } else if self.browsers.as_ref().is_some_and(Vec::is_empty) {
             CookieError::BrowserNotInstalled
         } else {
@@ -232,13 +235,18 @@ impl<S: BrowserCookieStore> Iterator for BrowserCookieScan<S> {
                     return Some(candidate);
                 }
                 Ok(_) => {}
-                Err(CookieError::AppBoundEncryption) => {
+                Err(CookieError::AppBoundEncryption { .. }) => {
                     tracing::warn!(
                         browser = browser_name,
                         "App-Bound Encryption prevents automatic cookie import; \
                          trying remaining browsers"
                     );
-                    self.app_bound_encryption_seen = true;
+                    if !self
+                        .app_bound_encryption_blocked
+                        .contains(&browser.browser_type)
+                    {
+                        self.app_bound_encryption_blocked.push(browser.browser_type);
+                    }
                 }
                 Err(error) => {
                     tracing::debug!(
@@ -366,7 +374,9 @@ pub(crate) mod test_support {
                         is_http_only: true,
                     })
                     .collect()),
-                Some(FakeRead::AppBoundEncryption) => Err(CookieError::AppBoundEncryption),
+                Some(FakeRead::AppBoundEncryption) => Err(CookieError::AppBoundEncryption {
+                    browsers: vec![browser.browser_type],
+                }),
                 Some(FakeRead::Failure) => Err(CookieError::Decryption("fake".into())),
             }
         }
@@ -535,8 +545,45 @@ mod tests {
         assert!(scan.next().is_none());
         assert!(matches!(
             scan.exhaustion_error(),
-            CookieError::AppBoundEncryption
+            CookieError::AppBoundEncryption { browsers } if browsers == vec![BrowserType::Chrome]
         ));
+    }
+
+    /// Every ABE-blocked browser is named once, in scan order, even when the
+    /// same browser is blocked for several domains; ordinary read failures
+    /// are not named.
+    #[test]
+    fn app_bound_encryption_names_each_blocked_browser_once_in_scan_order() {
+        let store = FakeCookieStore::default()
+            .with(BrowserType::Chrome, "a.test", FakeRead::AppBoundEncryption)
+            .with(BrowserType::Edge, "a.test", FakeRead::AppBoundEncryption)
+            .with(BrowserType::Firefox, "a.test", FakeRead::Failure)
+            .with(BrowserType::Brave, "b.test", FakeRead::AppBoundEncryption)
+            .with(BrowserType::Chrome, "b.test", FakeRead::AppBoundEncryption);
+        let mut scan = BrowserCookieScan::with_store(&store, &["a.test", "b.test"]);
+
+        assert!(scan.next().is_none());
+        match scan.exhaustion_error() {
+            CookieError::AppBoundEncryption { browsers } => assert_eq!(
+                browsers,
+                vec![BrowserType::Chrome, BrowserType::Edge, BrowserType::Brave]
+            ),
+            other => panic!("expected AppBoundEncryption, got {other:?}"),
+        }
+    }
+
+    /// A working session from a later browser is still returned, so the
+    /// blocked browsers before it never reach the caller as an error.
+    #[test]
+    fn working_session_from_another_browser_beats_app_bound_encryption() {
+        let store = FakeCookieStore::default()
+            .with(BrowserType::Chrome, "a.test", FakeRead::AppBoundEncryption)
+            .cookies(BrowserType::Edge, "a.test", &[("session", "edge")]);
+        let mut scan = BrowserCookieScan::with_store(&store, &["a.test"]);
+
+        let candidate = scan.next().expect("edge candidate");
+        assert_eq!(candidate.browser, BrowserType::Edge);
+        assert_eq!(candidate.header(), "session=edge");
     }
 
     #[test]

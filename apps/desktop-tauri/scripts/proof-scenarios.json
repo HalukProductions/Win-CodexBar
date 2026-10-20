@@ -278,6 +278,19 @@
       ]
     },
     {
+      "name": "settings-claude-cookie-no-browsers",
+      "query": "window=settings&tab=providers:claude&fixture=cookie-no-browsers&theme=dark",
+      "size": [880, 620],
+      "steps": [
+        { "expectText": ["Browser Cookies", "No supported browsers detected on this machine", "No cookie saved."] },
+        { "expectNoText": "Import from Browser" },
+        { "expectSelector": "textarea.credential-textarea" },
+        { "expectCall": { "cmd": "list_detected_browsers", "args": { "providerId": "claude" } } },
+        { "click": { "selector": "h4", "label": "Browser Cookies" } },
+        { "screenshot": "settings-claude-cookie-no-browsers" }
+      ]
+    },
+    {
       "name": "settings-claude-token-account-config-dir",
       "query": "window=settings&tab=providers:claude&fixture=default&theme=dark",
       "size": [880, 620],
