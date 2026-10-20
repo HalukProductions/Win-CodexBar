@@ -171,6 +171,7 @@ pub const EXCLUDED_KEYS: &[&str] = &[
     "open_codex_usage_logs_enabled",
     "hide_native_codex_cost_when_open_codex_present",
     "powertoys_status_pipe_enabled",
+    "share_usage_with_cli",
     "float_bar_enabled",
     "float_bar_click_through",
     "tray_panel_always_on_top",

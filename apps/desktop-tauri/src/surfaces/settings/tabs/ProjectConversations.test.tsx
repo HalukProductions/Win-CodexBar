@@ -60,7 +60,15 @@ describe("ProjectConversations", () => {
     expect(screen.getByText("Thread 1").getAttribute("title")).toBe("Thread 1");
     expect(screen.getByText(/\$99\.00/)).toBeTruthy();
     expect(screen.getByText(/~\$98\.00/)).toBeTruthy();
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.queryByRole("button", { name: /UsageSpendShowAll/ })).toBeNull();
+  });
+
+  it("gives every conversation its own collapsed tool activity", () => {
+    render(<ProjectConversations conversations={[session(1), session(2)]} historyDays={30} t={t} />);
+
+    const toggles = screen.getAllByRole("button", { name: "UsageSpendToolsTitle" });
+    expect(toggles).toHaveLength(2);
+    expect(toggles.every((toggle) => toggle.getAttribute("aria-expanded") === "false")).toBe(true);
   });
 
   it("shows the top rows first and expands up to the display limit", () => {

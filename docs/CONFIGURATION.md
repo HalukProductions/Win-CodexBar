@@ -48,6 +48,7 @@ The app keeps its files in `%APPDATA%\CodexBar` (`dirs::config_dir()` plus `Code
 | `claude\quota-reset-observations-v1.json`, `codex\quota-reset-observations-v1.json` | `%APPDATA%\CodexBar` | Yes | Observed reset times |
 | `hooks.json` | `%APPDATA%\CodexBar` | No | Hook rules |
 | `http_server.json` | `%APPDATA%\CodexBar` | Yes | Built-in HTTP server settings and its bearer token |
+| `cli-usage-cache.json` | `%APPDATA%\CodexBar` | No | Usage limits shared with the CLI (only when **Share usage with the CLI** is on) |
 | `<provider>-cookie.json` | `%LOCALAPPDATA%\CodexBar` | Yes | Cached browser cookies |
 | `codex-weekly-reset-v1.json` | `%LOCALAPPDATA%\CodexBar` | Yes | Codex weekly reset cache |
 
@@ -241,6 +242,7 @@ The float bar section is on this pane too. Every control except the first is dis
 | Disable Credential Manager access | `disable_keychain_access` | off |
 | Codex local log folders | `codex_custom_sessions_dirs` (`;`-separated) | none |
 | PowerToys status pipe | `powertoys_status_pipe_enabled` | off |
+| Share usage with the CLI | `share_usage_with_cli` | off |
 | Network proxy | `http_proxy_enabled`, `http_proxy_url`, `http_proxy_username`, `http_proxy_password` | off |
 
 The proxy password is stored in `settings.json`, which is DPAPI-wrapped. Advanced also has a button that copies diagnostics.
@@ -252,6 +254,8 @@ The proxy password is stored in `settings.json`, which is DPAPI-wrapped. Advance
 - **Apply** validates the fields, saves them and restarts the server. Invalid fields show an error and are neither saved nor started; an invalid apply also stops a running server (closing its port) until a valid apply restarts it. If the saved file is corrupt, the server stays stopped and Apply asks for explicit confirmation before replacing the unreadable file.
 - The server starts with the app when enabled and stops when the app quits. The status row shows Stopped, Running (with the dashboard URL), an invalid-field error, a start failure such as a port already in use, or an unexpected exit.
 - Proof mode (`CODEXBAR_PROOF_MODE`) never starts the server.
+
+**Share usage with the CLI** is in the Local integrations group. It is a machine-local setting and is not part of portable preferences. When it is on, the app writes `cli-usage-cache.json` after each refresh with the rate windows of every provider that last refreshed without an error. The file holds only limit windows, labels and the update time: no emails, plans, costs, credits or credentials. It is plain JSON written atomically, because `codexbar usage` must read it in sessions where DPAPI can't decrypt `settings.json`. Providers refreshed through a token account are left out. Turning the setting off removes the file. See [CLI.md](./CLI.md#app-usage-cache-fallback) for when the CLI uses it.
 
 **Hide personal information** is in the Privacy group. When it is on:
 

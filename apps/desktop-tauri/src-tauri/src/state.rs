@@ -129,6 +129,9 @@ pub struct AppState {
     /// Live session behind each provider's cached good snapshot, for
     /// owner-checked last-good retention. In memory only.
     pub last_good_owners: HashMap<ProviderId, codexbar::core::LastGoodOwner>,
+    /// Default-account rate windows from each provider's last fresh fetch,
+    /// for the opt-in CLI usage cache. In memory only.
+    pub cli_usage_entries: HashMap<ProviderId, codexbar::cli_usage_cache::Entry>,
     pub provider_cache_updated_at: Option<std::time::Instant>,
     /// Per-provider freshness for scoped background refreshes. The aggregate
     /// timestamp cannot tell a dedicated auto-resume watcher whether its own
@@ -207,6 +210,7 @@ impl AppState {
             codex_account_needs_authentication: HashMap::new(),
             transient_provider_failure_counts: HashMap::new(),
             last_good_owners: HashMap::new(),
+            cli_usage_entries: HashMap::new(),
             provider_cache_updated_at: None,
             provider_cache_updated_at_by_provider: HashMap::new(),
             provider_refresh_started_at: None,

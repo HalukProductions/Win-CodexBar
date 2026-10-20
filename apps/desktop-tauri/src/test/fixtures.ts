@@ -67,6 +67,7 @@ export function makeSettings(overrides: Partial<SettingsSnapshot> = {}): Setting
     trayScalePercent: 100,
     trayPanelAlwaysOnTop: false,
     powertoysStatusPipeEnabled: false,
+    shareUsageWithCli: false,
     claudeAvoidKeychainPrompts: false,
     codexSparkUsageVisible: true,
     disableKeychainAccess: false,
