@@ -41,6 +41,9 @@ pub struct ProviderDetail {
     /// allowance (upstream 0.70.0 #4072). Offers the Monthly Plan metric in
     /// the settings metric picker.
     pub monthly_plan_window_id: Option<&'static str>,
+    /// Offers the Tokens/min metric in the settings metric picker (upstream
+    /// 0.75.0 #4495).
+    pub tokens_per_minute_metric: bool,
     /// Metric picker label for the primary lane when it is not a session
     /// window (upstream `menuBarLayoutPrimaryLabel`).
     pub primary_metric_label: Option<&'static str>,
@@ -144,6 +147,7 @@ pub(crate) fn build_provider_detail(
         tertiary: None,
         tertiary_label_key: metadata.tertiary_label_key,
         monthly_plan_window_id: provider.monthly_plan_window_id(),
+        tokens_per_minute_metric: provider.reports_tokens_per_minute(),
         primary_metric_label: provider.menu_bar_primary_label(),
         extra_rate_windows: Vec::new(),
         usage_items: Vec::new(),

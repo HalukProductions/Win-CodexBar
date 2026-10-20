@@ -21,6 +21,7 @@ export interface TpmBar {
   /** Minute start, epoch seconds. */
   start: number;
   tokens: number;
+  requests: number;
   /** Not reported yet: drawn as pending, never as a zero or a peak. */
   isPending: boolean;
 }
@@ -30,8 +31,19 @@ export function tpmBars(snapshot: ProviderThroughputSnapshot): TpmBar[] {
   return snapshot.minutes.map((minute) => ({
     start: minute.start,
     tokens: minute.totalTokens,
+    requests: minute.requests,
     isPending: minute.isPending,
   }));
+}
+
+/** Hover line for one minute, upstream `ProviderThroughputSection.points`. */
+export function tpmBarSummary(bar: TpmBar, t: (key: LocaleKey) => string): string {
+  const time = formatClock(bar.start);
+  if (bar.isPending) return `${time} · ${t("OpenAiTpmReporting")}`;
+  const detail = t("OpenAiTpmHoverMinute")
+    .replace("{}", formatTokens(bar.tokens))
+    .replace("{}", formatTokens(bar.requests));
+  return `${time} · ${detail}`;
 }
 
 /** True when at least one reported (non-pending) minute carries tokens. */

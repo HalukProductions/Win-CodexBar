@@ -1,5 +1,6 @@
 use serde::Serialize;
 
+use super::parallel::fetch_in_selection_order;
 use super::{
     UsageCommand, UsageOutput, UsageOutputFormat, append_status_line, fetch_provider_json_output,
     fetch_provider_text_output, format_percent, render_status_indicator, render_text_error,
@@ -254,28 +255,35 @@ fn uses_claude_swap_all_accounts(command: &UsageCommand, provider_id: ProviderId
     command.all_accounts && provider_id == ProviderId::Claude
 }
 
-async fn collect_json_results(command: &UsageCommand) -> Vec<serde_json::Value> {
-    let mut results = Vec::new();
-    for provider_id in &command.providers {
-        if uses_claude_swap_all_accounts(command, *provider_id)
-            && let Some(ctx) = claude_swap_cli_context()
-        {
-            let status = claude_swap_provider_status(command).await;
-            match read_claude_swap_accounts(&ctx) {
-                Ok(accounts) => {
-                    results.extend(
-                        accounts
-                            .iter()
-                            .map(|account| claude_swap_json_payload(account, status.as_ref())),
-                    );
-                }
-                Err(error) => results.push(claude_swap_error_payload(&error, status.as_ref())),
-            }
-            continue;
-        }
-        results.push(fetch_provider_json_output(*provider_id, command).await);
+/// JSON rows for one selected provider: claude-swap expands to one row per
+/// account under `--all-accounts`, otherwise the provider contributes one row.
+async fn provider_json_rows(
+    provider_id: ProviderId,
+    command: &UsageCommand,
+) -> Vec<serde_json::Value> {
+    if uses_claude_swap_all_accounts(command, provider_id)
+        && let Some(ctx) = claude_swap_cli_context()
+    {
+        let status = claude_swap_provider_status(command).await;
+        return match read_claude_swap_accounts(&ctx) {
+            Ok(accounts) => accounts
+                .iter()
+                .map(|account| claude_swap_json_payload(account, status.as_ref()))
+                .collect(),
+            Err(error) => vec![claude_swap_error_payload(&error, status.as_ref())],
+        };
     }
-    results
+    vec![fetch_provider_json_output(provider_id, command).await]
+}
+
+async fn collect_json_results(command: &UsageCommand) -> Vec<serde_json::Value> {
+    fetch_in_selection_order(command.providers.as_slice(), |provider_id| {
+        provider_json_rows(provider_id, command)
+    })
+    .await
+    .into_iter()
+    .flatten()
+    .collect()
 }
 
 /// JSON row for a failed claude-swap account read. Like every usage error
@@ -293,47 +301,49 @@ fn claude_swap_error_payload(error: &str, status: Option<&StatusInfo>) -> serde_
     payload
 }
 
+/// Text sections for one selected provider (see [`provider_json_rows`]).
+async fn provider_text_sections(provider_id: ProviderId, command: &UsageCommand) -> Vec<String> {
+    if uses_claude_swap_all_accounts(command, provider_id)
+        && let Some(ctx) = claude_swap_cli_context()
+    {
+        let status = claude_swap_provider_status(command).await;
+        return match read_claude_swap_accounts(&ctx) {
+            Ok(accounts) => {
+                if command.brief {
+                    vec![render_claude_swap_brief(
+                        &accounts,
+                        status.as_ref(),
+                        command.use_color,
+                    )]
+                } else {
+                    accounts
+                        .iter()
+                        .map(|account| {
+                            render_claude_swap_text(account, status.as_ref(), command.use_color)
+                        })
+                        .collect()
+                }
+            }
+            Err(error) => {
+                let mut text = render_text_error(ProviderId::Claude, &error, command.use_color);
+                if let Some(status) = status.as_ref() {
+                    text.push_str(&format!(" | Status {}", status.summary()));
+                }
+                vec![text]
+            }
+        };
+    }
+    vec![fetch_provider_text_output(provider_id, command).await]
+}
+
 pub(super) async fn collect_usage_output(command: &UsageCommand) -> UsageOutput {
     match command.format {
         UsageOutputFormat::Text => {
-            let mut sections = Vec::new();
-            for provider_id in &command.providers {
-                if uses_claude_swap_all_accounts(command, *provider_id)
-                    && let Some(ctx) = claude_swap_cli_context()
-                {
-                    let status = claude_swap_provider_status(command).await;
-                    match read_claude_swap_accounts(&ctx) {
-                        Ok(accounts) => {
-                            if command.brief {
-                                sections.push(render_claude_swap_brief(
-                                    &accounts,
-                                    status.as_ref(),
-                                    command.use_color,
-                                ));
-                            } else {
-                                sections.extend(accounts.iter().map(|account| {
-                                    render_claude_swap_text(
-                                        account,
-                                        status.as_ref(),
-                                        command.use_color,
-                                    )
-                                }));
-                            }
-                        }
-                        Err(error) => {
-                            let mut text =
-                                render_text_error(ProviderId::Claude, &error, command.use_color);
-                            if let Some(status) = status.as_ref() {
-                                text.push_str(&format!(" | Status {}", status.summary()));
-                            }
-                            sections.push(text);
-                        }
-                    }
-                    continue;
-                }
-                sections.push(fetch_provider_text_output(*provider_id, command).await);
-            }
-            UsageOutput::Text(sections)
+            let sections = fetch_in_selection_order(command.providers.as_slice(), |provider_id| {
+                provider_text_sections(provider_id, command)
+            })
+            .await;
+            UsageOutput::Text(sections.into_iter().flatten().collect())
         }
         UsageOutputFormat::Json => UsageOutput::Json {
             results: collect_json_results(command).await,

@@ -196,10 +196,16 @@ URL parameters:
 | --- | --- | --- |
 | `window` | `main`, `settings`, `flyout`, `floatbar` | `main` |
 | `tab` | any settings tab id, or `providers:<id>` | `general` |
-| `fixture` | `default`, `two-codex-accounts`, `errors`, `empty`, `claude-plan-hidden`, `kpi-long-titles` | `default` |
+| `fixture` | `default`, `two-codex-accounts`, `errors`, `empty`, `claude-plan-hidden`, `kpi-long-titles`, `codex-conversations`, `codex-conversations-private` | `default` |
 | `theme` | `dark`, `light`, `auto` (overrides the fixture) | fixture value |
 
 Example: `proof.html?window=settings&tab=providers:codex&fixture=two-codex-accounts`.
+
+`codex-conversations` adds three synthetic Codex conversations to the Usage &
+Spend contract, for the Codex card's Conversations list (scenario
+`tray-codex-conversations`). `codex-conversations-private` serves the same
+data with Hide personal information on, so every title is the masked
+`Session <id>` label (scenario `tray-codex-conversations-private`).
 
 Every command the frontend invokes either has a fixture handler or is listed
 in `INERT_ACTIONS` (`src/proof/router.ts`): user actions such as sign-ins,

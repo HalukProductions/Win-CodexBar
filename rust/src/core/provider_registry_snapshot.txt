@@ -430,6 +430,10 @@ Flora cli=flora display="FLORA" cookie=None color=#111111 deprecated=false block
   map=["flora"]
   metadata=ProviderMetadata { id: Flora, display_name: "FLORA", session_label: "Balance", weekly_label: "Balance", supports_opus: false, supports_credits: false, default_enabled: false, is_primary: false, dashboard_url: Some("https://app.flora.ai"), status_page_url: None, tertiary_label_key: None }
   sources=[Auto, OAuth] oauth=false web=false cli=false
+FutureAgi cli=futureagi display="Future AGI" cookie=None color=#7857FC deprecated=false blocking=None
+  map=["futureagi"]
+  metadata=ProviderMetadata { id: FutureAgi, display_name: "Future AGI", session_label: "AI credits", weekly_label: "Gateway requests", supports_opus: false, supports_credits: false, default_enabled: false, is_primary: false, dashboard_url: Some("https://app.futureagi.com/dashboard/settings/usage-summary"), status_page_url: None, tertiary_label_key: None }
+  sources=[Auto, OAuth] oauth=false web=false cli=false
 Munito cli=munito display="Munito" cookie=None color=#702CF6 deprecated=false blocking=None
   map=["munito"]
   metadata=ProviderMetadata { id: Munito, display_name: "Munito", session_label: "Today", weekly_label: "This month", supports_opus: false, supports_credits: false, default_enabled: false, is_primary: false, dashboard_url: Some("https://console.munito.ai"), status_page_url: None, tertiary_label_key: None }

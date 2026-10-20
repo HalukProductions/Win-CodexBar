@@ -1,6 +1,7 @@
 use super::*;
 
 mod language_theme;
+mod metric_preference;
 mod provider_configs;
 mod unreadable_file;
 

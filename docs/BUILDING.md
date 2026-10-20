@@ -84,7 +84,7 @@ Run the same check as the hosted PR check:
 .\scripts\local-check.ps1 -Slice ci
 ```
 
-`CONTEXT.md` lists its 11 steps. With no parameters, `local-check.ps1` runs a shorter developer check: the worktree storage report, the `gh-safe.sh` tests, both Rust test suites, and the frontend tests and build. Add `-Format`, `-Clippy`, `-ReleaseDoctor` or `-All` for more.
+`CONTEXT.md` lists its 12 steps. With no parameters, `local-check.ps1` runs a shorter developer check: the worktree storage report, the `gh-safe.sh` tests, both Rust test suites, and the frontend tests and build. Add `-Format`, `-Clippy`, `-ReleaseDoctor` or `-All` for more.
 
 To run single steps:
 
@@ -98,6 +98,23 @@ pnpm --dir apps/desktop-tauri run build
 ```
 
 `pnpm run build` runs `check-locale` first, then `tsc --noEmit` and `vite build`. `check-locale` fails when the Rust and TypeScript locale keys differ.
+
+## Third-party notices
+
+Settings > About > Acknowledgements shows `apps/desktop-tauri/src/generated/third-party-notices.json`. The file is generated and committed, so builds need no network. It is bundled into the frontend as a lazily loaded chunk, which means it ships inside the desktop exe for both the installer and the portable build. Regenerate it after any change to `Cargo.lock`, `apps/desktop-tauri/pnpm-lock.yaml` or `NOTICE`:
+
+```powershell
+pnpm --dir apps/desktop-tauri run notices        # rewrite the file
+pnpm --dir apps/desktop-tauri run notices:check  # fail if it is stale (part of -Slice ci)
+```
+
+`scripts/third-party-notices.mjs` uses only tools the build already has:
+
+- `cargo metadata --format-version 1 --filter-platform x86_64-pc-windows-msvc --locked` for the normal (not dev or build) dependency closure of `codexbar` and `codexbar-desktop-tauri`. License and notice files (`LICENSE*`, `COPYING*`, `NOTICE*`, `COPYRIGHT*`, `UNLICENSE*` and any `license-file`) are read from the local Cargo registry sources.
+- `pnpm licenses list --json --prod` for the production frontend packages, with their license files read from `node_modules`.
+- The repository `NOTICE` for vendored code (codexcontrol).
+
+Identical texts are stored once. Components that publish no license file show their SPDX id and a link to the SPDX page instead. Both `cargo` and `pnpm install` must have run first, so the sources are on disk.
 
 Tests and builds don't prove tray, settings, float bar or WebView2 behavior. See [WINDOWS_PROOF.md](./WINDOWS_PROOF.md).
 

@@ -1,11 +1,14 @@
+import { useId, useState } from "react";
 import type { LocaleKey } from "../i18n/keys";
 import {
   formatClock,
   formatTokens,
   hasReportedTraffic,
   throughputLimitLine,
+  tpmBarSummary,
   tpmBars,
 } from "../lib/openaiThroughput";
+import { ScrubBarStrip } from "./charts/ScrubBarStrip";
 import type {
   ModelRateLimitSnapshot,
   ProviderThroughputSnapshot,
@@ -14,7 +17,9 @@ import type {
 /**
  * Last-hour Tokens/min grid for the OpenAI API (upstream 0.75.0 #4495). Reported
  * minutes are solid bars; minutes after the reporting frontier are drawn as
- * pending outlines and never count as zero or as a peak.
+ * pending outlines and never count as zero or as a peak. Hovering, dragging or
+ * arrowing across the grid inspects one minute in the summary line, which keeps
+ * its height while empty so the card does not jump.
  */
 
 type T = (key: LocaleKey) => string;
@@ -36,9 +41,16 @@ export function OpenAITokensPerMinuteChart({
   limits = NO_LIMITS,
   showModels = false,
 }: OpenAITokensPerMinuteChartProps) {
+  const summaryId = useId();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const bars = tpmBars(throughput);
+  const stripBars = bars.map((bar) => ({
+    id: String(bar.start),
+    value: bar.tokens,
+    isPending: bar.isPending,
+  }));
+  const selectedBar = bars.find((bar) => String(bar.start) === selectedId) ?? null;
   const reported = hasReportedTraffic(throughput);
-  const maxTokens = Math.max(1, ...bars.filter((bar) => !bar.isPending).map((bar) => bar.tokens));
   const hasPending = bars.some((bar) => bar.isPending);
   const limit = throughputLimitLine(throughput, limits);
 
@@ -76,36 +88,21 @@ export function OpenAITokensPerMinuteChart({
       </dl>
 
       {reported && bars.length > 0 ? (
-        <svg
-          className="openai-tpm__chart"
-          viewBox={`0 0 ${bars.length} 100`}
-          preserveAspectRatio="none"
-          role="img"
-          aria-label={t("OpenAiTpmChartTitle")}
-          data-testid="openai-tpm-chart"
-        >
-          {bars.map((bar, index) =>
-            bar.isPending ? (
-              <rect
-                key={bar.start}
-                className="openai-tpm__bar openai-tpm__bar--pending"
-                x={index + 0.1}
-                y={0}
-                width={0.8}
-                height={100}
-              />
-            ) : (
-              <rect
-                key={bar.start}
-                className="openai-tpm__bar"
-                x={index + 0.1}
-                y={100 - (bar.tokens / maxTokens) * 100}
-                width={0.8}
-                height={(bar.tokens / maxTokens) * 100}
-              />
-            ),
-          )}
-        </svg>
+        <>
+          <ScrubBarStrip
+            bars={stripBars}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            classPrefix="openai-tpm"
+            className="openai-tpm__chart"
+            label={t("OpenAiTpmChartTitle")}
+            describedBy={summaryId}
+            testId="openai-tpm-chart"
+          />
+          <p id={summaryId} className="openai-tpm__summary" aria-live="polite">
+            {selectedBar ? tpmBarSummary(selectedBar, t) : "\u00a0"}
+          </p>
+        </>
       ) : (
         <p className="openai-tpm__empty">{t("OpenAiTpmEmpty")}</p>
       )}

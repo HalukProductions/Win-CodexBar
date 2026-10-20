@@ -96,6 +96,7 @@ export default function TrayPanel({ state }: { state: BootstrapState }) {
             weeklyProgressWorkDays: settings.weeklyProgressWorkDays ?? null,
             workdayTickStyle: settings.workdayTickStyle ?? "subtle",
             costTrackingEnabled: settings.costUsageEnabled ?? true,
+            costReportingPeriod: settings.costReportingPeriod,
           }}
           accentColor={settings.providerAccentColors[p.providerId]}
           onLayoutChange={requestLayout}

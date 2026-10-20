@@ -5,6 +5,7 @@ import type {
   ProviderUsageSnapshot,
 } from "../../types/bridge";
 import { formatCostAmount } from "../../lib/cardCost";
+import type { CardConversations } from "../../lib/cardConversations";
 import type { MetricEntry } from "./CardMetricRow";
 
 export interface MenuCardPresence {
@@ -22,6 +23,8 @@ export interface MenuCardPresence {
   wayfinderUsage: ProviderUsageSnapshot["wayfinderUsage"] | null;
   /** Last-hour Tokens/min grid (OpenAI API Live Usage); full card only. */
   openAiThroughput: ProviderThroughputSnapshot | null;
+  /** Local conversations list; full card only. */
+  conversations: CardConversations | null;
   hasDetails: boolean;
   /**
    * Plan renewal / expiry line under the quota rows. The compact Overview
@@ -58,6 +61,7 @@ export function describeCard(
   costSummaryDisplayStyle: CostSummaryDisplayStyle = "detailed",
   compactOverview = false,
   planNote: string | null = null,
+  conversationList: CardConversations | null = null,
 ): MenuCardPresence {
   const hasError = !!provider.error;
   const hasMetrics = !hasError && visibleMetrics.length > 0;
@@ -79,6 +83,7 @@ export function describeCard(
     !hasError && !compactOverview && provider.providerId === "openaiapi"
       ? provider.throughput ?? null
       : null;
+  const conversations = !hasError && !compactOverview ? conversationList : null;
   const hasDetails = compactOverview
     ? hasMetrics || showsDetailSections || !!wayfinderUsage || !!planDateNote
     : hasMetrics ||
@@ -87,6 +92,7 @@ export function describeCard(
       !!localUsage ||
       !!wayfinderUsage ||
       !!openAiThroughput ||
+      !!conversations ||
       !!planDateNote;
   return {
     hasMetrics,
@@ -96,6 +102,7 @@ export function describeCard(
     localUsage,
     wayfinderUsage,
     openAiThroughput,
+    conversations,
     hasDetails,
     planDateNote,
   };

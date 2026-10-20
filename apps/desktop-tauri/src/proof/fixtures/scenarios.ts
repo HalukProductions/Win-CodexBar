@@ -3,6 +3,7 @@ import type {
   CodexAccount,
   CodexAccountsStateBridge,
   CodexAccountUsageSnapshot,
+  CodexWorkspacesSessionUsage,
   ProviderCatalogEntry,
   ProviderUsageSnapshot,
   QuotaWindowHistoryBridge,
@@ -23,7 +24,10 @@ export const PROOF_SCENARIO_NAMES = [
   "two-codex-accounts",
   "errors",
   "empty",
+  "openai-live-spend",
   "claude-plan-hidden",
+  "codex-conversations",
+  "codex-conversations-private",
   "claude-reset-credits",
   "claude-reset-credits-hidden",
   "kpi-long-titles",
@@ -47,6 +51,8 @@ export interface ProofScenario {
   quotaWindowHistory?: QuotaWindowHistoryBridge[];
   /** Synthetic replacements for single locale keys; absent means the shipped English strings. */
   localeOverrides?: Record<string, string>;
+  /** Local Codex conversations in the Usage & Spend contract, unmasked. */
+  codexConversations?: CodexWorkspacesSessionUsage[];
 }
 
 export interface LocalSpendFixture {
@@ -365,6 +371,88 @@ function emptyScenario(): ProofScenario {
   };
 }
 
+const MINUTE_SECONDS = 60;
+const DAY_SECONDS = 86_400;
+
+/**
+ * OpenAI API card with both a Tokens/min window and daily spend, so the card
+ * offers the Live · Spend switch. The last two minutes are still reporting.
+ */
+function openAiApiSnapshot(now: Date): ProviderUsageSnapshot {
+  const nowSeconds = Math.floor(now.getTime() / 1000);
+  const firstMinute = Math.floor(nowSeconds / MINUTE_SECONDS) * MINUTE_SECONDS - 59 * MINUTE_SECONDS;
+  const minutes = Array.from({ length: 60 }, (_, i) => {
+    const isPending = i >= 58;
+    const totalTokens = isPending ? 0 : 6_000 + ((i * 7_919) % 18_000);
+    return {
+      start: firstMinute + i * MINUTE_SECONDS,
+      totalTokens,
+      requests: isPending ? 0 : 2 + (i % 5),
+      isPending,
+    };
+  });
+  const reported = minutes.filter((minute) => !minute.isPending);
+  const peak = reported.reduce((best, minute) => (minute.totalTokens > best.totalTokens ? minute : best));
+  const lastFive = reported.slice(-5);
+  const firstDay = Math.floor(nowSeconds / DAY_SECONDS) * DAY_SECONDS - 29 * DAY_SECONDS;
+  const daily = Array.from({ length: 30 }, (_, i) => {
+    const costUsd = Math.round((1.5 + ((i * 37) % 11) * 0.45) * 100) / 100;
+    const totalTokens = Math.round(costUsd * 190_000);
+    return {
+      startTime: firstDay + i * DAY_SECONDS,
+      endTime: firstDay + (i + 1) * DAY_SECONDS,
+      costUsd,
+      requests: 120 + i,
+      inputTokens: Math.round(totalTokens * 0.7),
+      cachedInputTokens: Math.round(totalTokens * 0.1),
+      outputTokens: Math.round(totalTokens * 0.3),
+      totalTokens,
+      lineItems: [{ name: "Text tokens", costUsd }],
+      models: [],
+    };
+  });
+  return providerSnapshot(
+    {
+      providerId: "openaiapi",
+      displayName: "OpenAI API",
+      primary: rateWindow(now, 0, null, null),
+      primaryLabel: "Spend",
+      updatedAt: isoBefore(now, 1),
+    },
+    {
+      planName: "Admin API",
+      sourceLabel: "api",
+      throughput: {
+        minutes,
+        frontier: reported[reported.length - 1].start,
+        latestTokensPerMinute: reported[reported.length - 1].totalTokens,
+        peakTokensPerMinute: peak.totalTokens,
+        peakAt: peak.start,
+        fiveMinuteAverageTokensPerMinute: Math.round(
+          lastFive.reduce((sum, minute) => sum + minute.totalTokens, 0) / lastFive.length,
+        ),
+        models: [],
+        windowMinutes: 60,
+        fetchedAt: nowSeconds,
+        projectId: null,
+      },
+      openAiApiUsage: { historyDays: 30, projectId: null, daily },
+    },
+  );
+}
+
+function openAiLiveSpendScenario(now: Date): ProofScenario {
+  return {
+    name: "openai-live-spend",
+    settings: baseSettings({ enabledProviders: ["openaiapi"] }),
+    catalog: PROOF_PROVIDER_CATALOG,
+    providers: [openAiApiSnapshot(now)],
+    codexAccounts: emptyCodexAccounts(),
+    claudeAccounts: [],
+    localSpend: [],
+  };
+}
+
 /** Default data with the Claude "Plan renewal / expiry" usage item hidden (`section:subscription`). */
 function claudePlanHiddenScenario(now: Date): ProofScenario {
   const base = defaultScenario(now);
@@ -376,6 +464,51 @@ function claudePlanHiddenScenario(now: Date): ProofScenario {
         ? { ...snapshot, hiddenUsageItemIds: ["section:subscription"] }
         : snapshot,
     ),
+  };
+}
+
+function codexConversation(
+  now: Date,
+  id: string,
+  displayTitle: string,
+  minutesAgo: number,
+  knownUsd: number,
+  unknownTokens = 0,
+): CodexWorkspacesSessionUsage {
+  return {
+    id,
+    projectId: "proof-project",
+    displayTitle,
+    cwd: null,
+    startedAt: isoBefore(now, minutesAgo + 30),
+    latestActivity: isoBefore(now, minutesAgo),
+    totals: { inputTokens: 184_000, cachedInputTokens: 120_000, outputTokens: 9_400, totalTokens: 193_400 },
+    costEstimate: { knownUsd, unknownTokens },
+    topModel: "gpt-5-codex",
+    turnPerformance: null,
+  };
+}
+
+/** Default data plus three synthetic Codex conversations for the tray card list. */
+function codexConversationsScenario(now: Date): ProofScenario {
+  return {
+    ...defaultScenario(now),
+    name: "codex-conversations",
+    codexConversations: [
+      codexConversation(now, "019f0000-0000-7000-8000-00000000a001", "Port the tray conversations list", 600, 3.12),
+      codexConversation(now, "019f0000-0000-7000-8000-00000000a002", "Session 019f...0000a002", 45, 0.87, 2_000),
+      codexConversation(now, "019f0000-0000-7000-8000-00000000a003", "Fix the parser fixture", 5, 1.46),
+    ],
+  };
+}
+
+/** The same conversations with Hide personal information on. */
+function codexConversationsPrivateScenario(now: Date): ProofScenario {
+  const base = codexConversationsScenario(now);
+  return {
+    ...base,
+    name: "codex-conversations-private",
+    settings: { ...base.settings, hidePersonalInfo: true },
   };
 }
 
@@ -450,7 +583,10 @@ const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   "two-codex-accounts": twoCodexAccountsScenario,
   errors: errorsScenario,
   empty: emptyScenario,
+  "openai-live-spend": openAiLiveSpendScenario,
   "claude-plan-hidden": claudePlanHiddenScenario,
+  "codex-conversations": codexConversationsScenario,
+  "codex-conversations-private": codexConversationsPrivateScenario,
   "claude-reset-credits": (now) => claudeResetCreditsScenario(now, false),
   "claude-reset-credits-hidden": (now) => claudeResetCreditsScenario(now, true),
   "kpi-long-titles": kpiLongTitlesScenario,
