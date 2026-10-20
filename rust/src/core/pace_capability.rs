@@ -507,6 +507,7 @@ mod tests {
             | ProviderId::AlibabaTokenPlan
             | ProviderId::CommandCode
             | ProviderId::Doubao
+            | ProviderId::Kiro
             | ProviderId::MiMo
             | ProviderId::Notion
             | ProviderId::Ollama
@@ -526,6 +527,7 @@ mod tests {
             | ProviderId::AlibabaTokenPlan
             | ProviderId::CommandCode
             | ProviderId::Doubao
+            | ProviderId::Kiro
             | ProviderId::MiMo
             | ProviderId::Notion
             | ProviderId::Ollama
