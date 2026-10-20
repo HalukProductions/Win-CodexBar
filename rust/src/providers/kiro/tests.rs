@@ -1,7 +1,7 @@
 use chrono::{TimeZone, Utc};
 
 use super::{KiroProvider, usage_limits};
-use crate::core::{Provider, ProviderError, ProviderFetchResult, ProviderId};
+use crate::core::{Provider, ProviderError, ProviderFetchResult, ProviderId, RateWindow};
 
 fn parse(output: &str) -> crate::core::UsageSnapshot {
     KiroProvider::new()
@@ -159,6 +159,107 @@ fn zero_api_allowance_preserves_unknown_or_cli_metrics() {
     assert!(!known.primary.is_informational);
     assert_eq!(known.primary.used_percent, 40.0);
     assert!(known.primary.resets_at.is_some());
+}
+
+#[test]
+fn cli_credit_window_with_reset_gets_calendar_month_pace() {
+    let usage = parse("Plan: KIRO PRO\nCredits (60 of 100 covered in plan)\nresets on 03/01\n");
+    let resets_at = usage.primary.resets_at.expect("reset date");
+
+    assert_eq!(
+        usage.primary.window_minutes,
+        RateWindow::calendar_month_window_minutes(resets_at)
+    );
+    let now = resets_at - chrono::Duration::days(10);
+    let capability = ProviderId::Kiro.pace_capability();
+    assert!(capability.supports_reset_window_pace(&usage.primary, now));
+
+    // The CLI reset may land in a 28-, 29- or 31-day month, so derive the
+    // elapsed share from the stored calendar length.
+    let month_days = f64::from(usage.primary.window_minutes.unwrap()) / (24.0 * 60.0);
+    let expected = (month_days - 10.0) / month_days * 100.0;
+    let pace = capability
+        .reset_window_pace(&usage.primary, now, None)
+        .expect("pace for a future reset");
+    assert!((pace.expected_used_percent - expected).abs() < 0.01);
+    assert_eq!(pace.actual_used_percent, 60.0);
+    assert!((pace.delta_percent - (60.0 - expected)).abs() < 0.01);
+    assert!(pace.will_last_to_reset);
+}
+
+#[test]
+fn cli_credit_window_without_reset_has_no_window_length() {
+    let usage = parse("Plan: KIRO PRO\nCredits (20 of 100 covered in plan)\n");
+
+    assert_eq!(usage.primary.used_percent, 20.0);
+    assert!(usage.primary.resets_at.is_none());
+    assert_eq!(usage.primary.window_minutes, None);
+    assert!(
+        !ProviderId::Kiro
+            .pace_capability()
+            .supports_reset_window_pace(&usage.primary, Utc::now())
+    );
+}
+
+#[test]
+fn api_allowance_sizes_the_monthly_window_from_its_reset() {
+    let reset = limits(5000.0, 282.49).resets_at;
+    let usage = usage_limits::apply_usage_limits(
+        parse("Plan: KIRO PRO MAX | 1 usage breakdowns\n"),
+        &limits(5000.0, 282.49),
+    );
+
+    assert_eq!(
+        usage.primary.window_minutes,
+        RateWindow::calendar_month_window_minutes(reset)
+    );
+    // The fixture reset is 2026-10-01 00:00 UTC, so the window is September
+    // (30 days) and five days before the reset 25 of 30 days have elapsed.
+    assert_eq!(usage.primary.window_minutes, Some(30 * 24 * 60));
+    let pace = ProviderId::Kiro
+        .pace_capability()
+        .reset_window_pace(&usage.primary, reset - chrono::Duration::days(5), None)
+        .expect("pace for a future reset");
+    assert!((pace.expected_used_percent - 25.0 / 30.0 * 100.0).abs() < 0.01);
+    assert!((pace.actual_used_percent - 5.6498).abs() < 0.0001);
+    assert_eq!(pace.stage, crate::core::PaceStage::FarBehind);
+    assert!(pace.will_last_to_reset);
+}
+
+#[test]
+fn expired_reset_gives_no_pace() {
+    let reset = limits(5000.0, 282.49).resets_at;
+    let usage = usage_limits::apply_usage_limits(
+        parse("Plan: KIRO PRO MAX | 1 usage breakdowns\n"),
+        &limits(5000.0, 282.49),
+    );
+    let capability = ProviderId::Kiro.pace_capability();
+
+    assert!(
+        capability
+            .reset_window_pace(&usage.primary, reset + chrono::Duration::hours(1), None)
+            .is_none()
+    );
+    assert!(
+        capability
+            .reset_window_pace(&usage.primary, reset, None)
+            .is_none()
+    );
+}
+
+#[test]
+fn bonus_window_does_not_get_monthly_pace() {
+    let usage = parse(
+        "Plan: KIRO PRO\nCredits (20 of 100 covered in plan)\nresets on 03/01\n\
+         Bonus credits: 10/100 credits used, expires in 3 days\n",
+    );
+    let bonus = usage.secondary.expect("bonus window");
+
+    assert!(
+        !ProviderId::Kiro
+            .pace_capability()
+            .supports_reset_window_pace(&bonus, Utc::now())
+    );
 }
 
 #[test]
