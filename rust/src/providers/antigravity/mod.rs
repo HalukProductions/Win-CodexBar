@@ -16,9 +16,11 @@ mod local_sqlite;
 mod local_step_resolver;
 mod offline_reason;
 mod quota_summary;
+mod remote;
 
 use legacy_status::UserStatusResponse;
 use offline_reason::LiveFailure;
+use remote::{RemoteError, RemoteFetcher, RemoteTransport};
 
 #[cfg(windows)]
 use crate::managed_process::{ManagedProcess, ManagedProcessConfig, ManagedProcessError};
@@ -79,6 +81,7 @@ pub struct AntigravityProvider;
 pub(crate) enum AntigravityStrategyId {
     Local,
     Cli,
+    OAuth,
     Offline,
 }
 
@@ -87,6 +90,7 @@ impl AntigravityStrategyId {
         match self {
             Self::Local => "local",
             Self::Cli => "cli",
+            Self::OAuth => "oauth",
             Self::Offline => "offline",
         }
     }
@@ -96,6 +100,7 @@ pub(crate) fn strategy_from_source_label(source_label: &str) -> Option<Antigravi
     match source_label {
         "local" => Some(AntigravityStrategyId::Local),
         "cli" => Some(AntigravityStrategyId::Cli),
+        "oauth" => Some(AntigravityStrategyId::OAuth),
         "offline" => Some(AntigravityStrategyId::Offline),
         _ => None,
     }
@@ -718,6 +723,22 @@ impl AntigravityProvider {
         F: FnOnce() -> Fut,
         Fut: Future<Output = Result<Option<ProviderFetchResult>, LiveFailure>>,
     {
+        match self.resolve_live_runtime(local_result, cli_fallback).await {
+            Ok(result) => Ok(result),
+            Err(failure) => Self::resolve_probe_failure(failure, offline),
+        }
+    }
+
+    /// The live local/managed/CLI chain without the offline-history step.
+    async fn resolve_live_runtime<F, Fut>(
+        &self,
+        local_result: Result<Option<ProviderFetchResult>, LiveFailure>,
+        cli_fallback: F,
+    ) -> Result<ProviderFetchResult, LiveFailure>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<Option<ProviderFetchResult>, LiveFailure>>,
+    {
         let (mut failure, allow_managed_runtime) = match local_result {
             Ok(Some(result)) => return Ok(result),
             Ok(None) => (None, true),
@@ -748,7 +769,7 @@ impl AntigravityProvider {
                             Ok(ManagedAgyOutcome::Missing) => {}
                             Err(error) => {
                                 if matches!(error, ProviderError::AuthRequired) {
-                                    return Err(error);
+                                    return Err(error.into());
                                 }
                                 tracing::debug!(%error, "managed Antigravity CLI probe failed");
                                 failure = Some(error.into());
@@ -780,7 +801,35 @@ impl AntigravityProvider {
             }
         }
 
-        Self::resolve_probe_failure(failure.unwrap_or_else(LiveFailure::not_running), offline)
+        Err(failure.unwrap_or_else(LiveFailure::not_running))
+    }
+
+    /// Auto-mode step between the live runtime chain and offline history.
+    ///
+    /// Upstream orders Antigravity's Auto pipeline local, then Google OAuth,
+    /// then offline. OAuth is only attempted when credentials exist; its
+    /// failure replaces the runtime failure because it is the more specific
+    /// account problem once the user has saved OAuth credentials.
+    async fn resolve_with_remote_fallback<T: RemoteTransport>(
+        live: Result<ProviderFetchResult, LiveFailure>,
+        remote: Option<&RemoteFetcher<T>>,
+        offline: Option<ProviderFetchResult>,
+    ) -> Result<ProviderFetchResult, ProviderError> {
+        let failure = match live {
+            Ok(result) => return Ok(result),
+            Err(failure) => failure,
+        };
+        let failure = match remote.filter(|fetcher| fetcher.has_credentials()) {
+            Some(fetcher) => match fetcher.fetch().await {
+                Ok(usage) => return Ok(Self::fetch_result(usage, AntigravityStrategyId::OAuth)),
+                Err(error) => {
+                    tracing::debug!(?error, "Antigravity OAuth fallback failed");
+                    LiveFailure::from(error)
+                }
+            },
+            None => failure,
+        };
+        Self::resolve_probe_failure(failure, offline)
     }
 
     async fn fetch_local_payload(
@@ -851,23 +900,50 @@ impl Provider for AntigravityProvider {
     }
 
     async fn fetch_usage(&self, ctx: &FetchContext) -> Result<ProviderFetchResult, ProviderError> {
-        // `oauth` is not supported (no remote API path is ported yet); surface it
-        // explicitly instead of silently probing locally. Both `auto` and `cli`
-        // prefer an existing desktop/CLI language server. When neither is
-        // running, start a task-owned `agy` session for this fetch only.
+        // `oauth` only reads the Google OAuth remote quota API. Both `auto` and
+        // `cli` prefer an existing desktop/CLI language server. When neither is
+        // running, start a task-owned `agy` session for this fetch only. `auto`
+        // then tries saved OAuth credentials before offline history.
         if ctx.source_mode == SourceMode::OAuth {
-            return Err(ProviderError::UnsupportedSource(ctx.source_mode));
+            tracing::debug!("Fetching Antigravity usage via Google OAuth");
+            let fetcher = RemoteFetcher::from_environment()?;
+            return fetcher
+                .fetch()
+                .await
+                .map(|usage| Self::fetch_result(usage, AntigravityStrategyId::OAuth))
+                .map_err(RemoteError::into_provider_error);
         }
 
         tracing::debug!("Fetching Antigravity usage via local probe");
 
         let local_result = self.fetch_user_status().await;
-        self.resolve_runtime_fallback(local_result, || self.try_print_usage_fallback())
+        if ctx.source_mode != SourceMode::Auto {
+            return self
+                .resolve_runtime_fallback(local_result, || self.try_print_usage_fallback())
+                .await;
+        }
+        let live = self
+            .resolve_live_runtime(local_result, || self.try_print_usage_fallback())
+            .await;
+        let remote = if live.is_err() {
+            RemoteFetcher::from_environment()
+                .inspect_err(|error| {
+                    tracing::debug!(%error, "Antigravity OAuth client unavailable");
+                })
+                .ok()
+        } else {
+            None
+        };
+        Self::resolve_with_remote_fallback(live, remote.as_ref(), Self::offline_usage_result())
             .await
     }
 
     fn available_sources(&self) -> Vec<SourceMode> {
-        vec![SourceMode::Auto, SourceMode::Cli]
+        vec![SourceMode::Auto, SourceMode::Cli, SourceMode::OAuth]
+    }
+
+    fn supports_oauth(&self) -> bool {
+        true
     }
 
     /// Antigravity's `NotInstalled` reports the local language-server probe
