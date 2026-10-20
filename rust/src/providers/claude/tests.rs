@@ -1492,3 +1492,57 @@ fn error_states_and_last_good_policies() {
         }
     }
 }
+
+/// Upstream #4503: default and API accounts open Platform usage; recognized
+/// Pro, Max, Team and Ultra subscriptions keep the claude.ai usage page.
+#[test]
+fn dashboard_url_opens_platform_usage_unless_account_is_subscription() {
+    const PLATFORM: &str = "https://platform.claude.com/usage";
+    const SUBSCRIPTION: &str = "https://claude.ai/settings/usage";
+    let provider = ClaudeProvider::new();
+
+    for login in [
+        None,
+        Some("Claude (OAuth)"),
+        Some("Claude (CLI)"),
+        Some("Admin API"),
+        Some("Claude Enterprise"),
+    ] {
+        assert_eq!(
+            provider.dashboard_url_for_login_method(login),
+            Some(PLATFORM),
+            "{login:?}"
+        );
+    }
+
+    for login in [
+        "Claude Pro",
+        "Claude Max 5x",
+        "Claude Max 20x",
+        "Claude Team",
+        "Claude Ultra",
+        "Claude Max Account",
+    ] {
+        assert_eq!(
+            provider.dashboard_url_for_login_method(Some(login)),
+            Some(SUBSCRIPTION),
+            "{login}"
+        );
+    }
+}
+
+/// Mirrors upstream `ClaudePlan.fromCompatibilityLoginMethod` ordering: the
+/// words are checked in a fixed priority order (Max, Pro, Team, Enterprise,
+/// Ultra) and the first match decides, so Max wins over Enterprise and
+/// "Claude Enterprise Max" counts as a subscription. Enterprise alone does not.
+#[test]
+fn subscription_login_method_follows_upstream_word_ordering() {
+    assert!(!is_subscription_login_method(None));
+    assert!(!is_subscription_login_method(Some("")));
+    assert!(!is_subscription_login_method(Some("Claude (OAuth)")));
+    assert!(!is_subscription_login_method(Some("Claude Enterprise")));
+    assert!(is_subscription_login_method(Some("Claude Enterprise Max")));
+    assert!(is_subscription_login_method(Some("claude-max")));
+    assert!(is_subscription_login_method(Some("CLAUDE PRO")));
+    assert!(!is_subscription_login_method(Some("Maximum API")));
+}

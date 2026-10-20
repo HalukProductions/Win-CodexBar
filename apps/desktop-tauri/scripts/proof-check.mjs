@@ -358,6 +358,17 @@ async function runStep(page, step, ctx) {
     if (!(await page.poll(`!!document.querySelector(${js(step.expectSelector)})`))) {
       throw new Error(`selector not found: ${step.expectSelector}`);
     }
+  } else if (step.expectNoOverflow !== undefined) {
+    // Each match must fit its box horizontally: wrapped text never overflows,
+    // while text cut by `white-space: nowrap` + `text-overflow` does.
+    const selector = js(step.expectNoOverflow);
+    if (!(await page.poll(`!!document.querySelector(${selector})`))) {
+      throw new Error(`selector not found: ${step.expectNoOverflow}`);
+    }
+    const clipped = await page.eval(`[...document.querySelectorAll(${selector})]
+      .filter((el) => el.scrollWidth > el.clientWidth + 1)
+      .map((el) => el.textContent)`);
+    if (clipped.length > 0) throw new Error(`text clipped in ${step.expectNoOverflow}: ${js(clipped)}`);
   } else if (step.expectTheme !== undefined) {
     const theme = await page.eval("document.documentElement.dataset.theme");
     if (theme !== step.expectTheme) throw new Error(`theme is ${js(theme)}, expected ${js(step.expectTheme)}`);
