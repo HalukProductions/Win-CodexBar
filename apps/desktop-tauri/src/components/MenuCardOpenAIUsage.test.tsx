@@ -168,6 +168,21 @@ describe("MenuCard OpenAI daily usage", () => {
     window.localStorage.removeItem(PROVIDER_CHART_MODES_STORAGE_KEY);
   });
 
+  it("keeps the plain grid when the Tokens/min window has no reported traffic", async () => {
+    window.localStorage.removeItem(PROVIDER_CHART_MODES_STORAGE_KEY);
+    const provider = withThroughput(snapshot("openaiapi", usage()));
+    const throughput = provider.throughput!;
+    provider.throughput = {
+      ...throughput,
+      minutes: throughput.minutes.map((minute) => ({ ...minute, isPending: true })),
+    };
+    const { container } = renderCard(provider);
+    await waitFor(() => expect(container.querySelector(".openai-tpm")).not.toBeNull());
+    expect(container.querySelector(".openai-tpm__empty")).not.toBeNull();
+    expect(container.querySelector(".openai-live-spend")).toBeNull();
+    expect(container.querySelector(".openai-live-spend__switch")).toBeNull();
+  });
+
   it("masks the Admin project id in the card identity when privacy is enabled", async () => {
     const provider = snapshot("openaiapi", usage());
     provider.planName = "Admin API: proj-private";

@@ -300,6 +300,7 @@ export default function MenuCard({
           {presence.wayfinderUsage && <WayfinderBlock usage={presence.wayfinderUsage} />}
           {presence.openAiThroughput && (
             <OpenAILiveSpendChart
+              key={provider.providerId}
               providerId={provider.providerId}
               throughput={presence.openAiThroughput}
               usage={provider.openAiApiUsage}

@@ -1,5 +1,6 @@
 import { useId, useState } from "react";
 import type { LocaleKey } from "../i18n/keys";
+import { hasReportedTraffic } from "../lib/openaiThroughput";
 import {
   hasSpendDays,
   type ProviderChartMode,
@@ -35,7 +36,9 @@ export interface OpenAILiveSpendChartProps {
 
 export function OpenAILiveSpendChart({ providerId, throughput, usage, t }: OpenAILiveSpendChartProps) {
   const [mode, setModeState] = useState<ProviderChartMode>(() => readChartMode(providerId));
-  const spendUsage = usage && hasSpendDays(usage) ? usage : null;
+  // The switch needs both charts to have something to show: reported Tokens/min
+  // traffic and daily spend. Otherwise the card keeps the plain grid.
+  const spendUsage = usage && hasSpendDays(usage) && hasReportedTraffic(throughput) ? usage : null;
   if (!spendUsage) return <OpenAITokensPerMinuteChart throughput={throughput} t={t} />;
 
   const setMode = (next: ProviderChartMode) => {
