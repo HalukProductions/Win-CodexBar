@@ -167,6 +167,31 @@
       ]
     },
     {
+      "name": "tray-openai-live-spend",
+      "query": "window=main&fixture=openai-live-spend",
+      "size": [310, 1032],
+      "steps": [
+        { "expectText": ["OpenAI API", "Tokens per minute", "Live", "Spend"] },
+        { "click": { "selector": "button", "label": "Live" } },
+        { "expectSelector": ".openai-live-spend[data-mode=\"live\"] [data-testid=\"openai-spend-layer\"][aria-hidden=\"true\"]" },
+        { "screenshot": "tray-openai-live", "clip": "panel" },
+        { "click": { "selector": ".openai-tpm__chart", "label": "Tokens per minute" } },
+        { "expectText": "requests" },
+        { "expectSelector": "[data-testid=\"openai-live-layer\"] rect.openai-tpm__bar--selected" },
+        { "screenshot": "tray-openai-live-inspect", "clip": "panel" },
+        { "key": "Escape" },
+        { "expectNoCall": { "cmd": "dismiss_tray_panel" } },
+        { "expectSelector": ".tray-panel-reveal--ready" },
+        { "click": { "selector": "button", "label": "Spend" } },
+        { "expectText": "Daily spend · Last 30 days" },
+        { "expectSelector": ".openai-live-spend[data-mode=\"spend\"] [data-testid=\"openai-live-layer\"][aria-hidden=\"true\"]" },
+        { "click": { "selector": ".openai-tpm__chart", "label": "Daily spend · Last 30 days" } },
+        { "expectText": ": $" },
+        { "expectSelector": "[data-testid=\"openai-spend-layer\"] rect.openai-tpm__bar--selected" },
+        { "screenshot": "tray-openai-spend-inspect", "clip": "panel" }
+      ]
+    },
+    {
       "name": "settings-claude-desktop-cookies",
       "query": "window=settings&tab=providers:claude&fixture=default&theme=dark",
       "size": [880, 620],

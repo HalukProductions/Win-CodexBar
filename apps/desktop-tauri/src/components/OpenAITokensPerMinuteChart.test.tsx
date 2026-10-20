@@ -1,7 +1,7 @@
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { LocaleKey } from "../i18n/keys";
-import { formatTokens } from "../lib/openaiThroughput";
+import { formatClock, formatTokens } from "../lib/openaiThroughput";
 import type {
   ModelRateLimitSnapshot,
   ProviderThroughputSnapshot,
@@ -11,6 +11,18 @@ import { OpenAITokensPerMinuteChart } from "./OpenAITokensPerMinuteChart";
 
 const START = 1_788_220_800;
 const t = (key: LocaleKey) => key as string;
+
+/** jsdom has no PointerEvent, so fireEvent.pointer* drops clientX; React only reads the fields. */
+function pointer(target: Element, type: string, clientX: number) {
+  fireEvent(target, new MouseEvent(type, { bubbles: true, clientX }));
+}
+
+/** jsdom has no PointerEvent, so pointerType is patched onto a MouseEvent. */
+function pointerUp(target: Element, clientX: number, clientY: number) {
+  const event = new MouseEvent("pointerup", { bubbles: true, clientX, clientY });
+  Object.defineProperty(event, "pointerType", { value: "mouse" });
+  fireEvent(target, event);
+}
 
 function model(name: string, overrides: Partial<ThroughputModelSnapshot> = {}): ThroughputModelSnapshot {
   return {
@@ -94,6 +106,92 @@ describe("OpenAITokensPerMinuteChart", () => {
       />,
     );
     expect(unmatched.container.querySelector(".openai-tpm__limit")).toBeNull();
+  });
+
+  it("inspects the minute under the pointer and clears on leave", () => {
+    const { container, getByTestId } = render(
+      <OpenAITokensPerMinuteChart throughput={throughput()} t={t} />,
+    );
+    const chart = getByTestId("openai-tpm-chart");
+    chart.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 100, height: 56, right: 100, bottom: 56, x: 0, y: 0 }) as DOMRect;
+    const summary = () => container.querySelector(".openai-tpm__summary")?.textContent;
+
+    pointer(chart, "pointermove", 30);
+    expect(summary()).toBe(
+      `${formatClock(START + 60)} · OpenAiTpmHoverMinute`,
+    );
+    expect(container.querySelectorAll("rect.openai-tpm__bar--selected")).toHaveLength(1);
+
+    pointer(chart, "pointermove", 95);
+    expect(summary()).toBe(`${formatClock(START + 240)} · OpenAiTpmReporting`);
+
+    fireEvent.pointerLeave(chart);
+    expect(summary()).toBe("\u00a0");
+    expect(container.querySelector("rect.openai-tpm__bar--selected")).toBeNull();
+  });
+
+  it("keeps a drag selection when the pointer leaves the strip", () => {
+    const { container, getByTestId } = render(
+      <OpenAITokensPerMinuteChart throughput={throughput()} t={t} />,
+    );
+    const chart = getByTestId("openai-tpm-chart");
+    chart.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 100, height: 56, right: 100, bottom: 56, x: 0, y: 0 }) as DOMRect;
+
+    pointer(chart, "pointerdown", 5);
+    pointer(chart, "pointermove", 150);
+    fireEvent.pointerLeave(chart);
+    expect(container.querySelector(".openai-tpm__summary")?.textContent).toBe(
+      `${formatClock(START + 240)} · OpenAiTpmReporting`,
+    );
+  });
+
+  it("clears the selection when a mouse drag ends outside the strip", () => {
+    const { container, getByTestId } = render(
+      <OpenAITokensPerMinuteChart throughput={throughput()} t={t} />,
+    );
+    const chart = getByTestId("openai-tpm-chart");
+    chart.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 100, height: 56, right: 100, bottom: 56, x: 0, y: 0 }) as DOMRect;
+    const summary = () => container.querySelector(".openai-tpm__summary")?.textContent;
+
+    // A drag released inside keeps the hovered minute.
+    pointer(chart, "pointerdown", 30);
+    pointerUp(chart, 30, 10);
+    expect(summary()).toBe(`${formatClock(START + 60)} · OpenAiTpmHoverMinute`);
+
+    // Released past the right edge, nothing is hovered anymore.
+    pointerUp(chart, 150, 10);
+    expect(summary()).toBe("\u00a0");
+    expect(container.querySelector("rect.openai-tpm__bar--selected")).toBeNull();
+  });
+
+  it("steps through minutes with the arrow keys", () => {
+    const { container, getByTestId } = render(
+      <OpenAITokensPerMinuteChart throughput={throughput()} t={t} />,
+    );
+    const chart = getByTestId("openai-tpm-chart");
+    const summary = () => container.querySelector(".openai-tpm__summary")?.textContent;
+    fireEvent.keyDown(chart, { key: "ArrowRight" });
+    expect(summary()).toBe(`${formatClock(START)} · OpenAiTpmHoverMinute`);
+    fireEvent.keyDown(chart, { key: "End" });
+    expect(summary()).toBe(`${formatClock(START + 240)} · OpenAiTpmReporting`);
+    fireEvent.keyDown(chart, { key: "Escape" });
+    expect(summary()).toBe("\u00a0");
+  });
+
+  it("drops the selection when its minute leaves the window", () => {
+    const { container, getByTestId, rerender } = render(
+      <OpenAITokensPerMinuteChart throughput={throughput()} t={t} />,
+    );
+    fireEvent.keyDown(getByTestId("openai-tpm-chart"), { key: "Home" });
+    expect(container.querySelector("rect.openai-tpm__bar--selected")).not.toBeNull();
+    const shifted = throughput();
+    shifted.minutes = shifted.minutes.slice(1);
+    rerender(<OpenAITokensPerMinuteChart throughput={shifted} t={t} />);
+    expect(container.querySelector("rect.openai-tpm__bar--selected")).toBeNull();
+    expect(container.querySelector(".openai-tpm__summary")?.textContent).toBe("\u00a0");
   });
 
   it("lists per-model rows only when showModels is set", () => {
