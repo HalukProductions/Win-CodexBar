@@ -6,7 +6,7 @@ use crate::core::{
     ProviderFetchResult, ProviderId, ProviderInventoryItem, RateWindow, SourceMode, TokenAccount,
     TokenAccountKind, TokenAccountSupport, UsageSnapshot,
 };
-use crate::providers::claude::claude_swap::ClaudeSwapAccount;
+use crate::providers::claude::claude_swap::{ClaudeSwapAccount, ClaudeSwapAccountSource};
 use crate::status::{ProviderStatus as StatusInfo, StatusIndicator};
 use chrono::Utc;
 use fetch_helpers::find_token_account;
@@ -22,6 +22,7 @@ fn sample_swap_account() -> ClaudeSwapAccount {
     };
     ClaudeSwapAccount {
         id: "claude-swap:2".to_string(),
+        source: ClaudeSwapAccountSource::ClaudeSwap,
         slot: 2,
         label: "work@example.com".to_string(),
         email: Some("work@example.com".to_string()),
@@ -134,7 +135,12 @@ fn claude_swap_brief_renderer_keeps_one_line_per_provider() {
         updated_at: None,
     };
 
-    let text = super::claude_swap::render_claude_swap_brief(&[first, second], Some(&status), false);
+    let text = super::claude_swap::render_claude_swap_brief(
+        ClaudeSwapAccountSource::ClaudeSwap,
+        &[first, second],
+        Some(&status),
+        false,
+    );
     assert!(!text.contains('\n'));
     assert!(text.contains("work@example.com (active)"));
     assert!(text.contains("personal@example.com"));
@@ -180,9 +186,42 @@ fn claude_swap_detailed_text_shows_history_but_brief_does_not() {
     assert!(detailed.contains("Last known usage (captured 2026-09-12T00:45:00+00:00)"));
     assert!(detailed.contains("Session 44%"));
 
-    let brief = super::claude_swap::render_claude_swap_brief(&[account], None, false);
+    let brief = super::claude_swap::render_claude_swap_brief(
+        ClaudeSwapAccountSource::ClaudeSwap,
+        &[account],
+        None,
+        false,
+    );
     assert!(!brief.contains("Last known usage"));
     assert!(!brief.contains("44%"));
+}
+
+/// tcr rows name their own tool in JSON, text and brief output instead of
+/// the claude-swap label.
+#[test]
+fn tcr_rows_are_labelled_with_their_source() {
+    let mut account = sample_swap_account();
+    account.id = "tcr:2".to_string();
+    account.source = ClaudeSwapAccountSource::Tcr;
+    account.action = None;
+    account.is_disabled = true;
+
+    let payload = super::claude_swap::claude_swap_json_payload(&account, None);
+    assert_eq!(payload["source"], "tcr");
+    assert_eq!(payload["account"]["id"], "tcr:2");
+
+    let text = super::claude_swap::render_claude_swap_text(&account, None, false);
+    assert!(text.starts_with("Claude (tcr)  work@example.com"), "{text}");
+    assert!(text.contains("Disabled by tcr."), "{text}");
+    assert!(!text.contains("claude-swap"), "{text}");
+
+    let brief = super::claude_swap::render_claude_swap_brief(
+        ClaudeSwapAccountSource::Tcr,
+        &[account],
+        None,
+        false,
+    );
+    assert!(brief.starts_with("Claude (tcr): "), "{brief}");
 }
 
 #[test]

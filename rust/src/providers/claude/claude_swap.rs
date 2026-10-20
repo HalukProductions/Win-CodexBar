@@ -6,20 +6,23 @@
 //! credential access, and this module copies only allow-listed usage/identity
 //! fields into a provider-neutral account snapshot.
 //!
-//! Only two fixed argument arrays are ever executed — `cswap --list --json` and
+//! Only fixed argument arrays are ever executed — `cswap --list --json`,
+//! `tcr list --json` (the tcr account pool prints the same schema) and
 //! `cswap --switch-to <slot> --json` — never a shell and never config-defined
 //! passthrough arguments. Output and runtime are bounded, and schema version 1
 //! is required.
 //!
 //! Responsibilities are split into sibling modules so each can be tested in
 //! isolation: [`sanitize`] owns hostile-text handling, [`runner`] owns the
-//! bounded subprocess, [`parser`] owns schema-v1 validation, and [`projection`]
-//! owns the display-only snapshot.
+//! bounded subprocess, [`parser`] owns schema-v1 validation, [`source`] owns
+//! the per-tool argument arrays and labels, and [`projection`] owns the
+//! display-only snapshot.
 
 mod parser;
 mod projection;
 mod runner;
 mod sanitize;
+mod source;
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -31,6 +34,7 @@ pub use projection::{
     action_for_account, project_accounts,
 };
 pub use runner::{read_account_list, switch_account};
+pub use source::ClaudeSwapAccountSource;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClaudeSwapError {

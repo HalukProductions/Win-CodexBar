@@ -297,12 +297,15 @@ export function createProofRouter(
     codex_account_fetch: (args) => scenario.codexAccounts.snapshots[stringArg(args, "id")] ?? null,
     get_claude_accounts_state: () => scenario.claudeAccounts,
     claude_reconciliation_state: () => null,
-    claude_swap_accounts_list: () => ({
-      enabled: false,
-      executableConfigured: false,
-      accounts: [],
-      error: null,
-    }),
+    claude_swap_accounts_list: () => {
+      const swap = scenario.claudeSwapAccounts;
+      if (!settings.claudeSwapEnabled || !swap) {
+        return { enabled: false, executableConfigured: false, accounts: [], error: null };
+      }
+      // The fixture's accounts belong to one source; another source lists none.
+      const source = settings.claudeSwapSource ?? "claude-swap";
+      return source === (swap.source ?? "claude-swap") ? swap : { ...swap, source, accounts: [] };
+    },
     grok_accounts_list: () => [],
     get_hooks_config: proofHooksConfig,
     list_agent_sessions: () => ({ status: "disabled" }),

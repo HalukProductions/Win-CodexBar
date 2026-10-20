@@ -1,6 +1,7 @@
 //! Per-provider configuration accessors and legacy field-name aliases.
 
 use super::*;
+use crate::providers::claude::claude_swap::ClaudeSwapAccountSource;
 
 impl Settings {
     // ── Per-provider configuration accessors ─────────────────────────
@@ -453,6 +454,23 @@ impl Settings {
         } else {
             Some(trimmed)
         }
+    }
+
+    /// Claude-only: the tool the claude-swap executable path names.
+    pub fn claude_swap_source(&self) -> ClaudeSwapAccountSource {
+        ClaudeSwapAccountSource::from_config(
+            self.provider_configs
+                .get(&ProviderId::Claude)
+                .and_then(|config| config.claude_swap_source.as_deref()),
+        )
+    }
+
+    pub fn set_claude_swap_source(&mut self, source: ClaudeSwapAccountSource) {
+        self.provider_config_mut(ProviderId::Claude)
+            .claude_swap_source = match source {
+            ClaudeSwapAccountSource::ClaudeSwap => None,
+            other => Some(other.label().to_string()),
+        };
     }
 
     /// The user-overridden accent color for `id`, or `None` to use the

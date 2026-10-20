@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type {
   ClaudeSwapAccount,
+  ClaudeSwapAccountSource,
   ClaudeSwapAccountsState,
   ClaudeSwapHistoricalUsage,
   ClaudeSwapSpendWindow,
@@ -26,7 +27,35 @@ interface Props {
   enabled: boolean;
   /** Settings `claudeSwapExecutablePath`; the field sits under that switch. */
   executablePath: string;
+  /** Settings `claudeSwapSource`; the Source picker sits under that switch. */
+  source?: ClaudeSwapAccountSource;
 }
+
+interface SourceText {
+  title: LocaleKey;
+  noExecutable: LocaleKey;
+  ready: LocaleKey;
+  empty: LocaleKey;
+  disabled: LocaleKey;
+}
+
+/** Copy that names the selected tool. */
+const SOURCE_TEXT: Record<ClaudeSwapAccountSource, SourceText> = {
+  "claude-swap": {
+    title: "ClaudeSwapTitle",
+    noExecutable: "ClaudeSwapStatusNoExecutable",
+    ready: "ClaudeSwapStatusReady",
+    empty: "ClaudeSwapEmpty",
+    disabled: "ClaudeSwapDisabled",
+  },
+  tcr: {
+    title: "ClaudeTcrTitle",
+    noExecutable: "ClaudeTcrStatusNoExecutable",
+    ready: "ClaudeTcrStatusReady",
+    empty: "ClaudeTcrEmpty",
+    disabled: "ClaudeTcrDisabled",
+  },
+};
 
 const EMPTY_STATE: ClaudeSwapAccountsState = {
   enabled: false,
@@ -110,6 +139,7 @@ export function ClaudeSwapAccountsSection({
   language = "english",
   enabled,
   executablePath,
+  source = "claude-swap",
 }: Props) {
   const [state, setState] = useState<ClaudeSwapAccountsState>(EMPTY_STATE);
   const locale = languageLocale(language);
@@ -120,14 +150,25 @@ export function ClaudeSwapAccountsSection({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const mounted = useRef(false);
+  // Bumped whenever the enabled flag, path or source changes. A list call
+  // started under an older configuration must not publish its cards: a late
+  // claude-swap reply would otherwise show cswap accounts under tcr.
+  const generation = useRef(0);
+  const shownSource = useRef(source);
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (owner: number) => {
     const next = await claudeSwapAccountsList();
-    if (mounted.current) setState(next);
+    if (mounted.current && generation.current === owner) setState(next);
   }, []);
 
   useEffect(() => {
     mounted.current = true;
+    const owner = ++generation.current;
+    if (shownSource.current !== source) {
+      shownSource.current = source;
+      setState(EMPTY_STATE);
+      setMessage(null);
+    }
     if (!enabled) {
       setState(EMPTY_STATE);
       return () => {
@@ -136,8 +177,8 @@ export function ClaudeSwapAccountsSection({
     }
     const load = () => {
       setError(null);
-      void reload().catch((e) => {
-        if (mounted.current) setError(String(e));
+      void reload(owner).catch((e) => {
+        if (mounted.current && generation.current === owner) setError(String(e));
       });
     };
     load();
@@ -146,7 +187,7 @@ export function ClaudeSwapAccountsSection({
       mounted.current = false;
       void unlisten.then((fn) => fn()).catch(() => {});
     };
-  }, [enabled, executablePath, reload]);
+  }, [enabled, executablePath, source, reload]);
 
   useEffect(() => {
     const outcome = localClaudeReconciliationOutcome(snapshot, operation?.generation ?? null);
@@ -187,13 +228,12 @@ export function ClaudeSwapAccountsSection({
 
   if (!enabled) return null;
 
-  const status = !state.executableConfigured
-    ? t("ClaudeSwapStatusNoExecutable")
-    : t("ClaudeSwapStatusReady");
+  const text = SOURCE_TEXT[source] ?? SOURCE_TEXT["claude-swap"];
+  const status = !state.executableConfigured ? t(text.noExecutable) : t(text.ready);
 
   return (
     <section className="provider-detail-section claude-swap-accounts">
-      <h4>{t("ClaudeSwapTitle")}</h4>
+      <h4>{t(text.title)}</h4>
       <p className="provider-detail-helper">{status}</p>
       {reconciling && <p className="provider-detail-helper" role="status">{t("ClaudeSwapReconciling")}</p>}
       {error && (
@@ -212,7 +252,7 @@ export function ClaudeSwapAccountsSection({
         </div>
       )}
       {state.executableConfigured && state.accounts.length === 0 && !state.error && (
-        <p>{t("ClaudeSwapEmpty")}</p>
+        <p>{t(text.empty)}</p>
       )}
       <ul className="credential-list">
         {state.accounts.map((account) => {
@@ -239,7 +279,7 @@ export function ClaudeSwapAccountsSection({
                     </span>
                   )}
                   {account.isDisabled && (
-                    <span className="credential-card__meta">{t("ClaudeSwapDisabled")}</span>
+                    <span className="credential-card__meta">{t(text.disabled)}</span>
                   )}
                   {account.error && (
                     <span className="credential-card__meta">{account.error}</span>

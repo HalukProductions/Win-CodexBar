@@ -137,11 +137,18 @@ export interface ClaudeSwapHistoricalUsage {
 export type ClaudeSwapAccountAction = "switch" | "reauthenticate";
 
 /**
+ * The tool CodexBar runs to list Claude accounts. Both print claude-swap's
+ * list schema v1; tcr pools accounts and never switches them.
+ */
+export type ClaudeSwapAccountSource = "claude-swap" | "tcr";
+
+/**
  * One external claude-swap account. Identity is the source-issued numeric slot
- * (`claude-swap:<slot>`); CodexBar never reads or stores its credentials.
+ * (`<source>:<slot>`); CodexBar never reads or stores its credentials.
  */
 export interface ClaudeSwapAccount {
   id: string;
+  source: ClaudeSwapAccountSource;
   slot: number;
   /** Privacy-aware display label (alias, email, or `Account N`). */
   label: string;
@@ -164,6 +171,8 @@ export interface ClaudeSwapAccount {
 /** External claude-swap adapter state for the Claude accounts settings section. */
 export interface ClaudeSwapAccountsState {
   enabled: boolean;
+  /** Absent on older shells, which only read claude-swap. */
+  source?: ClaudeSwapAccountSource;
   executableConfigured: boolean;
   accounts: ClaudeSwapAccount[];
   error: string | null;
