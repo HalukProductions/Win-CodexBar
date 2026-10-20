@@ -123,9 +123,11 @@ impl OpenCodeGoProvider {
             return result;
         };
         let pace_authoritative = result.pace_authoritative;
+        let quota_estimated = result.quota_estimated;
         let mut enriched =
             Self::with_zen_balance(result.usage, &result.source_label, Some(balance));
         enriched.pace_authoritative = pace_authoritative;
+        enriched.quota_estimated = quota_estimated;
         enriched
     }
 }
@@ -235,6 +237,7 @@ mod tests {
             super::super::LOCAL_ESTIMATE_SOURCE_LABEL,
         )
         .with_non_authoritative_pace()
+        .with_estimated_quota()
     }
 
     fn completeness_ctx() -> FetchContext {
@@ -315,6 +318,7 @@ mod tests {
 
         assert_eq!(result.source_label, LOCAL_WEB_SOURCE_LABEL);
         assert!(result.pace_authoritative);
+        assert!(!result.quota_estimated, "Console quota is not an estimate");
         assert_eq!(result.usage.primary.used_percent, 42.0);
         assert_eq!(result.cost.unwrap().used, 7.5);
         assert_eq!(
@@ -339,6 +343,7 @@ mod tests {
             super::super::LOCAL_ESTIMATE_SOURCE_LABEL
         );
         assert!(!result.pace_authoritative);
+        assert!(result.quota_estimated);
         assert_eq!(result.usage.primary.used_percent, 10.0);
         assert!(result.cost.is_none());
     }
@@ -359,6 +364,10 @@ mod tests {
             super::super::LOCAL_ESTIMATE_SOURCE_LABEL
         );
         assert!(!result.pace_authoritative, "estimate must stay estimated");
+        assert!(
+            result.quota_estimated,
+            "the Zen balance keeps the estimate marker"
+        );
         assert_eq!(result.usage.primary.used_percent, 10.0);
         assert_eq!(result.cost.unwrap().used, 7.5);
     }

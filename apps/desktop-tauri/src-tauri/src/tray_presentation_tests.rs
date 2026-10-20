@@ -271,6 +271,7 @@ fn one_healthy_provider_never_uses_stacked_renderer() {
             percent: 30.0,
             has_error: false,
             provider_tint: None,
+            estimated: false,
         }
     );
     assert_eq!(plan.status_rows.len(), 1);
@@ -295,6 +296,7 @@ fn all_errors_produce_error_styled_zero_percent_plan() {
             percent: 0.0,
             has_error: true,
             provider_tint: None,
+            estimated: false,
         }
     );
     assert!(plan.status_rows.is_empty());
@@ -895,6 +897,7 @@ fn icon_style_not_the_legacy_percent_flag_picks_the_renderer() {
             percent: 30.0,
             has_error: false,
             provider_tint: None,
+            estimated: false,
         }
     );
 
@@ -1306,4 +1309,55 @@ fn pick_tray_provider_highest_ranks_the_selected_metric_by_depletion() {
     let picked = pick_tray_provider(&refs, true, &Settings::default(), now)
         .expect("highest mode should pick a provider");
     assert_eq!(picked.provider_id, "codex");
+}
+
+#[test]
+fn estimated_quota_draws_a_tilde_percent_icon_and_status_label() {
+    let settings = Settings {
+        tray_icon_mode: TrayIconMode::Single,
+        menu_bar_icon_style: codexbar::settings::MenuBarIconStyle::Percent,
+        show_as_used: true,
+        ..Settings::default()
+    };
+    let mut estimated = fake_snapshot("opencodego", "OpenCode Go", 42.0);
+    estimated.quota_estimated = true;
+    let snapshots = vec![estimated];
+
+    let plan = TrayPresentationPlan::resolve(&settings, &snapshots, None);
+
+    assert_eq!(
+        plan.icon,
+        TrayIconPlan::Percent {
+            percent: 42.0,
+            has_error: false,
+            provider_tint: None,
+            estimated: true,
+        }
+    );
+    let (rgba, _, _) = plan.render_icon();
+    assert_eq!(
+        rgba,
+        codexbar::tray::render_estimated_percent_icon_rgba_tinted(42.0, false, None, None).0
+    );
+    assert_ne!(
+        rgba,
+        codexbar::tray::render_percent_icon_rgba(42.0, false).0
+    );
+    assert_eq!(
+        plan.status_labels(Language::English),
+        vec![("status_summary".to_string(), "OpenCode Go ~42%".to_string())]
+    );
+}
+
+#[test]
+fn estimated_marker_skips_an_informational_headline() {
+    let mut snapshot = fake_snapshot("opencodego", "OpenCode Go", 0.0);
+    snapshot.quota_estimated = true;
+    snapshot.primary.is_informational = true;
+    snapshot.primary.reset_description = Some("No usage yet".to_string());
+
+    assert_eq!(
+        headline_status_label(&snapshot, Language::English),
+        "No usage yet"
+    );
 }

@@ -5,8 +5,9 @@ use chrono::{DateTime, Utc};
 use codexbar::core::{IconLane, ProviderId, UsagePace};
 use codexbar::settings::{Language, MetricPreference, Settings, TrayIconMode};
 use codexbar::tray::{
-    TrayPaceColor, render_bar_icon_rgba_tinted, render_percent_icon_rgba_tinted,
-    render_stacked_bar_icon_rgba_tinted, render_stacked_bars_icon_rgba_tinted,
+    TrayPaceColor, render_bar_icon_rgba_tinted, render_estimated_percent_icon_rgba_tinted,
+    render_percent_icon_rgba_tinted, render_stacked_bar_icon_rgba_tinted,
+    render_stacked_bars_icon_rgba_tinted,
 };
 
 /// Opt-in provider accent for a tray meter (`menu_bar_color_by_provider`).
@@ -31,6 +32,8 @@ enum TrayIconPlan {
         percent: f64,
         has_error: bool,
         provider_tint: Option<ProviderRgb>,
+        /// The selected provider's quota is a local estimate; draw ~.
+        estimated: bool,
     },
     Stacked {
         top_percent: f64,
@@ -94,6 +97,7 @@ impl<'a> TrayPresentationPlan<'a> {
         let selected = pick_tray_provider(&healthy, prefer_highest, settings, now);
         let icon_pace = tray_pace_color(settings, selected, now);
         let single_tint = provider_tint(settings, selected);
+        let quota_estimated = selected.is_some_and(|snapshot| snapshot.quota_estimated);
 
         let (icon, status_rows) = match settings.tray_icon_mode {
             TrayIconMode::Stacked => {
@@ -136,6 +140,7 @@ impl<'a> TrayPresentationPlan<'a> {
                             percents.1,
                             has_error,
                             single_tint,
+                            quota_estimated,
                         ),
                         rows,
                     )
@@ -160,6 +165,7 @@ impl<'a> TrayPresentationPlan<'a> {
                         percents.1,
                         has_error,
                         single_tint,
+                        quota_estimated,
                     ),
                     rows,
                 )
@@ -182,6 +188,7 @@ impl<'a> TrayPresentationPlan<'a> {
                         percents.1,
                         has_error,
                         single_tint,
+                        quota_estimated,
                     ),
                     rows,
                 )
@@ -222,7 +229,24 @@ impl<'a> TrayPresentationPlan<'a> {
                 percent,
                 has_error,
                 provider_tint,
-            } => render_percent_icon_rgba_tinted(percent, has_error, self.icon_pace, provider_tint),
+                estimated,
+            } => {
+                if estimated {
+                    render_estimated_percent_icon_rgba_tinted(
+                        percent,
+                        has_error,
+                        self.icon_pace,
+                        provider_tint,
+                    )
+                } else {
+                    render_percent_icon_rgba_tinted(
+                        percent,
+                        has_error,
+                        self.icon_pace,
+                        provider_tint,
+                    )
+                }
+            }
             TrayIconPlan::StackedBars {
                 primary_percent,
                 secondary_percent,
@@ -273,6 +297,7 @@ fn resolve_single_provider_icon_plan(
     secondary_percent: Option<f64>,
     has_error: bool,
     provider_tint: Option<ProviderRgb>,
+    estimated: bool,
 ) -> TrayIconPlan {
     use codexbar::settings::MenuBarIconStyle;
     match settings.menu_bar_icon_style {
@@ -280,6 +305,7 @@ fn resolve_single_provider_icon_plan(
             percent: primary_percent,
             has_error,
             provider_tint,
+            estimated,
         },
         MenuBarIconStyle::StackedBars => TrayIconPlan::StackedBars {
             primary_percent,
@@ -459,11 +485,26 @@ fn provider_status_label(
         );
     }
 
-    let label = crate::commands::compact_tray_status_label(headline_window(snapshot), language);
+    let label = headline_status_label(snapshot, language);
     (
         snapshot.provider_id.clone(),
         format!("{} {}", snapshot.display_name, label),
     )
+}
+
+/// Compact status text for [`headline_window`]. A locally estimated quota
+/// gets a leading `~` so it never reads as a provider-reported meter.
+pub(crate) fn headline_status_label(
+    snapshot: &ProviderUsageSnapshot,
+    language: Language,
+) -> String {
+    let window = headline_window(snapshot);
+    let label = crate::commands::compact_tray_status_label(window, language);
+    if snapshot.quota_estimated && !window.is_informational {
+        format!("~{label}")
+    } else {
+        label
+    }
 }
 
 /// Window that headline tray surfaces should label for a provider.
