@@ -908,8 +908,8 @@ OpenCode can hold an OpenAI or Codex OAuth login. Win-CodexBar reuses it for **r
 OpenCode reads usage from `opencode.ai` cookies. Which API it uses depends on the session cookie (upstream #4131/#4139).
 
 - A `__Host-console_session` cookie means a migrated Console workspace. Win-CodexBar reads `/console/api/orgs` to find the workspace, then `/console/api/go/status` for the 5-hour and weekly quota. Every call except the workspace lookup sends the `x-org-id` header.
-- If the Go status is `null`, Win-CodexBar shows spend only after `/console/api/orgs/current` reports `hasGoSubscription: false` and `/console/api/billing/status` reports `mode: "pay-as-you-go"`. The spend is `totalCostMicroCents / 1e8` from `/console/api/usage/summary?range=30d`. The card shows it as **Last 30 days** spend, with no limit and no percentage. A missing prepaid balance hides only the balance.
-- A subscribed workspace without quota, or an invoiceable account, is an error. It never shows as pay-as-you-go spend.
+- If the Go status is `null` or `{"access": null}`, Win-CodexBar shows spend only after `/console/api/orgs/current` reports `hasGoSubscription: false` and `/console/api/billing/status` reports `mode: "pay-as-you-go"`. The spend is `totalCostMicroCents / 1e8` from `/console/api/usage/summary?range=30d`. The card shows it as **Last 30 days** spend, with no limit and no percentage. A missing prepaid balance hides only the balance.
+- A subscribed workspace without quota, or an invoiceable account, is an error unless the legacy session succeeds. It never shows as pay-as-you-go spend.
 - A Console 401 means invalid credentials. Any other Console error is an API error, not an expired session.
 - A cookie with only a legacy session (`auth` or `__Host-auth`) keeps the legacy `_server` path and its monthly pay-as-you-go billing fallback.
 - When both cookies are present and the Console call fails, the legacy path is tried. If the legacy path also fails, the Console error is reported, unless the Console error was a 401.

@@ -74,6 +74,10 @@ impl OpenCodeProvider {
             .await
         {
             Ok(workspace_id) => workspace_id,
+            // Upstream resolves the workspace id through the legacy session
+            // and keeps reading Console usage with it. This port deliberately
+            // switches to the legacy path entirely, so a Console session that
+            // cannot list its own workspaces is never mixed with legacy state.
             Err(error) => {
                 return self
                     .recover_console_with_legacy(&cookies, error, None)

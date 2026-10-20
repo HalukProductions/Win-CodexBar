@@ -332,6 +332,83 @@ async fn console_only_credentials_never_trigger_a_legacy_request() {
     }
 }
 
+async fn legacy_discovery_mocks(server: &mut ServerGuard) -> Vec<Mock> {
+    vec![
+        server
+            .mock("GET", "/_server")
+            .match_query(Matcher::UrlEncoded(
+                "id".into(),
+                WORKSPACES_SERVER_ID.into(),
+            ))
+            .with_status(200)
+            .with_body(r#"[{id:"wrk_LEGACY1"}]"#)
+            .expect(1)
+            .create_async()
+            .await,
+        server
+            .mock("GET", "/_server")
+            .match_query(Matcher::UrlEncoded(
+                "id".into(),
+                SUBSCRIPTION_SERVER_ID.into(),
+            ))
+            .match_header("referer", Matcher::Regex("wrk_LEGACY1".into()))
+            .with_status(200)
+            .with_body(LEGACY_QUOTA)
+            .expect(1)
+            .create_async()
+            .await,
+    ]
+}
+
+#[tokio::test]
+async fn console_workspace_discovery_failure_switches_to_the_legacy_path() {
+    for (status, body) in [
+        (401, r#"{"error":"unauthorized"}"#),
+        (500, r#"{"error":"internal"}"#),
+        (200, "[]"),
+    ] {
+        let mut server = mockito::Server::new_async().await;
+        let orgs = console_mock(&mut server, ORGS_PATH, status, body, 1).await;
+        let go = console_mock(&mut server, GO_PATH, 200, QUOTA, 0).await;
+        let legacy = legacy_discovery_mocks(&mut server).await;
+
+        let result = fetch(&server, BOTH_COOKIES)
+            .await
+            .unwrap_or_else(|error| panic!("{status} {body}: {error:?}"));
+
+        assert!(
+            (result.usage.primary.used_percent - 17.0).abs() < 1e-9,
+            "{status} {body}"
+        );
+        assert!((result.usage.secondary.as_ref().unwrap().used_percent - 75.0).abs() < 1e-9);
+        for mock in [orgs, go].into_iter().chain(legacy) {
+            mock.assert_async().await;
+        }
+    }
+}
+
+#[tokio::test]
+async fn console_only_discovery_unauthorized_is_auth_required_without_legacy() {
+    let mut server = mockito::Server::new_async().await;
+    let orgs = console_mock(
+        &mut server,
+        ORGS_PATH,
+        401,
+        r#"{"error":"unauthorized"}"#,
+        1,
+    )
+    .await;
+    let go = console_mock(&mut server, GO_PATH, 200, QUOTA, 0).await;
+    let legacy = legacy_mock(&mut server, LEGACY_QUOTA, 0).await;
+
+    let error = fetch(&server, CONSOLE_COOKIE).await.unwrap_err();
+
+    assert!(matches!(error, ProviderError::AuthRequired), "{error:?}");
+    for mock in [orgs, go, legacy] {
+        mock.assert_async().await;
+    }
+}
+
 #[tokio::test]
 async fn legacy_only_cookies_keep_the_server_function_path() {
     let mut server = mockito::Server::new_async().await;

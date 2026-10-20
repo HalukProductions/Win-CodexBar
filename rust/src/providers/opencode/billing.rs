@@ -341,6 +341,26 @@ mod tests {
     }
 
     #[test]
+    fn zero_monthly_limit_is_informational() {
+        let billing = OpenCodeZenBilling {
+            monthly_usage_usd: 7.5,
+            monthly_limit_usd: Some(0.0),
+            balance_usd: None,
+            has_subscription: false,
+            period: OpenCodeBillingPeriod::Monthly,
+        };
+        assert_eq!(billing.used_percent(), None);
+        let result = OpenCodeProvider::new().pay_as_you_go_result(&billing);
+        assert!(result.usage.primary.is_informational);
+        assert_eq!(result.usage.primary.used_percent, 0.0);
+        assert_eq!(
+            result.usage.primary.reset_description.as_deref(),
+            Some("$7.50 spent this month")
+        );
+        assert!(result.cost.is_none());
+    }
+
+    #[test]
     fn zen_billing_payload_scan_and_guards() {
         // $R[...] script payload fallback.
         let billing = parse_zen_billing(
