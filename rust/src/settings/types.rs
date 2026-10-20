@@ -586,6 +586,11 @@ pub struct ProviderConfig {
     /// claude-swap credentials (issue #477).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub claude_swap_enabled: bool,
+    /// Claude-only: with the Automatic cookie source, read the claude.ai
+    /// session only from the Claude desktop app's cookie store instead of
+    /// browsers. Disabled by default.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub claude_desktop_cookies_enabled: bool,
     /// Claude-only: path to the claude-swap (`cswap`) executable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub claude_swap_executable_path: Option<String>,

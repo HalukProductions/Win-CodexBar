@@ -437,6 +437,19 @@ impl Settings {
             .claude_swap_enabled = value;
     }
 
+    /// Claude-only: whether the Automatic cookie source reads the Claude
+    /// desktop app's session instead of browsers. Disabled by default.
+    pub fn claude_desktop_cookies_enabled(&self) -> bool {
+        self.provider_configs
+            .get(&ProviderId::Claude)
+            .is_some_and(|config| config.claude_desktop_cookies_enabled)
+    }
+
+    pub fn set_claude_desktop_cookies_enabled(&mut self, value: bool) {
+        self.provider_config_mut(ProviderId::Claude)
+            .claude_desktop_cookies_enabled = value;
+    }
+
     /// Claude-only: configured claude-swap executable path, or `""` when unset.
     pub fn claude_swap_executable_path(&self) -> &str {
         self.provider_configs

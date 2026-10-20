@@ -313,6 +313,8 @@ impl ClaudeFileScanResult {
 #[derive(Debug, Default)]
 struct ClaudeRecordWalk {
     roots_present: bool,
+    /// The walk read only a token account's mapped config directory.
+    account_mapped: bool,
     scan: ClaudeFileScanResult,
     /// Keys of every counted record; they resolve incomplete requests.
     completed_keys: HashSet<ClaudeUsageDedupKey>,
@@ -332,6 +334,28 @@ pub struct CostScanner {
     /// Explicit Codex trace database (tests / inject roots). Without it the
     /// ambient `CODEX_HOME` database is used, unless sessions dirs are injected.
     codex_trace_database_override: Option<PathBuf>,
+    claude_account_directory: ClaudeAccountDirectory,
+}
+
+/// Where a Claude scan learns the config directory mapped to the active token
+/// account (upstream 0.77.0 #4556).
+#[derive(Debug, Clone)]
+enum ClaudeAccountDirectory {
+    /// Read the active Claude token account when the scan resolves its roots.
+    ActiveTokenAccount,
+    /// An explicit mapping; None keeps the combined history.
+    Fixed(Option<PathBuf>),
+}
+
+impl Default for ClaudeAccountDirectory {
+    fn default() -> Self {
+        // Unit tests never read the developer's real token-accounts file.
+        if cfg!(test) {
+            Self::Fixed(None)
+        } else {
+            Self::ActiveTokenAccount
+        }
+    }
 }
 
 impl CostScanner {
@@ -349,6 +373,7 @@ impl CostScanner {
             cache_root: None,
             sessions_dirs_override: None,
             codex_trace_database_override: None,
+            claude_account_directory: ClaudeAccountDirectory::default(),
         }
     }
 
@@ -378,6 +403,13 @@ impl CostScanner {
     /// Override the Codex Priority trace database (primarily for tests).
     pub fn with_codex_trace_database(mut self, path: impl Into<PathBuf>) -> Self {
         self.codex_trace_database_override = Some(path.into());
+        self
+    }
+
+    /// Scan only <dir>\projects for Claude, as if dir were mapped to the
+    /// active Claude token account; None keeps the combined history.
+    pub fn with_claude_account_config_dir(mut self, dir: Option<PathBuf>) -> Self {
+        self.claude_account_directory = ClaudeAccountDirectory::Fixed(dir);
         self
     }
 
@@ -451,7 +483,8 @@ impl CostScanner {
             .apply_to(&mut summary);
 
         // OMP / pi-compatible anthropic rows, deduped across shared files.
-        if include_pi_sessions {
+        // A mapped account directory owns only its own transcripts.
+        if include_pi_sessions && !walk.account_mapped {
             let mut seen_pi = HashSet::new();
             crate::pi_session_cost::scan_pi_compatible_into(
                 &mut summary,
@@ -518,13 +551,15 @@ impl CostScanner {
         let incomplete_report = walk.incomplete.resolve(&walk.completed_keys);
         incomplete_report.apply_to(&mut summary);
 
-        crate::pi_session_cost::scan_pi_compatible_into(
-            &mut summary,
-            crate::pi_session_cost::PiMappedProvider::Claude,
-            cutoff,
-            cancel,
-            &mut HashSet::new(),
-        );
+        if !walk.account_mapped {
+            crate::pi_session_cost::scan_pi_compatible_into(
+                &mut summary,
+                crate::pi_session_cost::PiMappedProvider::Claude,
+                cutoff,
+                cancel,
+                &mut HashSet::new(),
+            );
+        }
 
         let complete = walk.roots_present && !is_cancelled(cancel) && walk.scan.is_complete();
         finalize_claude_summary(
@@ -611,8 +646,18 @@ impl CostScanner {
     }
 
     /// Existing Claude transcript roots: the profile root plus claude-swap
-    /// session homes, de-duplicated by resolved path.
+    /// session homes, de-duplicated by resolved path, or only the projects
+    /// directory of the config directory mapped to the active token account.
     fn claude_projects_roots(&self) -> claude_roots::ClaudeProjectsRoots {
+        let account_dir = match &self.claude_account_directory {
+            ClaudeAccountDirectory::ActiveTokenAccount => {
+                crate::providers::claude::cost_account::active_config_directory()
+            }
+            ClaudeAccountDirectory::Fixed(dir) => dir.clone(),
+        };
+        if let Some(dir) = account_dir {
+            return claude_roots::claude_account_projects_roots(&dir);
+        }
         claude_roots::claude_projects_roots(
             std::env::var("CLAUDE_CONFIG_DIR").ok().as_deref(),
             crate::pi_session_cost::scan_home().as_deref(),
@@ -632,6 +677,7 @@ impl CostScanner {
         let roots = self.claude_projects_roots();
         let mut walk = ClaudeRecordWalk {
             roots_present: !roots.paths.is_empty(),
+            account_mapped: roots.account_mapped,
             ..ClaudeRecordWalk::default()
         };
         if !walk.roots_present {

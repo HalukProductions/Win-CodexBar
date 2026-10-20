@@ -118,6 +118,7 @@ pub enum ProviderId {
     Parallel,
     Fal,
     Flora,
+    Munito,
 }
 
 impl ProviderId {
@@ -151,6 +152,15 @@ impl ProviderId {
     /// doesn't use cookies for authentication.
     pub fn cookie_domain(&self) -> Option<&'static str> {
         self.spec().cookie_domain
+    }
+
+    /// A desktop app cookie store the user can pick as a cookie source for
+    /// this provider only. Generic browser scans never include it.
+    pub fn app_cookie_store(&self) -> Option<crate::browser::detection::BrowserType> {
+        match self {
+            ProviderId::Claude => Some(crate::browser::detection::BrowserType::ClaudeDesktop),
+            _ => None,
+        }
     }
 
     /// Id of the longer pool that blocks this provider's shorter windows once
@@ -240,9 +250,18 @@ mod tests {
     use crate::core::instantiate_provider;
 
     #[test]
+    fn only_claude_offers_an_app_cookie_store() {
+        for id in ProviderId::all() {
+            let expected = (*id == ProviderId::Claude)
+                .then_some(crate::browser::detection::BrowserType::ClaudeDesktop);
+            assert_eq!(id.app_cookie_store(), expected, "{id:?}");
+        }
+    }
+
+    #[test]
     fn test_provider_id_all() {
         let all = ProviderId::all();
-        assert_eq!(all.len(), 108);
+        assert_eq!(all.len(), 109);
         assert!(all.contains(&ProviderId::Claude));
         assert!(all.contains(&ProviderId::Codex));
         assert!(all.contains(&ProviderId::Pi));

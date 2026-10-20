@@ -19,6 +19,9 @@ use support::{
 
 #[path = "tests/claude_swap.rs"]
 mod claude_swap;
+
+#[path = "tests/claude_account.rs"]
+mod claude_account;
 #[cfg(test)]
 #[path = "tests/claude_today.rs"]
 mod claude_today;
