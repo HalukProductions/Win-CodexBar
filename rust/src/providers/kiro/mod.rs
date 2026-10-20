@@ -22,6 +22,11 @@ use crate::core::{
     UsageSnapshot,
 };
 
+/// Upstream `KiroProviderDescriptor.pace` (`.calendarMonthResetWindow`): the
+/// plan-credit window carries the calendar month ending at its reset.
+pub(crate) const PACE_CAPABILITY: crate::core::ProviderPaceCapability =
+    crate::core::ProviderPaceCapability::CALENDAR_MONTH_RESET_WINDOW;
+
 /// Kiro provider (AWS AI assistant)
 #[derive(Default)]
 pub struct KiroProvider;
@@ -197,8 +202,12 @@ impl KiroProvider {
     }
 
     fn usage_with_metrics(parsed: &KiroCliUsage) -> UsageSnapshot {
-        let primary =
-            RateWindow::with_details(parsed.credits_percent, None, parsed.reset_date, None);
+        let primary = RateWindow::with_details(
+            parsed.credits_percent,
+            RateWindow::monthly_window_minutes(parsed.reset_date),
+            parsed.reset_date,
+            None,
+        );
         UsageSnapshot::new(primary).with_login_method(&parsed.plan_name)
     }
 

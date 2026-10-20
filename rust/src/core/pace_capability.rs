@@ -31,7 +31,7 @@ pub type PaceDurationPredicate = fn(&RateWindow) -> bool;
 
 /// A monthly billing window: upstream's 30-day sentinel, or the calendar
 /// month ending at the reset. Windows provider modules (Alibaba,
-/// CommandCode, Doubao, MiMo, StepFun, OpenCodeGo, ...) already expand the
+/// CommandCode, Doubao, Kiro, MiMo, StepFun, OpenCodeGo, ...) already expand the
 /// sentinel to that real length via `RateWindow::monthly_window_minutes`, so
 /// matching the sentinel alone would drop pace in every 28-, 29- and 31-day
 /// cycle.
@@ -507,6 +507,7 @@ mod tests {
             | ProviderId::AlibabaTokenPlan
             | ProviderId::CommandCode
             | ProviderId::Doubao
+            | ProviderId::Kiro
             | ProviderId::MiMo
             | ProviderId::Notion
             | ProviderId::Ollama
@@ -526,6 +527,7 @@ mod tests {
             | ProviderId::AlibabaTokenPlan
             | ProviderId::CommandCode
             | ProviderId::Doubao
+            | ProviderId::Kiro
             | ProviderId::MiMo
             | ProviderId::Notion
             | ProviderId::Ollama
