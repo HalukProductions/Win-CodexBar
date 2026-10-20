@@ -1532,8 +1532,9 @@ fn dashboard_url_opens_platform_usage_unless_account_is_subscription() {
 }
 
 /// Mirrors upstream `ClaudePlan.fromCompatibilityLoginMethod` ordering: the
-/// first recognized word wins, so an Enterprise label does not count as a
-/// subscription when a Max or Pro word is also present.
+/// words are checked in a fixed priority order (Max, Pro, Team, Enterprise,
+/// Ultra) and the first match decides, so Max wins over Enterprise and
+/// "Claude Enterprise Max" counts as a subscription. Enterprise alone does not.
 #[test]
 fn subscription_login_method_follows_upstream_word_ordering() {
     assert!(!is_subscription_login_method(None));

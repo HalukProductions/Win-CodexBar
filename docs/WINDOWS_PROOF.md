@@ -207,6 +207,11 @@ Spend contract, for the Codex card's Conversations list (scenario
 data with Hide personal information on, so every title is the masked
 `Session <id>` label (scenario `tray-codex-conversations-private`).
 
+A scenario may also set the fixture field `localeOverrides`, a map that
+replaces single English locale keys for that fixture only. It stands in for a
+long translation, so layout checks such as KPI-title wrapping run without
+shipping another locale (scenario `tray-kpi-long-titles`).
+
 Every command the frontend invokes either has a fixture handler or is listed
 in `INERT_ACTIONS` (`src/proof/router.ts`): user actions such as sign-ins,
 credential writes, and OS side effects that return `null`.

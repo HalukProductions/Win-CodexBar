@@ -190,9 +190,11 @@ impl Default for ClaudeProvider {
 /// Default and API accounts use the spec's Platform usage link instead.
 const CLAUDE_SUBSCRIPTION_DASHBOARD_URL: &str = "https://claude.ai/settings/usage";
 
-/// Upstream `ClaudePlan.isSubscriptionLoginMethod`: the login label counts as a
-/// subscription when its first recognized plan word is Max, Pro, Team or Ultra.
-/// Enterprise, API and other labels do not count.
+/// Upstream `ClaudePlan.isSubscriptionLoginMethod`: the plan is resolved by
+/// `ClaudePlan.fromCompatibilityLoginMethod`, which checks the label's words in
+/// a fixed priority order (Max, Pro, Team, Enterprise, Ultra); the first word
+/// in that order that appears decides. Max, Pro, Team and Ultra count as a
+/// subscription; Enterprise alone, API and other labels do not.
 fn is_subscription_login_method(login_method: Option<&str>) -> bool {
     let Some(login_method) = login_method else {
         return false;
