@@ -43,6 +43,8 @@ A provider returns its usage as rate windows (`RateWindow` in `rust/src/core/rat
 
 These three fields cross to the frontend only when a provider sets them. The CLI JSON doesn't change.
 
+`Provider::automatic_metric_absent_core_window_prefix()` names extra windows that stand in when a snapshot has no core quota lane (an informational primary and no secondary, model or tertiary lane). Automatic, and Session or Weekly when their lane is missing, then show the most constrained matching window instead of the placeholder. Claude returns `claude-weekly-scoped-`, so an account with only model-scoped weekly limits shows its scoped quota (upstream #4126). Its Daily Routines window and its spend cap never stand in.
+
 ## Pace
 
 Pace compares how much of a window you have used with how much of its time has passed. The card shows it as a line such as "10% in deficit · Runs out in 9d 8h". The shell scores it into seven stages, from `far_behind` to `far_ahead` (`commands/bridge/pace.rs`).

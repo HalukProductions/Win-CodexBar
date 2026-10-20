@@ -739,3 +739,78 @@ fn icon_fallback_hints_are_ignored_while_the_core_lane_is_present() {
     assert_eq!(resolved.primary.used_percent, 10.0);
     assert_eq!(resolved.secondary.as_ref().unwrap().used_percent, 20.0);
 }
+
+fn claude_extra(id: &str, used_percent: f64) -> crate::commands::NamedRateWindowSnapshot {
+    crate::commands::NamedRateWindowSnapshot {
+        id: id.to_string(),
+        title: id.to_string(),
+        window: window(used_percent),
+        fallback_lane: false,
+        icon_fallback: None,
+    }
+}
+
+/// Shape of a Claude account that reports only model-scoped weekly limits
+/// (upstream #4126): a session placeholder, no weekly lane, scoped extras.
+fn claude_scoped_only_snapshot() -> ProviderUsageSnapshot {
+    let mut snapshot = snapshot();
+    snapshot.provider_id = "claude".to_string();
+    snapshot.primary = RateWindowSnapshot {
+        is_informational: true,
+        ..window(0.0)
+    };
+    snapshot.secondary = None;
+    snapshot.extra_rate_windows = vec![
+        claude_extra("claude-weekly-scoped-fable", 12.0),
+        claude_extra("claude-weekly-scoped-sonnet", 40.0),
+        claude_extra("claude-routines", 70.0),
+    ];
+    snapshot
+}
+
+#[test]
+fn claude_automatic_selects_the_most_constrained_scoped_weekly_without_core_lanes() {
+    let snapshot = claude_scoped_only_snapshot();
+    let settings = Settings::default();
+
+    let selected = selected_usage_window(&snapshot, &settings);
+    assert!(!selected.is_informational);
+    assert_eq!(selected.used_percent, 40.0);
+    let (top, bottom) = selected_usage_icon_windows(&snapshot, &settings);
+    assert_eq!(top.used_percent, 40.0);
+    assert!(bottom.is_none());
+}
+
+#[test]
+fn claude_session_and_weekly_preferences_fall_back_to_the_scoped_weekly() {
+    let snapshot = claude_scoped_only_snapshot();
+    for preference in [MetricPreference::Session, MetricPreference::Weekly] {
+        let mut settings = Settings::default();
+        settings.set_provider_metric(ProviderId::Claude, preference);
+
+        assert_eq!(
+            selected_usage_window(&snapshot, &settings).used_percent,
+            40.0,
+            "{preference:?}"
+        );
+    }
+}
+
+#[test]
+fn claude_scoped_weekly_does_not_replace_a_reported_weekly_lane() {
+    let mut snapshot = claude_scoped_only_snapshot();
+    snapshot.secondary = Some(window(30.0));
+
+    assert_eq!(
+        selected_usage_window(&snapshot, &Settings::default()).used_percent,
+        30.0
+    );
+}
+
+#[test]
+fn scoped_weekly_fallback_is_claude_owned() {
+    let mut snapshot = claude_scoped_only_snapshot();
+    snapshot.provider_id = "codex".to_string();
+
+    assert!(selected_usage_window(&snapshot, &Settings::default()).is_informational);
+}

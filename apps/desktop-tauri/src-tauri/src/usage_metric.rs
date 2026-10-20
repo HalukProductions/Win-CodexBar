@@ -239,6 +239,10 @@ fn automatic_window(
 
     let policy = automatic_metric_policy(provider);
 
+    if let Some(window) = absent_core_window(snapshot, policy.absent_core_window_prefix) {
+        return Some(window.clone());
+    }
+
     if snapshot.primary.is_informational
         && policy.missing_core_is_terminal
         && snapshot.secondary.is_none()
@@ -307,6 +311,32 @@ struct AutomaticMetricPolicy {
     /// Whether the secondary lane represents the provider unless a core lane
     /// is exhausted (upstream's LiteLLM team-budget resolver).
     prefers_secondary_window: bool,
+    /// Extra-window id prefix that stands in when no core lane is reported.
+    absent_core_window_prefix: Option<&'static str>,
+}
+
+/// The most constrained provider-declared extra window that stands in for a
+/// snapshot without any core quota lane.
+fn absent_core_window<'a>(
+    snapshot: &'a ProviderUsageSnapshot,
+    prefix: Option<&str>,
+) -> Option<&'a RateWindowSnapshot> {
+    let prefix = prefix?;
+    let core_absent = snapshot.primary.is_informational
+        && non_informational(snapshot.secondary.as_ref()).is_none()
+        && non_informational(snapshot.model_specific.as_ref()).is_none()
+        && non_informational(snapshot.tertiary.as_ref()).is_none();
+    if !core_absent {
+        return None;
+    }
+    highest_window(
+        snapshot
+            .extra_rate_windows
+            .iter()
+            .filter(|extra| extra.id.starts_with(prefix))
+            .map(|extra| &extra.window)
+            .filter(|window| !window.is_informational),
+    )
 }
 
 fn automatic_metric_policy(provider: Option<ProviderId>) -> AutomaticMetricPolicy {
@@ -319,6 +349,9 @@ fn automatic_metric_policy(provider: Option<ProviderId>) -> AutomaticMetricPolic
     let prefers_secondary = |id: ProviderId| {
         codexbar::core::instantiate_provider(id).automatic_metric_prefers_secondary_window()
     };
+    let absent_core_window_prefix = |id: ProviderId| {
+        codexbar::core::instantiate_provider(id).automatic_metric_absent_core_window_prefix()
+    };
     match provider {
         Some(ProviderId::Antigravity) => AutomaticMetricPolicy {
             prefers_available_window: true,
@@ -326,6 +359,7 @@ fn automatic_metric_policy(provider: Option<ProviderId>) -> AutomaticMetricPolic
             uses_extra_windows: false,
             missing_core_is_terminal: true,
             prefers_secondary_window: false,
+            absent_core_window_prefix: None,
         },
         // Cursor's monthly Auto lane is the semantic weekly pace. Grok Bot is
         // a named extra allowance and must stay available through the explicit
@@ -336,6 +370,7 @@ fn automatic_metric_policy(provider: Option<ProviderId>) -> AutomaticMetricPolic
             uses_extra_windows: false,
             missing_core_is_terminal: true,
             prefers_secondary_window: false,
+            absent_core_window_prefix: None,
         },
         Some(id) => AutomaticMetricPolicy {
             prefers_available_window: false,
@@ -343,6 +378,7 @@ fn automatic_metric_policy(provider: Option<ProviderId>) -> AutomaticMetricPolic
             uses_extra_windows: true,
             missing_core_is_terminal: missing_core_is_terminal(id),
             prefers_secondary_window: prefers_secondary(id),
+            absent_core_window_prefix: absent_core_window_prefix(id),
         },
         None => AutomaticMetricPolicy {
             prefers_available_window: false,
@@ -350,6 +386,7 @@ fn automatic_metric_policy(provider: Option<ProviderId>) -> AutomaticMetricPolic
             uses_extra_windows: true,
             missing_core_is_terminal: false,
             prefers_secondary_window: false,
+            absent_core_window_prefix: None,
         },
     }
 }
