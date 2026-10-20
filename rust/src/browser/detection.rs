@@ -20,10 +20,15 @@ pub enum BrowserType {
     Arc,
     Firefox,
     Chromium,
+    /// The Claude desktop app's Electron cookie store. Deliberately absent
+    /// from [`BrowserType::all`]: only Claude reads it, and only when the
+    /// user picks it, so generic browser scans never touch it.
+    ClaudeDesktop,
 }
 
 impl BrowserType {
-    /// Get all browser types
+    /// Every web browser that generic cookie scans may read. App cookie
+    /// stores such as [`BrowserType::ClaudeDesktop`] are excluded.
     pub fn all() -> &'static [BrowserType] {
         &[
             BrowserType::Chrome,
@@ -57,6 +62,7 @@ impl BrowserType {
             BrowserType::Arc => "Arc",
             BrowserType::Firefox => "Firefox",
             BrowserType::Chromium => "Chromium",
+            BrowserType::ClaudeDesktop => "Claude desktop app",
         }
     }
 
@@ -73,6 +79,7 @@ impl BrowserType {
             BrowserType::Arc => "arc",
             BrowserType::Firefox => "firefox",
             BrowserType::Chromium => "chromium",
+            BrowserType::ClaudeDesktop => "claude-desktop",
         }
     }
 
@@ -92,6 +99,7 @@ impl BrowserType {
             BrowserType::Arc => Some(local.join("Arc/User Data")),
             BrowserType::Firefox => roaming.map(|root| root.join("Mozilla/Firefox/Profiles")),
             BrowserType::Chromium => Some(local.join("Chromium/User Data")),
+            BrowserType::ClaudeDesktop => super::claude_desktop::store_dir(local, roaming),
         }
     }
 }
@@ -113,9 +121,16 @@ pub struct BrowserProfile {
 }
 
 impl BrowserProfile {
-    /// Get the cookies database path for Chromium browsers
+    /// Get the cookies database path for Chromium browsers. Profiles written
+    /// by older Chromium/Electron builds keep `Cookies` at the profile root;
+    /// that file is used only when `Network/Cookies` does not exist.
     pub fn cookies_db_path(&self) -> PathBuf {
-        self.path.join("Network").join("Cookies")
+        let network = self.path.join("Network").join("Cookies");
+        let legacy = self.path.join("Cookies");
+        if !network.is_file() && legacy.is_file() {
+            return legacy;
+        }
+        network
     }
 
     /// Get the Local State file path (contains encryption key)
@@ -214,11 +229,11 @@ impl BrowserDetector {
 
     /// Detect profiles within a browser's user data directory
     fn detect_profiles(browser_type: BrowserType, user_data_dir: &PathBuf) -> Vec<BrowserProfile> {
-        if browser_type == BrowserType::Firefox {
-            return Self::detect_firefox_profiles(user_data_dir);
+        match browser_type {
+            BrowserType::Firefox => Self::detect_firefox_profiles(user_data_dir),
+            BrowserType::ClaudeDesktop => super::claude_desktop::profiles(user_data_dir),
+            _ => Self::detect_chromium_profiles(user_data_dir),
         }
-
-        Self::detect_chromium_profiles(user_data_dir)
     }
 
     /// Detect Chromium-based browser profiles

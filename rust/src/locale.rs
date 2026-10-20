@@ -663,6 +663,8 @@ locale_keys! {
     ProviderClaudeCookiesHelp,
     ProviderClaudeAvoidKeychainPrompts,
     ProviderClaudeAvoidKeychainPromptsHelp,
+    ProviderClaudeDesktopCookies,
+    ProviderClaudeDesktopCookiesHelp,
     ProviderClaudeDailyRoutinesUsage,
     ProviderClaudeDailyRoutinesUsageHelp,
     ProviderClaudeAllowReadingClaudeCodeCredentials,

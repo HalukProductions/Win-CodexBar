@@ -154,6 +154,18 @@
       ]
     },
     {
+      "name": "settings-claude-desktop-cookies",
+      "query": "window=settings&tab=providers:claude&fixture=default&theme=dark",
+      "size": [880, 620],
+      "steps": [
+        { "expectText": ["Use Claude desktop app cookies", "follow the account signed in to the Claude desktop app"] },
+        { "expectSelector": "option[value=\"claude-desktop\"]" },
+        { "expectCall": { "cmd": "list_detected_browsers", "args": { "providerId": "claude" } } },
+        { "click": { "selector": ".settings-field__label", "label": "Use Claude desktop app cookies" } },
+        { "screenshot": "settings-claude-desktop-cookies" }
+      ]
+    },
+    {
       "name": "settings-claude-token-account-config-dir",
       "query": "window=settings&tab=providers:claude&fixture=default&theme=dark",
       "size": [880, 620],
