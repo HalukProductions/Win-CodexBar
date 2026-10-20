@@ -92,6 +92,12 @@ impl Provider for GeminiProvider {
     fn cookie_request_scope(&self) -> Option<CookieRequestScope> {
         Some(web::COOKIE_SCOPE)
     }
+
+    // Pro (primary) outranks Flash (model-specific); a fuller Flash quota
+    // must not replace the Pro tier unless a tier is exhausted.
+    fn automatic_metric_follows_lane_order(&self) -> bool {
+        true
+    }
 }
 
 #[cfg(test)]
@@ -134,11 +140,5 @@ mod tests {
             ),
             "got {error:?}"
         );
-    }
-
-    // Pro (primary) outranks Flash (model-specific); a fuller Flash quota
-    // must not replace the Pro tier unless a tier is exhausted.
-    fn automatic_metric_follows_lane_order(&self) -> bool {
-        true
     }
 }
