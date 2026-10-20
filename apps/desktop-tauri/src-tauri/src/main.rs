@@ -284,6 +284,7 @@ fn main() {
             commands::import_preferences,
             commands::get_spend_contract,
             commands::get_codex_workspaces_snapshot,
+            commands::get_codex_session_tool_activity,
             commands::reorder_providers,
             commands::reorder_visible_providers,
             commands::restore_default_provider_order,

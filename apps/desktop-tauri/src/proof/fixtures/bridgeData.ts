@@ -1,5 +1,6 @@
 import type {
   AppInfoBridge,
+  CodexSessionToolActivity,
   CostCoverageCounts,
   CurrencyRatesSnapshot,
   HooksConfigSnapshot,
@@ -193,6 +194,26 @@ export function spendContract(providerId: string, reportingPeriod: string): Spen
     projectSourceStatus: null,
     customPricingActive: false,
     imports: [],
+  };
+}
+
+/** Mirrors `get_codex_session_tool_activity`, including its Hide personal information redaction. */
+export function codexSessionToolActivity(
+  scenario: ProofScenario,
+  sessionId: string,
+): CodexSessionToolActivity {
+  const activity = scenario.codexToolActivity?.find((candidate) => candidate.sessionId === sessionId) ?? {
+    sessionId,
+    operations: [],
+    ignoredRecordCount: 0,
+    isPartial: false,
+    redacted: false,
+  };
+  if (!scenario.settings.hidePersonalInfo) return activity;
+  return {
+    ...activity,
+    redacted: true,
+    operations: activity.operations.map((operation) => ({ ...operation, name: operation.kind, preview: null })),
   };
 }
 
