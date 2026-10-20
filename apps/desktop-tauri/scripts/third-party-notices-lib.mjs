@@ -68,7 +68,8 @@ export function renderStandardText(template, copyright) {
 
 export function loadTemplate(id) {
   if (!Object.hasOwn(STANDARD_TEMPLATES, id)) return undefined;
-  return readFileSync(join(TEMPLATE_DIR, STANDARD_TEMPLATES[id]), "utf8");
+  // A CRLF checkout (core.autocrlf on Windows CI) must not change the generated notices.
+  return readFileSync(join(TEMPLATE_DIR, STANDARD_TEMPLATES[id]), "utf8").replace(/\r\n/g, "\n");
 }
 
 // The standard texts for every SPDX id in a license expression that has a template.

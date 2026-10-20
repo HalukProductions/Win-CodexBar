@@ -10,6 +10,7 @@ rust/src/agent_sessions/fixtures/** -text
 
 # Generated notices are compared byte-for-byte by `pnpm run notices:check`.
 apps/desktop-tauri/src/generated/third-party-notices.json text eol=lf
+apps/desktop-tauri/scripts/license-templates/*.txt text eol=lf
 
 # Bash scripts must remain LF for Linux and WSL execution.
 *.sh text eol=lf
