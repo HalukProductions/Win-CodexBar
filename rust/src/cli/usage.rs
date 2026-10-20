@@ -10,7 +10,6 @@ mod fetch_helpers;
 mod parallel;
 mod render;
 
-pub(crate) use fetch_helpers::project_token_account;
 use fetch_helpers::{fetch_provider_json_output, fetch_provider_text_output};
 #[cfg(test)]
 use render::render_text;

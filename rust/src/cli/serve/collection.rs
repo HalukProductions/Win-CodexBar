@@ -33,6 +33,9 @@ pub struct AccountFetchEnvelope {
 /// upstream), or any provider's token accounts under `serve --all-accounts`.
 pub struct ClaudeAccountsInput {
     pub accounts: Result<Vec<AccountFetchEnvelope>, String>,
+    /// Some configured account produced no row (its fetch task failed);
+    /// the snapshot reports "Account list incomplete".
+    pub incomplete: bool,
 }
 
 /// Raw collection shared by the dashboard and metrics projections.

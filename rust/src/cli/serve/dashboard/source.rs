@@ -12,14 +12,16 @@ use std::pin::Pin;
 use std::time::Duration;
 
 use chrono::Utc;
+use futures::StreamExt;
+use tokio::time::Instant;
 
 use crate::cli::fetch_context::populate_api_region_from_settings;
-use crate::cli::usage::project_token_account;
 use crate::core::{
-    CostScanOptions, FetchContext, ProviderId, TokenAccountSupport, instantiate_provider,
+    CostScanOptions, FetchContext, ProviderFetchResult, ProviderId, TokenAccount,
+    TokenAccountSupport, build_fetch_context, instantiate_provider,
 };
 use crate::cost_scanner::{self, CostScanner};
-use crate::settings::Settings;
+use crate::settings::{ApiKeys, ManualCookies, Settings};
 use crate::spend_contract::build_local_spend_contract_from_summary;
 
 use crate::cli::serve::collection::{
@@ -41,6 +43,10 @@ pub type BoxSnapshotFuture = Pin<Box<dyn Future<Output = Result<SnapshotPayload,
 const PROVIDER_FETCH_TIMEOUT: Duration = Duration::from_secs(75);
 /// Same bound for one Claude account fetch.
 const ACCOUNT_FETCH_TIMEOUT: Duration = Duration::from_secs(75);
+/// Most token-account fetches in flight for one provider that declares no
+/// minimum delay between account refreshes. Same bound as the provider
+/// fan-out of `codexbar usage` (`MAX_CONCURRENT_PROVIDER_FETCHES`).
+const MAX_CONCURRENT_ACCOUNT_FETCHES: usize = 3;
 
 /// Collects the stable dashboard-v1 payload independently of its transport
 /// (upstream `DashboardSnapshotProducer.live` analog): `codexbar serve` wraps
@@ -54,7 +60,7 @@ pub struct SnapshotProducer {
     /// `web_timeout` alone (`--timeout 0` in the dashboard command).
     pub fetch_timeout: Option<Duration>,
     /// `serve --all-accounts`: add every configured token account as account
-    /// rows, private by default (upstream 0.74 #3890).
+    /// rows, private by default (upstream merge a379b25de).
     pub all_accounts: bool,
 }
 
@@ -97,42 +103,97 @@ impl SnapshotProducer {
             self.all_accounts,
         );
         let provider_ids: Vec<ProviderId> = settings.get_enabled_provider_ids();
+        let deadline = self.fetch_timeout.map(BuildDeadline::starting_now);
 
-        // Concurrent, individually bounded provider fetches; order restored by index.
+        let mut account_plans = if self.all_accounts {
+            plan_token_accounts(&provider_ids, &settings)
+        } else {
+            HashMap::new()
+        };
+        let mut provider_accounts: HashMap<String, ClaudeAccountsInput> = HashMap::new();
+
+        // Every provider, and every expanded provider's account list, runs
+        // concurrently under the same build deadline; order is restored by index.
         let mut set = tokio::task::JoinSet::new();
+        let mut account_tasks: HashMap<tokio::task::Id, (usize, ProviderId)> = HashMap::new();
         for (index, provider_id) in provider_ids.iter().enumerate() {
             let provider_id = *provider_id;
-            let fetch_timeout = self.fetch_timeout;
-            let mut ctx = FetchContext::default();
-            populate_api_region_from_settings(provider_id, &settings, &mut ctx);
-            set.spawn(async move {
-                (
-                    index,
-                    fetch_provider_envelope(provider_id, ctx, fetch_timeout).await,
-                )
-            });
+            match account_plans.remove(&provider_id) {
+                Some(Ok(plan)) => {
+                    let handle = set.spawn(async move {
+                        let (envelope, section) = fetch_account_plan(plan, deadline).await;
+                        (index, envelope, Some(section))
+                    });
+                    account_tasks.insert(handle.id(), (index, provider_id));
+                }
+                planned => {
+                    if let Some(Err(error)) = planned {
+                        provider_accounts.insert(
+                            provider_id.cli_name().to_string(),
+                            ClaudeAccountsInput {
+                                accounts: Err(error),
+                                incomplete: false,
+                            },
+                        );
+                    }
+                    let fetch_timeout = self.fetch_timeout;
+                    let mut ctx = FetchContext::default();
+                    populate_api_region_from_settings(provider_id, &settings, &mut ctx);
+                    set.spawn(async move {
+                        (
+                            index,
+                            fetch_provider_envelope(provider_id, ctx, fetch_timeout).await,
+                            None,
+                        )
+                    });
+                }
+            }
         }
+
+        let (costs, claude_accounts) = tokio::join!(
+            collect_costs(provider_ids.contains(&ProviderId::Pi)),
+            collect_claude_accounts(provider_ids.contains(&ProviderId::Claude), &settings),
+        );
+
         let mut indexed = Vec::with_capacity(provider_ids.len());
         while let Some(joined) = set.join_next().await {
             match joined {
-                Ok(item) => indexed.push(item),
+                Ok((index, envelope, section)) => {
+                    if let Some(section) = section {
+                        provider_accounts.insert(envelope.id.clone(), section);
+                    }
+                    indexed.push((index, envelope));
+                }
                 Err(join_error) => {
-                    return Err(format!("dashboard build task failed: {join_error}"));
+                    let Some((index, provider_id)) = account_tasks.get(&join_error.id()).copied()
+                    else {
+                        return Err(format!("dashboard build task failed: {join_error}"));
+                    };
+                    tracing::warn!(
+                        provider = provider_id.cli_name(),
+                        ?join_error,
+                        "dashboard account task failed"
+                    );
+                    provider_accounts.insert(
+                        provider_id.cli_name().to_string(),
+                        ClaudeAccountsInput {
+                            accounts: Ok(Vec::new()),
+                            incomplete: true,
+                        },
+                    );
+                    indexed.push((
+                        index,
+                        provider_envelope(
+                            provider_id,
+                            Err("account fetch task failed".to_string()),
+                        ),
+                    ));
                 }
             }
         }
         indexed.sort_by_key(|(index, _)| *index);
         let providers: Vec<ProviderFetchEnvelope> =
             indexed.into_iter().map(|(_, envelope)| envelope).collect();
-
-        let costs = collect_costs(provider_ids.contains(&ProviderId::Pi)).await;
-        let claude_accounts =
-            collect_claude_accounts(provider_ids.contains(&ProviderId::Claude), &settings).await;
-        let provider_accounts = if self.all_accounts {
-            collect_provider_token_accounts(&provider_ids, &settings).await
-        } else {
-            HashMap::new()
-        };
 
         let order: Vec<String> = provider_ids
             .iter()
@@ -185,17 +246,12 @@ fn resolve_identity(
     }
 }
 
-/// Fetch one provider with a hard outer bound; the error row carries the
-/// failure instead of failing the whole snapshot (F9 semantics).
-async fn fetch_provider_envelope(
+fn provider_envelope(
     provider_id: ProviderId,
-    ctx: FetchContext,
-    fetch_timeout: Option<Duration>,
+    fetch: Result<ProviderFetchResult, String>,
 ) -> ProviderFetchEnvelope {
     let provider = instantiate_provider(provider_id);
     let metadata = provider.metadata();
-
-    let fetch = bounded_fetch(provider_id, ctx, None, fetch_timeout).await;
     ProviderFetchEnvelope {
         id: provider_id.cli_name().to_string(),
         display_name: metadata.display_name.to_string(),
@@ -205,12 +261,23 @@ async fn fetch_provider_envelope(
     }
 }
 
+/// Fetch one provider with a hard outer bound; the error row carries the
+/// failure instead of failing the whole snapshot (F9 semantics).
+async fn fetch_provider_envelope(
+    provider_id: ProviderId,
+    ctx: FetchContext,
+    fetch_timeout: Option<Duration>,
+) -> ProviderFetchEnvelope {
+    let fetch = bounded_fetch(provider_id, ctx, None, fetch_timeout).await;
+    provider_envelope(provider_id, fetch)
+}
+
 async fn bounded_fetch(
     provider_id: ProviderId,
     ctx: FetchContext,
     label: Option<&str>,
     timeout_budget: Option<Duration>,
-) -> Result<crate::core::ProviderFetchResult, String> {
+) -> Result<ProviderFetchResult, String> {
     let provider = instantiate_provider(provider_id);
     let Some(timeout_budget) = timeout_budget else {
         return provider
@@ -308,6 +375,7 @@ async fn collect_claude_accounts(
         Err(error) => {
             return Some(ClaudeAccountsInput {
                 accounts: Err(format!("claude token accounts unavailable: {error}")),
+                incomplete: false,
             });
         }
     };
@@ -343,20 +411,58 @@ async fn collect_claude_accounts(
         });
     }
     let mut indexed = Vec::new();
+    let mut incomplete = false;
     while let Some(joined) = set.join_next().await {
-        if let Ok(item) = joined {
-            indexed.push(item);
+        match joined {
+            Ok(item) => indexed.push(item),
+            Err(_) => incomplete = true,
         }
     }
     indexed.sort_by_key(|(index, _)| *index);
     let accounts: Vec<AccountFetchEnvelope> = indexed.into_iter().map(|(_, row)| row).collect();
-    if accounts.is_empty() {
+    if accounts.is_empty() && !incomplete {
         // No accounts: absent section (same as upstream when the adapter is off).
         return None;
     }
     Some(ClaudeAccountsInput {
         accounts: Ok(accounts),
+        incomplete,
     })
+}
+
+/// The wall-clock budget shared by every fetch in one snapshot build.
+#[derive(Clone, Copy, Debug)]
+struct BuildDeadline {
+    at: Instant,
+    total: Duration,
+}
+
+impl BuildDeadline {
+    fn starting_now(total: Duration) -> Self {
+        Self {
+            at: Instant::now() + total,
+            total,
+        }
+    }
+
+    /// Time left for the next fetch, or `None` once the build is out of time.
+    fn remaining(&self) -> Option<Duration> {
+        let left = self.at.saturating_duration_since(Instant::now());
+        (!left.is_zero()).then_some(left)
+    }
+
+    fn expired_error(&self) -> String {
+        format!("fetch timed out after {}s", self.total.as_secs())
+    }
+}
+
+/// One provider's configured token accounts for an expanded snapshot, with
+/// each account's fetch context already resolved.
+struct AccountPlan {
+    provider_id: ProviderId,
+    rows: Vec<(TokenAccount, FetchContext)>,
+    active_id: Option<uuid::Uuid>,
+    minimum_delay: Option<Duration>,
 }
 
 /// Providers whose configured token accounts `--all-accounts` expands.
@@ -369,24 +475,27 @@ fn token_account_providers(provider_ids: &[ProviderId]) -> Vec<ProviderId> {
         .collect()
 }
 
-/// `--all-accounts` rows for every enabled provider with configured token
-/// accounts, fetched through the same account projection `codexbar usage
-/// --account` uses. Providers without accounts get no section.
-async fn collect_provider_token_accounts(
+/// Load the token accounts of every expandable provider. Providers without
+/// accounts are absent; a store that cannot be read yields an error section.
+fn plan_token_accounts(
     provider_ids: &[ProviderId],
     settings: &Settings,
-) -> HashMap<String, ClaudeAccountsInput> {
+) -> HashMap<ProviderId, Result<AccountPlan, String>> {
+    let providers = token_account_providers(provider_ids);
+    if providers.is_empty() {
+        return HashMap::new();
+    }
     let store = crate::core::TokenAccountStore::new();
-    let mut sections = HashMap::new();
-    for provider_id in token_account_providers(provider_ids) {
+    let cookies = ManualCookies::load();
+    let api_keys = ApiKeys::load();
+    let mut plans = HashMap::new();
+    for provider_id in providers {
         let data = match store.load_provider(provider_id) {
             Ok(data) => data,
             Err(error) => {
-                sections.insert(
-                    provider_id.cli_name().to_string(),
-                    ClaudeAccountsInput {
-                        accounts: Err(format!("token accounts unavailable: {error}")),
-                    },
+                plans.insert(
+                    provider_id,
+                    Err(format!("token accounts unavailable: {error}")),
                 );
                 continue;
             }
@@ -394,47 +503,142 @@ async fn collect_provider_token_accounts(
         if data.accounts.is_empty() {
             continue;
         }
-        let active_index = data.active_account().map(|active| active.id);
-        let mut set = tokio::task::JoinSet::new();
-        for (index, account) in data.accounts.iter().cloned().enumerate() {
-            let mut ctx = FetchContext::default();
-            populate_api_region_from_settings(provider_id, settings, &mut ctx);
-            project_token_account(provider_id, &account, &mut ctx);
-            set.spawn(async move {
-                let fetch = bounded_fetch(
-                    provider_id,
-                    ctx,
-                    Some(&account.label),
-                    Some(ACCOUNT_FETCH_TIMEOUT),
-                )
-                .await;
-                (
-                    index,
-                    AccountFetchEnvelope {
-                        id: account.id.to_string(),
-                        label: account.label.clone(),
-                        active: active_index == Some(account.id),
-                        fetch,
-                    },
-                )
-            });
-        }
-        let mut indexed = Vec::new();
-        while let Some(joined) = set.join_next().await {
-            if let Ok(item) = joined {
-                indexed.push(item);
-            }
-        }
-        indexed.sort_by_key(|(index, _)| *index);
-        let accounts: Vec<AccountFetchEnvelope> = indexed.into_iter().map(|(_, row)| row).collect();
-        sections.insert(
-            provider_id.cli_name().to_string(),
-            ClaudeAccountsInput {
-                accounts: Ok(accounts),
-            },
+        let rows = data
+            .accounts
+            .iter()
+            .map(|account| {
+                let ctx =
+                    account_fetch_context(provider_id, settings, &cookies, &api_keys, account);
+                (account.clone(), ctx)
+            })
+            .collect();
+        plans.insert(
+            provider_id,
+            Ok(AccountPlan {
+                provider_id,
+                rows,
+                active_id: data.active_account().map(|active| active.id),
+                minimum_delay: TokenAccountSupport::for_provider(provider_id)
+                    .and_then(|support| support.minimum_delay_between_account_refreshes),
+            }),
         );
     }
-    sections
+    plans
+}
+
+/// The context the desktop refresh would use with `account` selected, marked
+/// isolated: each row describes that one account, so providers must not fall
+/// back to an ambient login (Grok's ~/.grok switch) or another credential.
+fn account_fetch_context(
+    provider_id: ProviderId,
+    settings: &Settings,
+    cookies: &ManualCookies,
+    api_keys: &ApiKeys,
+    account: &TokenAccount,
+) -> FetchContext {
+    let mut ctx = build_fetch_context(provider_id, settings, cookies, api_keys, Some(account));
+    ctx.token_account_isolated = true;
+    ctx
+}
+
+/// Fetch every account of one provider; the provider's top-level row is the
+/// active account's result, so that account is fetched only once (upstream
+/// `DashboardSnapshotBuilder.selectedPayloads`).
+async fn fetch_account_plan(
+    plan: AccountPlan,
+    deadline: Option<BuildDeadline>,
+) -> (ProviderFetchEnvelope, ClaudeAccountsInput) {
+    let provider_id = plan.provider_id;
+    let rows = &plan.rows;
+    let results = collect_account_results(
+        rows.len(),
+        plan.minimum_delay,
+        deadline,
+        |index, budget| bounded_fetch(provider_id, rows[index].1.clone(), None, budget),
+        tokio::time::sleep,
+    )
+    .await;
+
+    let selected = rows
+        .iter()
+        .position(|(account, _)| plan.active_id == Some(account.id))
+        .unwrap_or(0);
+    let top_level = results
+        .get(selected)
+        .cloned()
+        .unwrap_or_else(|| Err("no token accounts".to_string()));
+    let accounts = rows
+        .iter()
+        .zip(results)
+        .map(|((account, _), fetch)| AccountFetchEnvelope {
+            id: format!("token:{}", account.id),
+            label: account.label.clone(),
+            active: plan.active_id == Some(account.id),
+            fetch,
+        })
+        .collect();
+    (
+        provider_envelope(provider_id, top_level),
+        ClaudeAccountsInput {
+            accounts: Ok(accounts),
+            incomplete: false,
+        },
+    )
+}
+
+/// Run `fetch` for accounts `0..count` and return the results in account
+/// order (upstream `collectAccountUsage`). A provider with a minimum delay
+/// is fetched one account at a time with `sleep(delay)` between accounts;
+/// others run up to [`MAX_CONCURRENT_ACCOUNT_FETCHES`] at once. Each fetch
+/// gets the build's remaining time, and an account reached after the
+/// deadline becomes a timeout row without being fetched.
+async fn collect_account_results<F, Fut, S, SFut>(
+    count: usize,
+    minimum_delay: Option<Duration>,
+    deadline: Option<BuildDeadline>,
+    fetch: F,
+    sleep: S,
+) -> Vec<Result<ProviderFetchResult, String>>
+where
+    F: Fn(usize, Option<Duration>) -> Fut,
+    Fut: Future<Output = Result<ProviderFetchResult, String>>,
+    S: Fn(Duration) -> SFut,
+    SFut: Future<Output = ()>,
+{
+    let run_one = |index: usize| {
+        let budget = deadline.map(|deadline| deadline.remaining());
+        let fetch = match budget {
+            Some(None) => None,
+            Some(Some(left)) => Some(fetch(index, Some(left))),
+            None => Some(fetch(index, None)),
+        };
+        async move {
+            match fetch {
+                Some(fetch) => fetch.await,
+                None => Err(deadline.map(|d| d.expired_error()).unwrap_or_default()),
+            }
+        }
+    };
+
+    match minimum_delay {
+        Some(delay) => {
+            let mut results = Vec::with_capacity(count);
+            for index in 0..count {
+                if index > 0 {
+                    sleep(delay).await;
+                }
+                results.push(run_one(index).await);
+            }
+            results
+        }
+        None => {
+            futures::stream::iter(0..count)
+                .map(run_one)
+                .buffered(MAX_CONCURRENT_ACCOUNT_FETCHES)
+                .collect()
+                .await
+        }
+    }
 }
 
 #[cfg(test)]
@@ -470,19 +674,224 @@ mod tests {
 
     #[test]
     fn token_account_expansion_skips_claude_and_unsupported_providers() {
-        let unsupported = ProviderId::all()
-            .iter()
-            .copied()
-            .find(|id| !TokenAccountSupport::is_supported(*id))
-            .expect("some provider has no token-account support");
-        let supported = ProviderId::all()
-            .iter()
-            .copied()
-            .find(|id| *id != ProviderId::Claude && TokenAccountSupport::is_supported(*id))
-            .expect("some non-Claude provider supports token accounts");
+        assert!(TokenAccountSupport::is_supported(ProviderId::OpenRouter));
+        assert!(!TokenAccountSupport::is_supported(ProviderId::Codex));
         assert_eq!(
-            token_account_providers(&[ProviderId::Claude, unsupported, supported]),
-            vec![supported]
+            token_account_providers(&[
+                ProviderId::Claude,
+                ProviderId::Codex,
+                ProviderId::OpenRouter
+            ]),
+            vec![ProviderId::OpenRouter]
         );
+    }
+
+    #[test]
+    fn only_neuralwatt_declares_a_minimum_account_refresh_delay() {
+        for id in ProviderId::all().iter().copied() {
+            let delay = TokenAccountSupport::for_provider(id)
+                .and_then(|support| support.minimum_delay_between_account_refreshes);
+            let expected = (id == ProviderId::Neuralwatt).then_some(Duration::from_secs(1));
+            assert_eq!(delay, expected, "{id:?}");
+        }
+    }
+
+    #[test]
+    fn openrouter_account_context_uses_the_account_key() {
+        let mut api_keys = ApiKeys::default();
+        api_keys.set("openrouter", "sk-or-v1-stored", None);
+        let account = TokenAccount::new("Work", "sk-or-v1-work");
+        let ctx = account_fetch_context(
+            ProviderId::OpenRouter,
+            &Settings::default(),
+            &ManualCookies::default(),
+            &api_keys,
+            &account,
+        );
+        assert_eq!(ctx.api_key.as_deref(), Some("sk-or-v1-work"));
+        assert_eq!(
+            ctx.token_account_kind,
+            Some(crate::core::TokenAccountKind::ApiKey)
+        );
+        assert!(ctx.token_account_isolated);
+    }
+
+    #[test]
+    fn xai_account_context_carries_the_saved_team_id() {
+        let mut settings = Settings::default();
+        settings.set_workspace_id(ProviderId::Xai, "team-123");
+        let account = TokenAccount::new("Team", "xai-management-key");
+        let ctx = account_fetch_context(
+            ProviderId::Xai,
+            &settings,
+            &ManualCookies::default(),
+            &ApiKeys::default(),
+            &account,
+        );
+        assert_eq!(ctx.workspace_id.as_deref(), Some("team-123"));
+        assert_eq!(ctx.api_key.as_deref(), Some("xai-management-key"));
+    }
+
+    #[test]
+    fn grok_bearer_account_context_routes_to_the_account_token() {
+        let account = TokenAccount::new("Second", "grok-bearer-token");
+        let ctx = account_fetch_context(
+            ProviderId::Grok,
+            &Settings::default(),
+            &ManualCookies::default(),
+            &ApiKeys::default(),
+            &account,
+        );
+        assert_eq!(ctx.source_mode, crate::core::SourceMode::OAuth);
+        assert_eq!(ctx.api_key.as_deref(), Some("grok-bearer-token"));
+        assert!(ctx.token_account_isolated);
+    }
+
+    fn ok_result(label: &str) -> Result<ProviderFetchResult, String> {
+        Ok(ProviderFetchResult::new(
+            crate::core::UsageSnapshot::new(crate::core::RateWindow::new(10.0)),
+            label,
+        ))
+    }
+
+    #[tokio::test]
+    async fn delayed_provider_fetches_accounts_one_at_a_time_with_the_delay_between() {
+        use std::sync::{Arc, Mutex};
+        let log = Arc::new(Mutex::new(Vec::<String>::new()));
+        let fetch_log = Arc::clone(&log);
+        let sleep_log = Arc::clone(&log);
+        let results = collect_account_results(
+            3,
+            Some(Duration::from_secs(1)),
+            None,
+            move |index, _budget| {
+                let log = Arc::clone(&fetch_log);
+                async move {
+                    log.lock().unwrap().push(format!("start {index}"));
+                    tokio::task::yield_now().await;
+                    log.lock().unwrap().push(format!("end {index}"));
+                    ok_result(&format!("account {index}"))
+                }
+            },
+            move |delay| {
+                sleep_log
+                    .lock()
+                    .unwrap()
+                    .push(format!("sleep {}ms", delay.as_millis()));
+                std::future::ready(())
+            },
+        )
+        .await;
+        assert_eq!(
+            *log.lock().unwrap(),
+            vec![
+                "start 0",
+                "end 0",
+                "sleep 1000ms",
+                "start 1",
+                "end 1",
+                "sleep 1000ms",
+                "start 2",
+                "end 2",
+            ]
+        );
+        let labels: Vec<String> = results
+            .into_iter()
+            .map(|result| result.unwrap().source_label)
+            .collect();
+        assert_eq!(labels, vec!["account 0", "account 1", "account 2"]);
+    }
+
+    #[tokio::test]
+    async fn undelayed_provider_caps_account_fetch_concurrency_and_keeps_order() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let in_flight = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let slept = Arc::new(AtomicUsize::new(0));
+        let (fetch_in_flight, fetch_peak, sleep_count) = (
+            Arc::clone(&in_flight),
+            Arc::clone(&peak),
+            Arc::clone(&slept),
+        );
+        let results = collect_account_results(
+            7,
+            None,
+            None,
+            move |index, _budget| {
+                let in_flight = Arc::clone(&fetch_in_flight);
+                let peak = Arc::clone(&fetch_peak);
+                async move {
+                    let now = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+                    peak.fetch_max(now, Ordering::SeqCst);
+                    // Later accounts finish first; order must still hold.
+                    for _ in 0..(7 - index) {
+                        tokio::task::yield_now().await;
+                    }
+                    in_flight.fetch_sub(1, Ordering::SeqCst);
+                    ok_result(&format!("account {index}"))
+                }
+            },
+            move |_delay| {
+                sleep_count.fetch_add(1, Ordering::SeqCst);
+                std::future::ready(())
+            },
+        )
+        .await;
+        assert_eq!(peak.load(Ordering::SeqCst), MAX_CONCURRENT_ACCOUNT_FETCHES);
+        assert_eq!(slept.load(Ordering::SeqCst), 0);
+        let labels: Vec<String> = results
+            .into_iter()
+            .map(|result| result.unwrap().source_label)
+            .collect();
+        let expected: Vec<String> = (0..7).map(|index| format!("account {index}")).collect();
+        assert_eq!(labels, expected);
+    }
+
+    #[tokio::test]
+    async fn accounts_reached_after_the_deadline_become_timeout_rows() {
+        let deadline = BuildDeadline {
+            at: Instant::now(),
+            total: Duration::from_secs(75),
+        };
+        let fetched = std::sync::atomic::AtomicUsize::new(0);
+        let results = collect_account_results(
+            2,
+            Some(Duration::from_secs(1)),
+            Some(deadline),
+            |_index, _budget| {
+                fetched.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                std::future::ready(ok_result("account"))
+            },
+            |_delay| std::future::ready(()),
+        )
+        .await;
+        assert_eq!(fetched.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(
+            results
+                .into_iter()
+                .map(|result| result.unwrap_err())
+                .collect::<Vec<_>>(),
+            vec!["fetch timed out after 75s", "fetch timed out after 75s"]
+        );
+    }
+
+    #[tokio::test]
+    async fn each_account_fetch_gets_the_remaining_build_time() {
+        let deadline = BuildDeadline::starting_now(Duration::from_secs(75));
+        let results = collect_account_results(
+            1,
+            None,
+            Some(deadline),
+            |_index, budget| async move {
+                let budget = budget.expect("a deadline yields a budget");
+                assert!(budget <= Duration::from_secs(75));
+                assert!(budget > Duration::from_secs(70));
+                ok_result("account")
+            },
+            |_delay| std::future::ready(()),
+        )
+        .await;
+        assert!(results[0].is_ok());
     }
 }

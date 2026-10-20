@@ -38,7 +38,7 @@ use crate::core::{CostSnapshot, RateWindow, UsagePace, UsageSnapshot};
 /// How much account identity a snapshot exposes. Upstream 0.48.0 exposes two
 /// CLI modes (`redacted` default, `full` opt-in). `None` is not a CLI value:
 /// it is the default for `serve --all-accounts` without `--identity`
-/// (upstream 0.74 #3890 private account expansion).
+/// (upstream merge a379b25de, private account expansion).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DashboardIdentity {
     Redacted,
@@ -367,7 +367,9 @@ fn build_provider(
                         })
                         .collect(),
                 ),
-                None,
+                section
+                    .incomplete
+                    .then(|| "Account list incomplete".to_string()),
             ),
             Err(adapter_error) => (
                 None,

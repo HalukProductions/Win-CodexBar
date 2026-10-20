@@ -19,6 +19,7 @@ fn stub_build(identity: DashboardIdMode, with_accounts: bool, delay: Duration) -
             usage.account_email = Some("dev@example.com".to_string());
             usage.login_method = Some("Claude Max".to_string());
             let claude_accounts = with_accounts.then(|| ClaudeAccountsInput {
+                incomplete: false,
                 accounts: Ok(vec![AccountFetchEnvelope {
                     id: "u-1".to_string(),
                     label: "Work".to_string(),

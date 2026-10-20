@@ -487,6 +487,7 @@ mod tests {
             DashboardIdentity::Redacted,
         );
         input.collection.claude_accounts = Some(ClaudeAccountsInput {
+            incomplete: false,
             accounts: Ok(vec![AccountFetchEnvelope {
                 id: "uuid-1".to_string(),
                 label: "Work".to_string(),
@@ -516,6 +517,7 @@ mod tests {
             DashboardIdentity::Redacted,
         );
         input.collection.claude_accounts = Some(ClaudeAccountsInput {
+            incomplete: false,
             accounts: Ok(vec![AccountFetchEnvelope {
                 id: "uuid-1".to_string(),
                 label: "Broken".to_string(),
@@ -556,27 +558,28 @@ mod tests {
         );
     }
 
-    fn codex_envelope(fetch: Result<ProviderFetchResult, String>) -> ProviderFetchEnvelope {
+    fn openrouter_envelope(fetch: Result<ProviderFetchResult, String>) -> ProviderFetchEnvelope {
         ProviderFetchEnvelope {
-            id: "codex".to_string(),
-            display_name: "Codex".to_string(),
+            id: "openrouter".to_string(),
+            display_name: "OpenRouter".to_string(),
             session_label: "Session".to_string(),
             weekly_label: "Weekly".to_string(),
             fetch,
         }
     }
 
-    fn two_codex_accounts() -> ClaudeAccountsInput {
+    fn two_openrouter_accounts() -> ClaudeAccountsInput {
         ClaudeAccountsInput {
+            incomplete: false,
             accounts: Ok(vec![
                 AccountFetchEnvelope {
-                    id: "a1".to_string(),
+                    id: "token:00000000-0000-0000-0000-0000000000a1".to_string(),
                     label: "work@corp.example".to_string(),
                     active: true,
                     fetch: Ok(fetch_result(20.0, Some("work@corp.example"), Some("Pro"))),
                 },
                 AccountFetchEnvelope {
-                    id: "a2".to_string(),
+                    id: "token:00000000-0000-0000-0000-0000000000a2".to_string(),
                     label: "Side".to_string(),
                     active: false,
                     fetch: Err("Side: detailed provider failure".to_string()),
@@ -589,8 +592,8 @@ mod tests {
     fn all_accounts_private_by_default_hides_labels_identity_and_errors() {
         let mut input = input(
             vec![
-                codex_envelope(Ok(fetch_result(5.0, Some("me@example.com"), Some("Pro")))),
-                codex_envelope(Ok(fetch_result(6.0, None, None))),
+                openrouter_envelope(Ok(fetch_result(5.0, Some("me@example.com"), Some("Pro")))),
+                openrouter_envelope(Ok(fetch_result(6.0, None, None))),
             ],
             DashboardIdentity::None,
         );
@@ -598,7 +601,7 @@ mod tests {
         input
             .collection
             .provider_accounts
-            .insert("codex".to_string(), two_codex_accounts());
+            .insert("openrouter".to_string(), two_openrouter_accounts());
         let json = serde_json::to_value(build_snapshot(&input)).unwrap();
         let row = &json["providers"][0];
         assert!(row["identity"].is_null());
@@ -618,14 +621,14 @@ mod tests {
     #[test]
     fn all_accounts_with_full_identity_keeps_labels_and_errors() {
         let mut input = input(
-            vec![codex_envelope(Ok(fetch_result(5.0, None, None)))],
+            vec![openrouter_envelope(Ok(fetch_result(5.0, None, None)))],
             DashboardIdentity::Full,
         );
         input.all_accounts = true;
         input
             .collection
             .provider_accounts
-            .insert("codex".to_string(), two_codex_accounts());
+            .insert("openrouter".to_string(), two_openrouter_accounts());
         let json = serde_json::to_value(build_snapshot(&input)).unwrap();
         let accounts = json["providers"][0]["accounts"].as_array().unwrap();
         assert_eq!(accounts[0]["label"], "work@corp.example");
@@ -636,14 +639,14 @@ mod tests {
     #[test]
     fn all_accounts_redacted_keeps_domains_but_hides_labels() {
         let mut input = input(
-            vec![codex_envelope(Err("raw provider failure".to_string()))],
+            vec![openrouter_envelope(Err("raw provider failure".to_string()))],
             DashboardIdentity::Redacted,
         );
         input.all_accounts = true;
         input
             .collection
             .provider_accounts
-            .insert("codex".to_string(), two_codex_accounts());
+            .insert("openrouter".to_string(), two_openrouter_accounts());
         let json = serde_json::to_value(build_snapshot(&input)).unwrap();
         let row = &json["providers"][0];
         assert_eq!(row["error"]["message"], "Account usage unavailable");
@@ -663,10 +666,65 @@ mod tests {
         );
         input.all_accounts = true;
         input.collection.claude_accounts = Some(ClaudeAccountsInput {
+            incomplete: false,
             accounts: Err("token store unreadable".to_string()),
         });
         let row = &serde_json::to_value(build_snapshot(&input)).unwrap()["providers"][0];
         assert_eq!(row["accountsError"], "Account list unavailable");
+    }
+
+    #[test]
+    fn incomplete_account_section_reports_account_list_incomplete() {
+        let mut input = input(
+            vec![openrouter_envelope(Err(
+                "account fetch task failed".to_string()
+            ))],
+            DashboardIdentity::Full,
+        );
+        input.all_accounts = true;
+        let mut section = two_openrouter_accounts();
+        section.incomplete = true;
+        input
+            .collection
+            .provider_accounts
+            .insert("openrouter".to_string(), section);
+        let row = &serde_json::to_value(build_snapshot(&input)).unwrap()["providers"][0];
+        assert_eq!(row["accountsError"], "Account list incomplete");
+        assert_eq!(row["accounts"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn all_accounts_redacted_renames_claude_rows_and_masks_their_errors() {
+        let mut input = input(
+            vec![provider_envelope(Ok(fetch_result(3.0, None, None)))],
+            DashboardIdentity::Redacted,
+        );
+        input.all_accounts = true;
+        input.collection.claude_accounts = Some(ClaudeAccountsInput {
+            incomplete: false,
+            accounts: Ok(vec![
+                AccountFetchEnvelope {
+                    id: "c1".to_string(),
+                    label: "Personal".to_string(),
+                    active: true,
+                    fetch: Ok(fetch_result(4.0, None, None)),
+                },
+                AccountFetchEnvelope {
+                    id: "c2".to_string(),
+                    label: "Work".to_string(),
+                    active: false,
+                    fetch: Err("Work: cookie expired".to_string()),
+                },
+            ]),
+        });
+        let accounts =
+            serde_json::to_value(build_snapshot(&input)).unwrap()["providers"][0]["accounts"]
+                .as_array()
+                .unwrap()
+                .clone();
+        assert_eq!(accounts[0]["label"], "Account 1");
+        assert_eq!(accounts[1]["label"], "Account 2");
+        assert_eq!(accounts[1]["error"], "Account usage unavailable");
     }
 
     #[test]
@@ -678,7 +736,7 @@ mod tests {
         input
             .collection
             .provider_accounts
-            .insert("codex".to_string(), two_codex_accounts());
+            .insert("openrouter".to_string(), two_openrouter_accounts());
         let row = &serde_json::to_value(build_snapshot(&input)).unwrap()["providers"][0];
         assert!(row.get("accounts").is_none());
     }
@@ -690,6 +748,7 @@ mod tests {
             DashboardIdentity::Redacted,
         );
         input.collection.claude_accounts = Some(ClaudeAccountsInput {
+            incomplete: false,
             accounts: Err("token store unreadable".to_string()),
         });
         let row = &serde_json::to_value(build_snapshot(&input)).unwrap()["providers"][0];
@@ -710,6 +769,7 @@ mod tests {
             DashboardIdentity::Redacted,
         );
         input.collection.claude_accounts = Some(ClaudeAccountsInput {
+            incomplete: false,
             accounts: Ok(vec![
                 AccountFetchEnvelope {
                     id: "u1".to_string(),

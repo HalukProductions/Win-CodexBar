@@ -205,7 +205,7 @@ fn project_cli_account(
     Ok(true)
 }
 
-pub(crate) fn project_token_account(
+pub(super) fn project_token_account(
     provider: ProviderId,
     account: &crate::core::TokenAccount,
     ctx: &mut crate::core::FetchContext,

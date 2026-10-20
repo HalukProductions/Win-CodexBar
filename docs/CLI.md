@@ -240,14 +240,26 @@ The desktop app can run the same server for you from Settings > Advanced > HTTP 
 
 `--identity redacted|full` sets how much account identity the snapshot shows. Without it, each request follows the app's Hide Personal Info setting.
 
-`--all-accounts` adds a row for every configured token account to the dashboard snapshot, for each provider that supports token accounts. It only changes the dashboard snapshot; `/usage` and `/metrics` stay the same. With `--all-accounts` and no `--identity`, the snapshot hides account identity: account rows are labelled `Account 1`, `Account 2` and so on, and their errors read `Account usage unavailable` or `Account list unavailable`. Pass `--identity full` to show the real labels and error text.
+`--all-accounts` adds an `accounts` list to the dashboard snapshot for each provider that has configured token accounts. Each account is fetched with its own credential, through the same source routing the desktop app uses when that account is selected; it never falls back to another login on the machine. The provider's top-level row shows the active account, so that account is fetched only once. Account ids have the form `token:<uuid>`. Claude keeps its existing account section. `/usage` doesn't change, and `/metrics` keeps one series per provider, taken from the top-level row.
+
+How much identity the expanded snapshot shows depends on `--identity`:
+
+| `--identity` | Account labels | Emails and other identity | Error text |
+| --- | --- | --- | --- |
+| not set | `Account 1`, `Account 2` ... | hidden | `Account usage unavailable`, `Account list unavailable` |
+| `redacted` | `Account 1`, `Account 2` ... | redacted, as without `--all-accounts` | `Account usage unavailable`, `Account list unavailable` |
+| `full` | the labels you gave the accounts | shown | the real error |
+
+These rules cover Claude's account rows too. If an account's fetch fails before it produces a row, the provider reports `Account list incomplete`.
+
+Providers are fetched at the same time, and so are their account lists, all under the build's 75-second deadline. Within one provider, up to three accounts are fetched at once. Neuralwatt is the exception: its quota endpoint allows one request per second, so its accounts are fetched one after another with a one-second pause between them. An account that is still waiting when the deadline passes becomes a timeout row.
 
 ```powershell
 codexbar serve --all-accounts
 codexbar serve --all-accounts --identity full
 ```
 
-Windows difference: upstream also lists visible Codex managed profiles. Windows lists only configured token accounts, and fetches them at the same time rather than one after another.
+Windows differences: upstream also lists visible Codex managed profiles; Windows lists only configured token accounts. Upstream fetches each provider's accounts one at a time; Windows fetches up to three at once, unless the provider needs a pause between accounts.
 
 ### Provider icons
 
