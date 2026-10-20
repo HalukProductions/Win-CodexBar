@@ -4,7 +4,10 @@
 //! metadata flows through the bridge. Active-account selection is clamped
 //! against the current list size before each response.
 
-use codexbar::core::{ProviderId, TokenAccount, TokenAccountStore, TokenAccountSupport};
+use codexbar::core::{
+    ProviderAccountData, ProviderId, TokenAccount, TokenAccountStore, TokenAccountSupport,
+};
+use codexbar::providers::claude::cost_account;
 use serde::Serialize;
 
 /// Bridge-friendly token account support descriptor for a provider.
@@ -27,6 +30,11 @@ pub struct TokenAccountBridge {
     pub added_at: String,
     pub last_used: Option<String>,
     pub is_active: bool,
+    /// Claude config directory whose history this account owns for local
+    /// cost estimates.
+    pub claude_config_directory: Option<String>,
+    /// Whether that directory currently exists.
+    pub claude_config_directory_available: bool,
 }
 
 /// Bridge-friendly provider token accounts snapshot.
@@ -67,6 +75,11 @@ fn build_provider_token_accounts(
             added_at: format_token_account_date(a.added_at),
             last_used: a.last_used.map(format_token_account_date),
             is_active: i == active_index,
+            claude_config_directory: a.claude_config_directory.clone(),
+            claude_config_directory_available: a
+                .claude_config_directory
+                .as_deref()
+                .is_some_and(cost_account::is_config_directory_available),
         })
         .collect();
     ProviderTokenAccountsBridge {
@@ -152,8 +165,10 @@ pub fn remove_token_account(
     let uuid = uuid::Uuid::parse_str(&account_id).map_err(|e| e.to_string())?;
     let store = TokenAccountStore::new();
     let mut data = store.load_provider(id).map_err(|e| e.to_string())?;
+    let before = mapped_cost_directory(id, &data);
     data.remove_account(uuid);
     store.save_provider(id, &data).map_err(|e| e.to_string())?;
+    clear_costs_if_mapping_changed(id, before, &data);
     crate::auto_resume::clear(&app, id);
     let active = data.clamped_active_index();
     Ok(build_provider_token_accounts(
@@ -177,9 +192,69 @@ pub fn set_active_token_account(
     let uuid = uuid::Uuid::parse_str(&account_id).map_err(|e| e.to_string())?;
     let store = TokenAccountStore::new();
     let mut data = store.load_provider(id).map_err(|e| e.to_string())?;
+    let before = mapped_cost_directory(id, &data);
     data.set_active_by_id(uuid);
     store.save_provider(id, &data).map_err(|e| e.to_string())?;
+    clear_costs_if_mapping_changed(id, before, &data);
     crate::auto_resume::clear(&app, id);
+    let active = data.clamped_active_index();
+    Ok(build_provider_token_accounts(
+        id,
+        &support,
+        data.accounts,
+        active,
+    ))
+}
+
+/// Claude local cost estimates follow the active account's mapped config
+/// directory; other providers have no such mapping.
+fn mapped_cost_directory(id: ProviderId, data: &ProviderAccountData) -> Option<std::path::PathBuf> {
+    (id == ProviderId::Claude)
+        .then(|| cost_account::mapped_config_directory(data))
+        .flatten()
+}
+
+/// Drop memoized local cost summaries when the scanned Claude history changes.
+fn clear_costs_if_mapping_changed(
+    id: ProviderId,
+    before: Option<std::path::PathBuf>,
+    after: &ProviderAccountData,
+) {
+    if before != mapped_cost_directory(id, after) {
+        crate::commands::clear_provider_local_usage_cache();
+    }
+}
+
+/// Map a Claude token account to the Claude config directory whose
+/// projects history its local cost estimates scan. None or a blank value
+/// clears the mapping and restores the combined history.
+#[tauri::command]
+pub fn set_token_account_claude_config_dir(
+    provider_id: String,
+    account_id: String,
+    directory: Option<String>,
+) -> Result<ProviderTokenAccountsBridge, String> {
+    let id = super::parse_provider_arg(&provider_id)?;
+    if id != ProviderId::Claude {
+        return Err(format!(
+            "Provider {provider_id} does not support a Claude config directory"
+        ));
+    }
+    let support = TokenAccountSupport::for_provider(id)
+        .ok_or_else(|| format!("Provider {provider_id} does not support token accounts"))?;
+    let uuid = uuid::Uuid::parse_str(&account_id).map_err(|e| e.to_string())?;
+    let directory = cost_account::normalize_config_directory(directory.as_deref())?;
+    let store = TokenAccountStore::new();
+    let mut data = store.load_provider(id).map_err(|e| e.to_string())?;
+    let before = mapped_cost_directory(id, &data);
+    let account = data
+        .accounts
+        .iter_mut()
+        .find(|account| account.id == uuid)
+        .ok_or_else(|| "Token account not found".to_string())?;
+    account.claude_config_directory = directory;
+    store.save_provider(id, &data).map_err(|e| e.to_string())?;
+    clear_costs_if_mapping_changed(id, before, &data);
     let active = data.clamped_active_index();
     Ok(build_provider_token_accounts(
         id,

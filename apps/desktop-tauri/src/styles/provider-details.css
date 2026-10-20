@@ -288,6 +288,51 @@
   margin-bottom: 12px;
 }
 
+.token-account-claude-dir {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.token-account-claude-dir__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.token-account-claude-dir__label {
+  flex: 1 1 auto;
+  color: var(--text-secondary);
+}
+
+.token-account-claude-dir__actions {
+  display: flex;
+  gap: 6px;
+}
+
+.token-account-claude-dir__path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, Consolas, monospace;
+  color: var(--text-secondary);
+}
+
+.token-account-claude-dir__unavailable {
+  flex: 0 0 auto;
+  color: var(--provider-status-error);
+}
+
+.token-account-claude-dir__hint {
+  margin: 0;
+  color: var(--text-muted);
+}
+
 /* ── Phase 7 — shortcut capture & test-sound row ───────────────────── */
 .shortcut-capture {
   display: flex;
