@@ -196,7 +196,7 @@ URL parameters:
 | --- | --- | --- |
 | `window` | `main`, `settings`, `flyout`, `floatbar` | `main` |
 | `tab` | any settings tab id, or `providers:<id>` | `general` |
-| `fixture` | `default`, `two-codex-accounts`, `errors`, `empty`, `claude-plan-hidden`, `codex-conversations`, `codex-conversations-private` | `default` |
+| `fixture` | `default`, `two-codex-accounts`, `errors`, `empty`, `claude-plan-hidden`, `kpi-long-titles`, `codex-conversations`, `codex-conversations-private` | `default` |
 | `theme` | `dark`, `light`, `auto` (overrides the fixture) | fixture value |
 
 Example: `proof.html?window=settings&tab=providers:codex&fixture=two-codex-accounts`.
@@ -206,6 +206,11 @@ Spend contract, for the Codex card's Conversations list (scenario
 `tray-codex-conversations`). `codex-conversations-private` serves the same
 data with Hide personal information on, so every title is the masked
 `Session <id>` label (scenario `tray-codex-conversations-private`).
+
+A scenario may also set the fixture field `localeOverrides`, a map that
+replaces single English locale keys for that fixture only. It stands in for a
+long translation, so layout checks such as KPI-title wrapping run without
+shipping another locale (scenario `tray-kpi-long-titles`).
 
 Every command the frontend invokes either has a fixture handler or is listed
 in `INERT_ACTIONS` (`src/proof/router.ts`): user actions such as sign-ins,
@@ -254,6 +259,7 @@ exception, or an unhandled backend command.
 | --- | --- |
 | `expectText` / `expectNoText` | page text (string or list), polled up to 8 s |
 | `expectSelector` | an element exists |
+| `expectNoOverflow` | a selector's matches fit their boxes horizontally, so no text is clipped (wrapped text passes, `nowrap` + ellipsis fails) |
 | `expectTheme` | `<html data-theme>` |
 | `click` | `{ selector, label, near? }`: a real mouse click on the element whose aria-label or text equals `label`; `near` picks the match closest to that text |
 | `expectCall` | `{ cmd, args? }`: the frontend invoked that backend command (args are a subset match) |

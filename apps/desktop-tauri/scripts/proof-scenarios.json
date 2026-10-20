@@ -96,6 +96,17 @@
       ]
     },
     {
+      "name": "tray-kpi-long-titles",
+      "query": "window=main&fixture=kpi-long-titles",
+      "size": [310, 1032],
+      "steps": [
+        { "click": { "selector": ".provider-grid__item", "label": "Claude" } },
+        { "expectText": ["Est. aktuelles Zeitfenster, Tokens insgesamt (geschaetzt)", "Latest tokens"] },
+        { "expectNoOverflow": ".card-dash__kpi-title" },
+        { "screenshot": "tray-kpi-long-titles", "clip": "panel" }
+      ]
+    },
+    {
       "name": "tray-errors",
       "query": "window=main&fixture=errors",
       "size": [310, 1032],

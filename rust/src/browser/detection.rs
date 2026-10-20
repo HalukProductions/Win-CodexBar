@@ -20,6 +20,11 @@ pub enum BrowserType {
     Arc,
     Firefox,
     Chromium,
+    /// Opera Stable. Its profile sits directly under the Roaming root, not in
+    /// a `Default` subfolder, so the root is treated as the profile.
+    Opera,
+    /// Opera GX Stable, which uses the same layout as [`BrowserType::Opera`].
+    OperaGx,
     /// The Claude desktop app's Electron cookie store. Deliberately absent
     /// from [`BrowserType::all`]: only Claude reads it, and only when the
     /// user picks it, so generic browser scans never touch it.
@@ -41,6 +46,8 @@ impl BrowserType {
             BrowserType::Arc,
             BrowserType::Firefox,
             BrowserType::Chromium,
+            BrowserType::Opera,
+            BrowserType::OperaGx,
         ]
     }
 
@@ -62,6 +69,8 @@ impl BrowserType {
             BrowserType::Arc => "Arc",
             BrowserType::Firefox => "Firefox",
             BrowserType::Chromium => "Chromium",
+            BrowserType::Opera => "Opera",
+            BrowserType::OperaGx => "Opera GX",
             BrowserType::ClaudeDesktop => "Claude desktop app",
         }
     }
@@ -79,14 +88,18 @@ impl BrowserType {
             BrowserType::Arc => "arc",
             BrowserType::Firefox => "firefox",
             BrowserType::Chromium => "chromium",
+            BrowserType::Opera => "opera",
+            BrowserType::OperaGx => "opera-gx",
             BrowserType::ClaudeDesktop => "claude-desktop",
         }
     }
 
-    /// Resolve a profile root under Windows AppData. Firefox requires Roaming;
-    /// local-root browsers remain resolvable when Roaming is unavailable.
+    /// Resolve a profile root under Windows AppData. Firefox and Opera require
+    /// Roaming; local-root browsers remain resolvable when Roaming is unavailable.
     pub fn user_data_dir(&self, local: &Path, roaming: Option<&Path>) -> Option<PathBuf> {
         match self {
+            BrowserType::Opera => roaming.map(|root| root.join("Opera Software/Opera Stable")),
+            BrowserType::OperaGx => roaming.map(|root| root.join("Opera Software/Opera GX Stable")),
             BrowserType::Chrome => Some(local.join("Google/Chrome/User Data")),
             BrowserType::ChromeBeta => Some(local.join("Google/Chrome Beta/User Data")),
             BrowserType::ChromeDev => Some(local.join("Google/Chrome Dev/User Data")),
@@ -232,8 +245,24 @@ impl BrowserDetector {
         match browser_type {
             BrowserType::Firefox => Self::detect_firefox_profiles(user_data_dir),
             BrowserType::ClaudeDesktop => super::claude_desktop::profiles(user_data_dir),
+            BrowserType::Opera | BrowserType::OperaGx => Self::detect_root_profile(user_data_dir),
             _ => Self::detect_chromium_profiles(user_data_dir),
         }
+    }
+
+    /// Opera keeps a single profile at its user data root, with `Local State`
+    /// beside `Network/Cookies`, so the root itself is the default profile.
+    /// Without `Local State` there is no cookie key to read, so no profile is
+    /// reported.
+    fn detect_root_profile(user_data_dir: &Path) -> Vec<BrowserProfile> {
+        if !user_data_dir.join("Local State").is_file() {
+            return Vec::new();
+        }
+        vec![BrowserProfile {
+            name: "Default".to_string(),
+            path: user_data_dir.to_path_buf(),
+            is_default: true,
+        }]
     }
 
     /// Detect Chromium-based browser profiles
@@ -349,16 +378,28 @@ mod tests {
                 "Chromium",
                 "chromium",
             ),
+            (
+                BrowserType::Opera,
+                "Opera Software/Opera Stable",
+                "Opera",
+                "opera",
+            ),
+            (
+                BrowserType::OperaGx,
+                "Opera Software/Opera GX Stable",
+                "Opera GX",
+                "opera-gx",
+            ),
         ];
 
         assert_eq!(BrowserType::all().len(), expected.len());
         let mut keys = std::collections::HashSet::new();
         for (browser, relative_path, display_name, key) in expected {
-            let root = if browser == BrowserType::Firefox {
-                roaming
-            } else {
-                local
-            };
+            let roaming_root = matches!(
+                browser,
+                BrowserType::Firefox | BrowserType::Opera | BrowserType::OperaGx
+            );
+            let root = if roaming_root { roaming } else { local };
             assert_eq!(
                 browser.user_data_dir(local, Some(roaming)),
                 Some(root.join(relative_path)),
@@ -370,9 +411,72 @@ mod tests {
             assert!(BrowserType::all().contains(&browser));
             assert_eq!(
                 browser.user_data_dir(local, None),
-                (browser != BrowserType::Firefox).then(|| local.join(relative_path))
+                (!roaming_root).then(|| local.join(relative_path))
             );
         }
+    }
+
+    /// Opera keeps its whole profile directly under the Roaming root instead
+    /// of in a `Default` subfolder. The root must be the single default
+    /// profile, and `Local State` (the key for cookie decryption) must resolve
+    /// from that root.
+    #[test]
+    fn opera_profile_root_is_the_single_default_profile() {
+        let temp = tempfile::tempdir().unwrap();
+        let roaming = temp.path().join("Roaming");
+        let root = roaming.join("Opera Software/Opera Stable");
+        std::fs::create_dir_all(root.join("Network")).unwrap();
+        std::fs::write(root.join("Local State"), "{}").unwrap();
+        std::fs::write(root.join("Network").join("Cookies"), "").unwrap();
+
+        let detected = BrowserDetector::detect_in_roots(
+            BrowserType::Opera,
+            temp.path(),
+            Some(roaming.as_path()),
+        )
+        .unwrap();
+
+        assert_eq!(detected.user_data_dir, root);
+        assert_eq!(detected.profiles.len(), 1);
+        let profile = &detected.profiles[0];
+        assert_eq!(profile.path, root);
+        assert!(profile.is_default);
+        let local_state = profile.local_state_path(&detected.user_data_dir);
+        assert_eq!(local_state, root.join("Local State"));
+        assert!(local_state.is_file());
+        assert_eq!(
+            profile.cookies_db_path(),
+            root.join("Network").join("Cookies")
+        );
+    }
+
+    /// Opera GX uses the same root-as-profile layout. A root without
+    /// `Local State` has no cookie key, so it is not reported as a browser.
+    #[test]
+    fn opera_gx_root_needs_local_state_to_be_detected() {
+        let temp = tempfile::tempdir().unwrap();
+        let roaming = temp.path().join("Roaming");
+        let root = roaming.join("Opera Software/Opera GX Stable");
+        std::fs::create_dir_all(root.join("Cache")).unwrap();
+
+        assert!(
+            BrowserDetector::detect_in_roots(
+                BrowserType::OperaGx,
+                temp.path(),
+                Some(roaming.as_path()),
+            )
+            .is_none()
+        );
+
+        std::fs::write(root.join("Local State"), "{}").unwrap();
+        let detected = BrowserDetector::detect_in_roots(
+            BrowserType::OperaGx,
+            temp.path(),
+            Some(roaming.as_path()),
+        )
+        .unwrap();
+        assert_eq!(detected.profiles.len(), 1);
+        assert_eq!(detected.profiles[0].path, root);
     }
 
     /// Firefox Developer Edition keeps its profiles under the shared Roaming

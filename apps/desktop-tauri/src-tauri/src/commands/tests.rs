@@ -350,12 +350,37 @@ fn provider_dashboard_url_uses_selected_regional_console() {
     settings.set_api_region(ProviderId::Kimi, "international");
 
     assert_eq!(
-        super::provider_dashboard_url(ProviderId::MiniMax, &settings).as_deref(),
+        super::provider_dashboard_url(ProviderId::MiniMax, &settings, None).as_deref(),
         Some("https://platform.minimaxi.com/user-center/payment/coding-plan?cycle_type=3")
     );
     assert_eq!(
-        super::provider_dashboard_url(ProviderId::Kimi, &settings).as_deref(),
+        super::provider_dashboard_url(ProviderId::Kimi, &settings, None).as_deref(),
         Some("https://www.kimi.ai/code/console")
+    );
+}
+
+/// Upstream #4503: the Claude dashboard action follows the cached account
+/// plan. Without a recognized subscription (or with no snapshot yet) it opens
+/// Platform usage; a Pro/Max/Team/Ultra login opens claude.ai usage settings.
+#[test]
+fn claude_dashboard_url_follows_recognized_subscription() {
+    let settings = Settings::default();
+    assert_eq!(
+        super::provider_dashboard_url(ProviderId::Claude, &settings, None).as_deref(),
+        Some("https://platform.claude.com/usage")
+    );
+    assert_eq!(
+        super::provider_dashboard_url(ProviderId::Claude, &settings, Some("Admin API")).as_deref(),
+        Some("https://platform.claude.com/usage")
+    );
+    assert_eq!(
+        super::provider_dashboard_url(ProviderId::Claude, &settings, Some("Claude Max 5x"))
+            .as_deref(),
+        Some("https://claude.ai/settings/usage")
+    );
+    assert_eq!(
+        super::provider_dashboard_url(ProviderId::Claude, &settings, Some("Claude Pro")).as_deref(),
+        Some("https://claude.ai/settings/usage")
     );
 }
 
@@ -369,7 +394,7 @@ fn api_key_catalog_providers_have_metadata_dashboard_urls() {
     for provider in codexbar::settings::get_api_key_providers() {
         if provider.dashboard_url.is_some() {
             assert!(
-                super::provider_dashboard_url(provider.id, &settings).is_some(),
+                super::provider_dashboard_url(provider.id, &settings, None).is_some(),
                 "{:?} has an API-key page but no metadata dashboard URL",
                 provider.id
             );
