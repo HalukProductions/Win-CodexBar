@@ -161,6 +161,8 @@ export function providerChartData(
       tokens: spend ? Math.round(spend.tokensPerDay * factor(daysAgo)) : 0,
     })),
     tokensIncomplete: false,
+    quotaWindowHistory:
+      scenario.quotaWindowHistory?.find((history) => history.providerId === providerId) ?? null,
   };
 }
 
