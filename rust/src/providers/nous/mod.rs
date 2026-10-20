@@ -544,6 +544,43 @@ mod tests {
     }
 
     #[test]
+    fn balance_rows_match_the_declared_balance_detail_ids() {
+        // Credits-only account from upstream #4314: no monthly meter, and the
+        // reported total usable balance is the tooltip balance.
+        let credits_only = serde_json::json!({
+            "subscription": null,
+            "purchased_credits_remaining": 6.76,
+            "paid_service_access": {
+                "has_active_subscription": false,
+                "total_usable_credits": 6.76
+            }
+        });
+        let result = parse_response(&serde_json::to_vec(&credits_only).unwrap()).unwrap();
+        assert!(result.usage.primary.is_informational);
+        let total = result
+            .display_details()
+            .iter()
+            .find(|detail| detail.id() == "total-usable")
+            .expect("total usable row");
+        assert_eq!((total.id(), total.value()), ("total-usable", "$6.76"));
+
+        // Top-up credits without a total still carries the balance row the
+        // tooltip falls back to.
+        let top_up_only = serde_json::json!({
+            "subscription": null,
+            "purchased_credits_remaining": 6.76
+        });
+        let result = parse_response(&serde_json::to_vec(&top_up_only).unwrap()).unwrap();
+        assert!(result.usage.primary.is_informational);
+        let top_up = result
+            .display_details()
+            .iter()
+            .find(|detail| detail.id() == "top-up-credits")
+            .expect("top-up row");
+        assert_eq!(top_up.value(), "$6.76");
+    }
+
+    #[test]
     fn malformed_credit_fields_fail_closed_without_echoing_payload() {
         for payload in [
             serde_json::json!({"subscription": {"monthly_credits": "nope"}}),

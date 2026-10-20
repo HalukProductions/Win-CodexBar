@@ -450,6 +450,7 @@ fn build_tooltip(
             format!("{}: {} ({})", s.display_name, error_label, short)
         } else {
             let label = crate::tray_presentation::tokens_per_minute_status(s, settings, lang)
+                .or_else(|| crate::tray_presentation::balance_status_label(s))
                 .unwrap_or_else(|| headline_status_label(s, lang));
             format!("{}: {}", s.display_name, truncate_tooltip_text(&label, 42))
         };
@@ -727,6 +728,97 @@ mod tests {
         );
 
         assert_eq!(tooltip, "CodexBar\nCodex: 16% • Resets in 3d 17h");
+    }
+
+    fn balance_detail(id: &str, value: &str) -> crate::commands::ProviderDisplayDetailSnapshot {
+        crate::commands::ProviderDisplayDetailSnapshot {
+            id: id.to_string(),
+            section_title: None,
+            title: id.to_string(),
+            value: value.to_string(),
+            secondary_value: None,
+            progress: None,
+        }
+    }
+
+    fn informational_nous(reset_description: &str) -> crate::commands::ProviderUsageSnapshot {
+        let mut nous = fake_snapshot("nous", "Nous Portal", 0.0);
+        nous.primary.is_informational = true;
+        nous.primary.reset_description = Some(reset_description.to_string());
+        nous
+    }
+
+    #[test]
+    fn tooltip_shows_nous_balance_instead_of_generic_credit_label() {
+        // Top-up credits only: the headline is the generic informational label,
+        // so the tooltip shows the reported balance (upstream #4319).
+        let mut nous = informational_nous("Nous Portal credits");
+        nous.display_details = vec![balance_detail("top-up-credits", "$6.76")];
+
+        let tooltip = build_tooltip(
+            &[nous],
+            &Settings::default(),
+            codexbar::settings::Language::English,
+            false,
+        );
+
+        assert_eq!(tooltip, "CodexBar\nNous Portal: $6.76");
+    }
+
+    #[test]
+    fn tooltip_nous_balance_prefers_total_usable_and_keeps_zero() {
+        let mut nous = informational_nous("$0.00 monthly grant");
+        nous.display_details = vec![
+            balance_detail("top-up-credits", "$3.00"),
+            balance_detail("total-usable", "$0.00"),
+        ];
+
+        let tooltip = build_tooltip(
+            &[nous],
+            &Settings::default(),
+            codexbar::settings::Language::English,
+            false,
+        );
+
+        assert_eq!(tooltip, "CodexBar\nNous Portal: $0.00");
+    }
+
+    #[test]
+    fn tooltip_keeps_nous_monthly_percentage_over_balance() {
+        let mut nous = fake_snapshot("nous", "Nous Portal", 25.0);
+        nous.display_details = vec![balance_detail("total-usable", "$74.25")];
+
+        let tooltip = build_tooltip(
+            &[nous],
+            &Settings::default(),
+            codexbar::settings::Language::English,
+            false,
+        );
+
+        assert_eq!(tooltip, "CodexBar\nNous Portal: 25%");
+    }
+
+    #[test]
+    fn tooltip_balance_stays_with_the_declaring_provider() {
+        // Another provider's balance-named row must not replace its own label,
+        // and Nous without a reported balance keeps its headline text.
+        let mut claude = informational_nous("Claude informational");
+        claude.provider_id = "claude".to_string();
+        claude.display_name = "Claude".to_string();
+        claude.display_details = vec![balance_detail("top-up-credits", "$6.76")];
+        let nous = informational_nous("Nous Portal credits");
+
+        let tooltip = build_tooltip(
+            &[claude, nous],
+            &Settings::default(),
+            codexbar::settings::Language::English,
+            false,
+        );
+
+        assert_eq!(
+            tooltip,
+            "CodexBar\nClaude: Claude informational\nNous Portal: Nous Portal credits"
+        );
     }
 
     #[test]
