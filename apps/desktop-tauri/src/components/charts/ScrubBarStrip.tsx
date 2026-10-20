@@ -112,6 +112,9 @@ export function ScrubBarStrip({
     else if (event.key === "End") next = bars.length - 1;
     else if (event.key === "Escape" && selectedIndex >= 0) {
       event.preventDefault();
+      // Only clear the inspected bar; with nothing selected Escape still
+      // reaches the window listener that dismisses the tray panel.
+      event.stopPropagation();
       onSelect(null);
       return;
     }
