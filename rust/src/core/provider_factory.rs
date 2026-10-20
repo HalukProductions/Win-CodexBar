@@ -15,6 +15,7 @@ use crate::providers::CosmicProvider;
 use crate::providers::ExaProvider;
 use crate::providers::FalProvider;
 use crate::providers::FloraProvider;
+use crate::providers::FutureAgiProvider;
 use crate::providers::IBMBobProvider;
 use crate::providers::LangdockProvider;
 use crate::providers::LinkupProvider;
@@ -160,6 +161,7 @@ pub fn instantiate(id: ProviderId) -> Box<dyn Provider> {
         ProviderId::Parallel => Box::new(ParallelProvider::new()),
         ProviderId::Fal => Box::new(FalProvider::new()),
         ProviderId::Flora => Box::new(FloraProvider::new()),
+        ProviderId::FutureAgi => Box::new(FutureAgiProvider::new()),
         ProviderId::Munito => Box::new(MunitoProvider::new()),
     }
 }
@@ -279,6 +281,7 @@ pub fn pace_capability(id: ProviderId) -> ProviderPaceCapability {
         | ProviderId::Parallel
         | ProviderId::Fal
         | ProviderId::Flora
+        | ProviderId::FutureAgi
         | ProviderId::Munito => ProviderPaceCapability::UNSUPPORTED,
     }
 }
@@ -398,6 +401,7 @@ pub fn limit_reset_policy(id: ProviderId) -> ProviderLimitResetPolicy {
         | ProviderId::Parallel
         | ProviderId::Fal
         | ProviderId::Flora
+        | ProviderId::FutureAgi
         | ProviderId::Munito => ProviderLimitResetPolicy::DEFAULT,
     }
 }
@@ -515,6 +519,7 @@ pub(crate) fn cost_cli_extension_for(id: ProviderId) -> Option<&'static dyn Cost
         | ProviderId::Parallel
         | ProviderId::Fal
         | ProviderId::Flora
+        | ProviderId::FutureAgi
         | ProviderId::Munito => None,
     }
 }

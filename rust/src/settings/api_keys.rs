@@ -748,6 +748,15 @@ pub fn get_api_key_providers() -> Vec<ProviderConfigInfo> {
             ),
         },
         ProviderConfigInfo {
+            id: ProviderId::FutureAgi,
+            name: "Future AGI",
+            api_key_env_var: Some("FI_API_KEY"),
+            api_key_help: Some(
+                "Enter API_KEY:SECRET_KEY, or the API key alone with FI_SECRET_KEY set. Or set FI_API_KEY and FI_SECRET_KEY.",
+            ),
+            dashboard_url: Some("https://app.futureagi.com/dashboard/settings/usage-summary"),
+        },
+        ProviderConfigInfo {
             id: ProviderId::Munito,
             name: "Munito",
             api_key_env_var: Some("MUNITO_API_KEY"),

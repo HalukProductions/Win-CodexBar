@@ -118,6 +118,7 @@ pub enum ProviderId {
     Parallel,
     Fal,
     Flora,
+    FutureAgi,
     Munito,
 }
 
@@ -268,7 +269,7 @@ mod tests {
     #[test]
     fn test_provider_id_all() {
         let all = ProviderId::all();
-        assert_eq!(all.len(), 109);
+        assert_eq!(all.len(), 110);
         assert!(all.contains(&ProviderId::Claude));
         assert!(all.contains(&ProviderId::Codex));
         assert!(all.contains(&ProviderId::Pi));

@@ -374,6 +374,7 @@ impl TokenAccountSupport {
             | ProviderId::Parallel
             | ProviderId::Fal
             | ProviderId::Flora
+            | ProviderId::FutureAgi
             | ProviderId::Munito => None,
         }
     }

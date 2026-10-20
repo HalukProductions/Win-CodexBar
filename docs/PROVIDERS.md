@@ -622,6 +622,47 @@ permission on the workspace; 404 reports an unknown workspace ID; other HTTP
 errors report their status. A response without a finite `available_cost` is
 reported as unrecognized. Response bodies are never echoed in errors.
 
+### Future AGI
+
+Future AGI is disabled by default. It needs both an **API key** and a **secret
+key**. In Settings → Providers → Future AGI, enter `API_KEY:SECRET_KEY` (split at
+the first colon), or enter only the API key and set `FI_SECRET_KEY`. Without a
+saved key the provider reads `FI_API_KEY` and `FI_SECRET_KEY`. A half saved in
+Settings overrides its environment variable. Surrounding whitespace and one pair
+of wrapping quotes are removed from each half. Upstream has two separate fields;
+Win-CodexBar has one API key slot per provider, so both halves share it. Neither
+key is written to logs, and a missing half fails before any request.
+
+The provider makes one read-only request:
+
+```text
+GET https://api.futureagi.com/usage/v2/usage-overview/
+X-Api-Key: <API key>
+X-Secret-Key: <secret key>
+```
+
+- The response must have `status: true` and a `result` object with 1 to 16
+  `dimensions`, a `billing_period_start` before `billing_period_end` (dates as
+  `YYYY-MM-DD`, read as UTC midnight, or ISO 8601 timestamps with an offset) and
+  a `total_estimated_cost`.
+- Each dimension needs a unique `key`, a `display_name` and `display_unit` (at
+  most 120 characters), and `current_usage` / `free_allowance` as non-negative
+  JSON numbers. Numeric strings are rejected so malformed usage never reads as
+  zero.
+- The **Used / free allowance** section has one row per dimension:
+  `used / allowance unit`, for example `500 / 2,000 credits`.
+- The **Billing period** section shows **Estimated usage cost** in USD.
+- The primary window is `ai_credits` and the secondary window is
+  `gateway_requests`, each as usage against a positive free allowance (clamped
+  to 100%), spanning the billing period and resetting at its end. A meter with a
+  zero allowance keeps its row but has no bar.
+- `plan_display_name` is shown as the plan. There is no cost summary.
+- 401 and 403 report that authentication is required; 429 reports that usage
+  requests are rate limited; other non-200 responses report
+  `Future AGI returned HTTP <status>.` Anything else unexpected reports
+  `Future AGI returned an unrecognized usage overview.` Response bodies are
+  never echoed in errors.
+
 ### Munito
 
 Munito is disabled by default. In Settings → Providers → Munito, enter an
