@@ -271,7 +271,7 @@ impl GrokProvider {
 
     async fn fetch_auto(&self, ctx: &FetchContext) -> Result<ProviderFetchResult, ProviderError> {
         let allow_browser_cookie_fallback = !ctx.auto_prefer_web;
-        for step in grok_auto_steps(
+        for step in grok_steps_for_context(
             ctx.api_key
                 .as_deref()
                 .is_some_and(|token| !token.trim().is_empty()),
@@ -279,6 +279,7 @@ impl GrokProvider {
                 .as_deref()
                 .is_some_and(|cookie| !cookie.trim().is_empty()),
             allow_browser_cookie_fallback,
+            ctx.token_account_isolated,
         ) {
             match step {
                 GrokAutoStep::AmbientOAuth => {
@@ -577,6 +578,14 @@ impl Provider for GrokProvider {
                     .await
             }
             SourceMode::OAuth => {
+                if ctx.token_account_isolated
+                    && let Some(token) = ctx.api_key.as_deref()
+                {
+                    let credentials = GrokCredentials::from_bearer(token);
+                    return self
+                        .fetch_with_auth(&credentials, GrokAuthKind::OAuth, ctx)
+                        .await;
+                }
                 // Prefer the switched ~/.grok/auth.json over a leftover token
                 // account so Weekly/notifications follow Grok account Switch.
                 let credentials = match Self::load_credentials(GrokAuthKind::OAuth).await {
@@ -634,6 +643,26 @@ fn grok_auto_steps(
     }
     if allow_browser_cookie_fallback {
         steps.push(GrokAutoStep::CookieRefresh);
+    }
+    steps
+}
+
+/// An isolated token-account fetch (one row per configured account) must
+/// read only that account's credential: the ambient ~/.grok login and the
+/// browser session belong to whichever account is switched in.
+fn grok_steps_for_context(
+    has_api_key: bool,
+    has_manual_cookie: bool,
+    allow_browser_cookie_fallback: bool,
+    token_account_isolated: bool,
+) -> Vec<GrokAutoStep> {
+    let mut steps = grok_auto_steps(
+        has_api_key,
+        has_manual_cookie,
+        allow_browser_cookie_fallback,
+    );
+    if token_account_isolated {
+        steps.retain(|step| matches!(step, GrokAutoStep::ApiKey | GrokAutoStep::ManualCookie));
     }
     steps
 }

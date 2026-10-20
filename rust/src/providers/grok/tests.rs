@@ -172,6 +172,23 @@ fn auto_tries_switched_login_before_cookies() {
 }
 
 #[test]
+fn isolated_account_auto_skips_ambient_login_and_browser() {
+    assert_eq!(
+        grok_steps_for_context(true, true, true, true),
+        vec![GrokAutoStep::ApiKey, GrokAutoStep::ManualCookie]
+    );
+    assert_eq!(
+        grok_steps_for_context(false, true, true, true),
+        vec![GrokAutoStep::ManualCookie]
+    );
+    assert!(grok_steps_for_context(false, false, true, true).is_empty());
+    assert_eq!(
+        grok_steps_for_context(true, false, true, false),
+        grok_auto_steps(true, false, true)
+    );
+}
+
+#[test]
 fn cookie_refresh_uses_cache_when_present() {
     assert_eq!(
         cookie_refresh_action(true, None),
