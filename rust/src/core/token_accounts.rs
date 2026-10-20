@@ -373,7 +373,10 @@ impl TokenAccountSupport {
             | ProviderId::Aerostack
             | ProviderId::Parallel
             | ProviderId::Fal
-            | ProviderId::Flora => None,
+            | ProviderId::Flora
+            | ProviderId::FutureAgi
+            | ProviderId::Munito
+            | ProviderId::ClaudePlatform => None,
         }
     }
 

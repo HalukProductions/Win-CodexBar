@@ -1,18 +1,31 @@
 //! Claude usage-limit resets ("Reset for free" in Claude Settings > Usage),
-//! read from the `cedar_ember` block of the Claude Web usage response.
+//! read from the `cedar_ember` block of the Claude Web and OAuth usage
+//! responses.
 //!
 //! The result is a display-only [`ProviderInventoryItem`]: a count plus the
 //! soonest expiry. Grant identifiers are redemption handles and are never
 //! deserialized, so they cannot reach the bridge, CLI output, or any
-//! persisted snapshot. Only the Web source reads this block.
+//! persisted snapshot. A raw OAuth body that is kept on disk goes through
+//! [`redact_usage_body`] first.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer};
 
 use crate::core::ProviderInventoryItem;
 
+/// Query flag that opts a usage request in to the `cedar_ember` block.
+pub(super) const RESET_OPT_IN_QUERY: &str = "cedar_ember=1";
+
 const INVENTORY_ID: &str = "reset-credits";
 const INVENTORY_TITLE: &str = "Limit Reset Credits";
+/// Grant fields [`Grant`] reads; everything else is dropped before a body is stored.
+const GRANT_FIELDS: [&str; 5] = [
+    "resets_left",
+    "resets_total",
+    "starts_at",
+    "ends_at",
+    "paused",
+];
 
 /// Observed grants hold one reset each; a larger total is treated as
 /// malformed instead of allocated.
@@ -28,6 +41,49 @@ pub(super) fn inventory_from_block(
     now: DateTime<Utc>,
 ) -> Option<ProviderInventoryItem> {
     ResetStatus::deserialize(block).ok()?.inventory(now)
+}
+
+/// A usage body safe to persist. The `cedar_ember` block keeps only
+/// `eligible` and the grant fields this module reads, so redemption handles
+/// never reach disk while a stored body still yields the same inventory. A
+/// non-object grant record becomes `null`, which keeps the record count that
+/// [`MAX_GRANT_RECORDS`] checks. A body without the block is returned as is.
+pub(super) fn redact_usage_body(body: &str) -> String {
+    let Ok(serde_json::Value::Object(mut root)) = serde_json::from_str(body) else {
+        return body.to_string();
+    };
+    let Some(block) = root.get_mut("cedar_ember") else {
+        return body.to_string();
+    };
+    *block = redact_block(block);
+    serde_json::Value::Object(root).to_string()
+}
+
+fn redact_block(block: &serde_json::Value) -> serde_json::Value {
+    let serde_json::Value::Object(block) = block else {
+        return serde_json::Value::Null;
+    };
+    let mut redacted = serde_json::Map::new();
+    if let Some(eligible) = block.get("eligible") {
+        redacted.insert("eligible".to_string(), eligible.clone());
+    }
+    if let Some(serde_json::Value::Array(grants)) = block.get("grants") {
+        let grants = grants
+            .iter()
+            .map(|grant| match grant {
+                serde_json::Value::Object(fields) => serde_json::Value::Object(
+                    fields
+                        .iter()
+                        .filter(|(key, _)| GRANT_FIELDS.contains(&key.as_str()))
+                        .map(|(key, value)| (key.clone(), value.clone()))
+                        .collect(),
+                ),
+                _ => serde_json::Value::Null,
+            })
+            .collect();
+        redacted.insert("grants".to_string(), serde_json::Value::Array(grants));
+    }
+    serde_json::Value::Object(redacted)
 }
 
 /// Raw `cedar_ember` block. Only `eligible: true` yields an inventory.

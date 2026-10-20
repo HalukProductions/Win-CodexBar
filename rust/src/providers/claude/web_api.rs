@@ -11,14 +11,11 @@ use crate::core::{
 
 use super::CLOUDFLARE_CHALLENGE_MESSAGE;
 use super::cloud_credits;
-use super::reset_credits;
+use super::reset_credits::{self, RESET_OPT_IN_QUERY};
 use super::spend_window;
 use super::subscription_details;
 
 const CLOUDFLARE_BODY_PREFIX_BYTES: usize = 64 * 1024;
-
-/// Query flag that opts the usage request in to the `cedar_ember` block.
-const RESET_OPT_IN_QUERY: &str = "cedar_ember=1";
 
 fn is_cloudflare_challenge_response(
     status: StatusCode,
@@ -448,7 +445,7 @@ impl ClaudeWebApiFetcher {
         let mut result = ProviderFetchResult::new(snapshot, "web")
             .with_display_detail(cloud_credits_row(&usage, Utc::now()));
 
-        // Web-only, display-only limit-reset inventory (never persisted).
+        // Display-only limit-reset inventory (never persisted).
         if let Some(item) = usage
             .cedar_ember
             .as_ref()

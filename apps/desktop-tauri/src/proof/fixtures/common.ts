@@ -82,6 +82,12 @@ export function providerSnapshot(
 export const PROOF_PROVIDER_CATALOG: ProviderCatalogEntry[] = [
   { id: "codex", displayName: "Codex", cookieDomain: "chatgpt.com", cliAliases: ["openai"] },
   { id: "claude", displayName: "Claude", cookieDomain: "claude.ai" },
+  {
+    id: "claudeplatform",
+    displayName: "Claude Platform",
+    cookieDomain: "platform.claude.com",
+    cliAliases: ["claude-platform"],
+  },
   { id: "cursor", displayName: "Cursor", cookieDomain: "cursor.com" },
   { id: "gemini", displayName: "Gemini", cookieDomain: null },
   { id: "copilot", displayName: "Copilot", cookieDomain: null },
@@ -90,6 +96,7 @@ export const PROOF_PROVIDER_CATALOG: ProviderCatalogEntry[] = [
   { id: "kiro", displayName: "Kiro", cookieDomain: null },
   { id: "zai", displayName: "z.ai", cookieDomain: null },
   { id: "mistral", displayName: "Mistral", cookieDomain: null },
+  { id: "openaiapi", displayName: "OpenAI API", cookieDomain: null },
 ];
 
 export function catalogOrder(): string[] {
@@ -179,6 +186,7 @@ export function baseSettings(overrides: Partial<SettingsSnapshot> = {}): Setting
     claudeSwapEnabled: false,
     claudeSwapExecutablePath: "",
     claudeSwapSource: "claude-swap",
+    claudeDesktopCookiesEnabled: false,
     codexSparkUsageVisible: true,
     codexOpenaiWebExtras: false,
     codexHistoricalTracking: true,

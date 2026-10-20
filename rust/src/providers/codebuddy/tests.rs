@@ -346,14 +346,37 @@ async fn waf_html_body_is_treated_as_transient() {
 /// End-to-end Auto behaviour with a real on-disk cache:
 /// success persists typed totals; transient failure falls back to them;
 /// auth failure surfaces even with a valid cache; foreign cache rejected.
+/// Serializes every test that touches the process-wide CodeBuddy credits
+/// cache override (`CB_CREDITS_FILE`). Without it, a test that sets the
+/// variable would see another test's cache writes.
+static CREDITS_FILE_ENV: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// Points `CB_CREDITS_FILE` at a test-owned path while the guard lives, and
+/// removes it on drop (including on panic). Hold `CREDITS_FILE_ENV` first.
+struct CreditsFileOverride;
+
+impl CreditsFileOverride {
+    fn set(path: &Path) -> Self {
+        // SAFETY: callers hold CREDITS_FILE_ENV, so no other test reads or
+        // writes the environment through this override concurrently.
+        unsafe { std::env::set_var("CB_CREDITS_FILE", path) };
+        Self
+    }
+}
+
+impl Drop for CreditsFileOverride {
+    fn drop(&mut self) {
+        // SAFETY: still serialized by CREDITS_FILE_ENV (declared before this guard).
+        unsafe { std::env::remove_var("CB_CREDITS_FILE") };
+    }
+}
+
 #[tokio::test]
 async fn auto_mode_cache_semantics_end_to_end() {
+    let _env = CREDITS_FILE_ENV.lock().await;
     let dir = tempfile::tempdir().unwrap();
     let cache_path = dir.path().join("cb_credits.json");
-    // SAFETY: single test using this env var; restored at the end.
-    unsafe {
-        std::env::set_var("CB_CREDITS_FILE", &cache_path);
-    }
+    let _credits_file = CreditsFileOverride::set(&cache_path);
 
     let payload_body = r#"{"code":0,"msg":"ok","data":{"Response":{"Data":{"Accounts":[{"CapacitySize":2000,"CapacityUsed":100,"CapacityRemain":1900,"ExpireTime":"2026-09-01T00:00:00Z"}]}}}}"#;
     let ctx = |mode: SourceMode| FetchContext {
@@ -426,11 +449,5 @@ async fn auto_mode_cache_semantics_end_to_end() {
             .await
             .unwrap_err();
         assert!(matches!(err, ProviderError::Other(_)), "got {err}");
-    }
-
-    // SAFETY: this test set CB_CREDITS_FILE at its start under the same
-    // single-test ownership; removing it restores the shared environment.
-    unsafe {
-        std::env::remove_var("CB_CREDITS_FILE");
     }
 }

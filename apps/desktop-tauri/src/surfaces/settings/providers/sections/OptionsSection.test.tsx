@@ -9,8 +9,9 @@ vi.mock("../../../../lib/tauri", () => ({
 
 const t = (key: string) => key;
 
-const detail = (id: string) => ({
+const detail = (id: string, cookieSource: string | null = null) => ({
   id,
+  cookieSource,
   autoResumeAfterQuotaReset: false,
   autoResumeSupported: false,
   optionalDetailsEnabled: false,
@@ -240,6 +241,48 @@ describe("OptionsSection", () => {
     expect(screen.getByRole("textbox", { name: "ClaudeTcrExecutablePath" })).toBeTruthy();
     expect(screen.getByText("ClaudeTcrHint")).toBeTruthy();
     expect(screen.queryByText("ClaudeSwapHint")).toBeNull();
+  });
+
+  it("offers Claude desktop app cookies only while the cookie source is Automatic", async () => {
+    const onSettingsChange = vi.fn();
+    const { rerender } = render(
+      <OptionsSection
+        detail={detail("claude", "manual")}
+        settings={settings()}
+        disabled={false}
+        t={t}
+        onSettingsChange={onSettingsChange}
+        onReload={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("checkbox", { name: "ProviderClaudeDesktopCookies" })).toBeNull();
+
+    rerender(
+      <OptionsSection
+        detail={detail("claude", "auto")}
+        settings={settings()}
+        disabled={false}
+        t={t}
+        onSettingsChange={onSettingsChange}
+        onReload={vi.fn()}
+      />,
+    );
+    expect(toggle("ProviderClaudeDesktopCookies")).not.toBeChecked();
+    expect(screen.getByText("ProviderClaudeDesktopCookiesHelp")).toBeTruthy();
+    await act(async () => fireEvent.click(toggle("ProviderClaudeDesktopCookies")));
+    expect(onSettingsChange).toHaveBeenLastCalledWith({ claudeDesktopCookiesEnabled: true });
+
+    rerender(
+      <OptionsSection
+        detail={detail("claude", "auto")}
+        settings={settings({ claudeDesktopCookiesEnabled: true })}
+        disabled={false}
+        t={t}
+        onSettingsChange={onSettingsChange}
+        onReload={vi.fn()}
+      />,
+    );
+    expect(toggle("ProviderClaudeDesktopCookies")).toBeChecked();
   });
 
   it("renders an empty group for a provider without options", () => {

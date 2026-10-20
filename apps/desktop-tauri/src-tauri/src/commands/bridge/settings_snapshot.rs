@@ -132,6 +132,7 @@ pub struct SettingsSnapshot {
     claude_swap_enabled: bool,
     claude_swap_executable_path: String,
     claude_swap_source: codexbar::providers::claude::claude_swap::ClaudeSwapAccountSource,
+    claude_desktop_cookies_enabled: bool,
     codex_spark_usage_visible: bool,
     codex_openai_web_extras: bool,
     codex_historical_tracking: bool,
@@ -205,6 +206,7 @@ impl From<Settings> for SettingsSnapshot {
         let claude_swap_enabled = settings.claude_swap_enabled();
         let claude_swap_executable_path = settings.claude_swap_executable_path().to_string();
         let claude_swap_source = settings.claude_swap_source();
+        let claude_desktop_cookies_enabled = settings.claude_desktop_cookies_enabled();
         let codex_spark_usage_visible = settings.codex_spark_usage_visible();
         let openai_live_usage_enabled = settings.live_usage_enabled(ProviderId::OpenAIApi);
         let openai_model_rate_limits = settings
@@ -321,6 +323,7 @@ impl From<Settings> for SettingsSnapshot {
             claude_swap_enabled,
             claude_swap_executable_path,
             claude_swap_source,
+            claude_desktop_cookies_enabled,
             codex_spark_usage_visible,
             codex_openai_web_extras,
             codex_historical_tracking,
@@ -459,6 +462,7 @@ fn metric_preference_label(pref: MetricPreference) -> &'static str {
         MetricPreference::ExtraUsage => "extraUsage",
         MetricPreference::MonthlyPlan => "monthlyPlan",
         MetricPreference::Average => "average",
+        MetricPreference::TokensPerMinute => "tokensPerMinute",
     }
 }
 
@@ -473,6 +477,7 @@ pub(in crate::commands) fn parse_metric_preference(s: &str) -> Option<MetricPref
         "extraUsage" | "extrausage" => Some(MetricPreference::ExtraUsage),
         "monthlyPlan" | "monthlyplan" => Some(MetricPreference::MonthlyPlan),
         "average" => Some(MetricPreference::Average),
+        "tokensPerMinute" | "tokensperminute" => Some(MetricPreference::TokensPerMinute),
         _ => None,
     }
 }

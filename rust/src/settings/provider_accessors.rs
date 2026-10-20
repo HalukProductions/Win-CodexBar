@@ -40,7 +40,8 @@ impl Settings {
                 | ProviderId::WorkBuddy
                 | ProviderId::TinyApi
                 | ProviderId::Xapi
-                | ProviderId::Parallel => "auto",
+                | ProviderId::Parallel
+                | ProviderId::ClaudePlatform => "auto",
                 _ => DEFAULT_COOKIE_SOURCE,
             })
     }
@@ -436,6 +437,19 @@ impl Settings {
     pub fn set_claude_swap_enabled(&mut self, value: bool) {
         self.provider_config_mut(ProviderId::Claude)
             .claude_swap_enabled = value;
+    }
+
+    /// Claude-only: whether the Automatic cookie source reads the Claude
+    /// desktop app's session instead of browsers. Disabled by default.
+    pub fn claude_desktop_cookies_enabled(&self) -> bool {
+        self.provider_configs
+            .get(&ProviderId::Claude)
+            .is_some_and(|config| config.claude_desktop_cookies_enabled)
+    }
+
+    pub fn set_claude_desktop_cookies_enabled(&mut self, value: bool) {
+        self.provider_config_mut(ProviderId::Claude)
+            .claude_desktop_cookies_enabled = value;
     }
 
     /// Claude-only: configured claude-swap executable path, or `""` when unset.

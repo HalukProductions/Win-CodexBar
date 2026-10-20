@@ -12,6 +12,20 @@
 //   pnpm proof:check -- --browser <path>   browser binary (or env PROOF_BROWSER)
 //   pnpm proof:check -- --out <dir>        screenshot folder (default .proof/screens)
 //
+// Scenario steps (scripts/proof-scenarios.json), run in order:
+//   expectText / expectNoText   page text includes / excludes each string
+//   expectSelector              a DOM selector matches
+//   expectTheme                 documentElement dataset.theme
+//   expectField                 a native <select> by label: value, options, enabled
+//   expectCall                  a backend command was invoked (optional args match)
+//   expectNoCall                a backend command was not invoked (waits 300 ms first)
+//   click                       mouse click on the first match (label, optional near)
+//   key                         key press (CDP Input.dispatchKeyEvent) at the focused
+//                               element: Escape, ArrowLeft, ArrowRight, Home, End
+//   select                      set a native <select> by label
+//   screenshot                  PNG into --out (clip "panel" crops to the tray height)
+//   wait                        sleep N ms
+//
 // Exit codes: 0 all scenarios passed, 1 a scenario failed, 2 setup failed.
 
 import { spawn } from "node:child_process";
@@ -317,6 +331,8 @@ class Page {
 }
 
 const js = (value) => JSON.stringify(value);
+// Windows virtual-key codes for the keys a `key` step may press.
+const KEY_CODES = { Escape: 27, End: 35, Home: 36, ArrowLeft: 37, ArrowRight: 39 };
 const asList = (value) => (Array.isArray(value) ? value : [value]);
 
 // textContent rather than innerText: the app splits emails across elements,
@@ -349,7 +365,7 @@ async function runStep(page, step, ctx) {
     // `near` picks, among same-label matches, the one whose closest ancestor
     // containing that text is nearest (e.g. the Switch button of one account row).
     const { selector, label, near = null } = step.click;
-    const point = await page.eval(`(() => {
+    const locate = `(() => {
       const near = ${js(near)};
       const depth = (e) => {
         let d = 0;
@@ -365,7 +381,15 @@ async function runStep(page, step, ctx) {
       el.scrollIntoView({ block: "center" });
       const r = el.getBoundingClientRect();
       return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
-    })()`);
+    })()`;
+    // Targets can render after async fixture data (e.g. a count in a summary
+    // label), so wait for them like the expect* steps do.
+    const end = Date.now() + STEP_TIMEOUT_MS;
+    let point = await page.eval(locate);
+    while (!point && Date.now() <= end) {
+      await sleep(150);
+      point = await page.eval(locate);
+    }
     if (!point) throw new Error(`nothing to click: ${selector} labelled ${js(label)}`);
     for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) {
       await page.send("Input.dispatchMouseEvent", { type, ...point, button: "left", clickCount: 1 });
@@ -417,6 +441,22 @@ async function runStep(page, step, ctx) {
       return "";
     })()`;
     if (!(await page.poll(`${mismatch} === ""`))) throw new Error(await page.eval(mismatch));
+  } else if (step.expectNoCall !== undefined) {
+    // A call that would have been made lands during the same event turn; the
+    // delay gives an asynchronous one a chance to be recorded before checking.
+    await sleep(300);
+    const { cmd } = step.expectNoCall;
+    const made = await page.eval(
+      `(window.__CODEXBAR_PROOF__?.calls() ?? []).some((call) => call.cmd === ${js(cmd)})`,
+    );
+    if (made) throw new Error(`unexpected backend call: ${cmd}`);
+  } else if (step.key !== undefined) {
+    // Keys go to the focused element, as a real key press would.
+    const info = KEY_CODES[step.key];
+    if (!info) throw new Error(`unsupported key ${js(step.key)}`);
+    const params = { key: step.key, code: step.key, windowsVirtualKeyCode: info, nativeVirtualKeyCode: info };
+    await page.send("Input.dispatchKeyEvent", { type: "keyDown", ...params });
+    await page.send("Input.dispatchKeyEvent", { type: "keyUp", ...params });
   } else if (step.wait !== undefined) {
     await sleep(step.wait);
   } else {

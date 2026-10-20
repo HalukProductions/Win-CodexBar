@@ -191,6 +191,42 @@ describe("MenuBarMetricSection", () => {
     expect(screen.getByRole("combobox")).toHaveValue("extraUsage");
   });
 
+  it("offers Tokens/min only for providers that report throughput", () => {
+    const onChange = vi.fn();
+    const openai: ProviderDetail = {
+      ...provider(false),
+      id: "openaiapi",
+      displayName: "OpenAI API",
+      tokensPerMinuteMetric: true,
+    };
+    const { rerender } = render(
+      <MenuBarMetricSection
+        provider={openai}
+        providerMetrics={{}}
+        disabled={false}
+        t={(key) => key}
+        onChange={onChange}
+      />,
+    );
+
+    expect(optionNames()).toEqual(["Automatic", "ProviderSessionLabel", "MetricTokensPerMinute"]);
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "tokensPerMinute" } });
+    expect(onChange).toHaveBeenCalledWith({
+      providerMetrics: { openaiapi: "tokensPerMinute" },
+    });
+
+    rerender(
+      <MenuBarMetricSection
+        provider={provider()}
+        providerMetrics={{}}
+        disabled={false}
+        t={(key) => key}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("option", { name: "MetricTokensPerMinute" })).toBeNull();
+  });
+
   it("hides the picker for Aixy, which offers only Automatic", () => {
     const aixy = provider();
     aixy.id = "aixy";

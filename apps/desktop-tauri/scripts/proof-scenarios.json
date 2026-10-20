@@ -36,6 +36,66 @@
       ]
     },
     {
+      "name": "tray-codex-conversations",
+      "query": "window=main&fixture=codex-conversations",
+      "size": [310, 1032],
+      "steps": [
+        { "click": { "selector": ".provider-grid__item", "label": "Codex" } },
+        { "expectText": "Conversations (30d)" },
+        { "expectNoText": "Port the tray conversations list" },
+        { "screenshot": "tray-codex-conversations-collapsed", "clip": "panel" },
+        { "click": { "selector": ".card-conversations__toggle", "label": "Conversations (30d)" } },
+        { "expectText": ["Fix the parser fixture", "Session 019f...0000a002", "Port the tray conversations list", "~$0.87", "$3.12", "gpt-5-codex · 184K input · 120K cached · 9.4K output"] },
+        { "screenshot": "tray-codex-conversations-expanded", "clip": "panel" },
+        { "click": { "selector": ".provider-grid__item", "label": "Claude" } },
+        { "expectNoText": ["Conversations (30d)", "Fix the parser fixture"] }
+      ]
+    },
+    {
+      "name": "tray-codex-conversations-private",
+      "query": "window=main&fixture=codex-conversations-private",
+      "size": [310, 1032],
+      "steps": [
+        { "click": { "selector": ".provider-grid__item", "label": "Codex" } },
+        { "click": { "selector": ".card-conversations__toggle", "label": "Conversations (30d)" } },
+        { "expectText": ["Session 019f...0000a001", "Session 019f...0000a002", "Session 019f...0000a003"] },
+        { "expectNoText": ["Port the tray conversations list", "Fix the parser fixture"] },
+        { "screenshot": "tray-codex-conversations-private", "clip": "panel" }
+      ]
+    },
+    {
+      "name": "tray-claude-reset-credits",
+      "query": "window=main&fixture=claude-reset-credits",
+      "size": [310, 1032],
+      "steps": [
+        { "click": { "selector": ".provider-grid__item", "label": "Claude" } },
+        { "expectText": ["claude.user@example.com", "Limit Reset Credits", "2 available"] },
+        { "screenshot": "tray-claude-reset-credits", "clip": "panel" }
+      ]
+    },
+    {
+      "name": "tray-claude-reset-credits-hidden",
+      "query": "window=main&fixture=claude-reset-credits-hidden",
+      "size": [310, 1032],
+      "steps": [
+        { "click": { "selector": ".provider-grid__item", "label": "Claude" } },
+        { "expectText": ["claude.user@example.com", "Plan renews: Dec 1, 2026"] },
+        { "expectNoText": ["Limit Reset Credits", "2 available"] },
+        { "screenshot": "tray-claude-reset-credits-hidden", "clip": "panel" }
+      ]
+    },
+    {
+      "name": "tray-claude-reset-credits-absent",
+      "query": "window=main&fixture=default",
+      "size": [310, 1032],
+      "steps": [
+        { "click": { "selector": ".provider-grid__item", "label": "Claude" } },
+        { "expectText": "claude.user@example.com" },
+        { "expectNoText": ["Limit Reset Credits", "2 available"] },
+        { "screenshot": "tray-claude-reset-credits-absent", "clip": "panel" }
+      ]
+    },
+    {
       "name": "tray-errors",
       "query": "window=main&fixture=errors",
       "size": [310, 1032],
@@ -107,6 +167,54 @@
       ]
     },
     {
+      "name": "settings-about-acknowledgements",
+      "query": "window=settings&tab=about&theme=dark",
+      "size": [880, 620],
+      "steps": [
+        { "expectText": "Acknowledgements" },
+        { "click": { "selector": ".settings-link-row span", "label": "Acknowledgements" } },
+        { "expectText": ["CodexBar is built with these open-source projects.", "tauri", "react", "codexcontrol"] },
+        { "screenshot": "settings-about-acknowledgements" },
+        { "click": { "selector": ".acknowledgement__name", "label": "tauri" } },
+        { "expectText": ["Apache License", "https://github.com/tauri-apps/tauri"] },
+        { "screenshot": "settings-about-acknowledgement-open" },
+        { "click": { "selector": ".acknowledgement__name", "label": "webview2-com" } },
+        { "expectText": ["Standard license text. This package ships no license file.", "Copyright (c) webview2-com contributors"] },
+        { "screenshot": "settings-about-acknowledgement-standard" }
+      ]
+    },
+    {
+      "name": "settings-openaiapi-tokens-per-minute-metric",
+      "query": "window=settings&tab=providers:openaiapi&theme=dark",
+      "size": [880, 620],
+      "steps": [
+        { "expectText": ["OpenAI API", "Menu and floating bar metric", "Tokens/min"] },
+        { "expectField": { "label": "Menu and floating bar metric", "value": "automatic" } },
+        { "select": { "label": "Menu and floating bar metric", "value": "tokensPerMinute" } },
+        { "expectCall": { "cmd": "update_settings", "args": { "patch": { "providerMetrics": { "openaiapi": "tokensPerMinute" } } } } },
+        { "expectField": { "label": "Menu and floating bar metric", "value": "tokensPerMinute" } },
+        { "screenshot": "settings-openaiapi-tokens-per-minute-metric" }
+      ]
+    },
+    {
+      "name": "settings-claudeplatform-cookie-source",
+      "query": "window=settings&tab=providers:claudeplatform&fixture=claudeplatform&theme=dark",
+      "size": [880, 620],
+      "steps": [
+        { "expectText": ["Claude Platform", "Cookie source", "Automatic", "Manual", "Off"] },
+        { "expectSelector": "[data-provider-id=\"claudeplatform\"] .provider-icon--svg svg" },
+        { "screenshot": "settings-claudeplatform" },
+        { "click": { "selector": "button", "label": "Manual", "near": "Cookie source" } },
+        { "expectCall": { "cmd": "set_provider_cookie_source", "args": { "providerId": "claudeplatform", "source": "manual" } } },
+        { "click": { "selector": "button", "label": "Off", "near": "Cookie source" } },
+        { "expectCall": { "cmd": "set_provider_cookie_source", "args": { "providerId": "claudeplatform", "source": "off" } } },
+        { "click": { "selector": "button", "label": "Automatic", "near": "Cookie source" } },
+        { "expectCall": { "cmd": "set_provider_cookie_source", "args": { "providerId": "claudeplatform", "source": "auto" } } },
+        { "expectSelector": ".provider-detail-cookie-source .provider-detail-segmented__option.is-active" },
+        { "screenshot": "settings-claudeplatform-cookie-source" }
+      ]
+    },
+    {
       "name": "settings-menu-work-days",
       "query": "window=settings&tab=menu&theme=dark",
       "size": [880, 620],
@@ -119,6 +227,43 @@
         { "expectField": { "label": "Workday tick appearance", "enabled": true } },
         { "expectCall": { "cmd": "update_settings", "args": { "patch": { "weeklyProgressWorkDays": 6 } } } },
         { "screenshot": "settings-menu-work-days-6" }
+      ]
+    },
+    {
+      "name": "tray-openai-live-spend",
+      "query": "window=main&fixture=openai-live-spend",
+      "size": [310, 1032],
+      "steps": [
+        { "expectText": ["OpenAI API", "Tokens per minute", "Live", "Spend"] },
+        { "click": { "selector": "button", "label": "Live" } },
+        { "expectSelector": ".openai-live-spend[data-mode=\"live\"] [data-testid=\"openai-spend-layer\"][aria-hidden=\"true\"]" },
+        { "screenshot": "tray-openai-live", "clip": "panel" },
+        { "click": { "selector": ".openai-tpm__chart", "label": "Tokens per minute" } },
+        { "expectText": "requests" },
+        { "expectSelector": "[data-testid=\"openai-live-layer\"] rect.openai-tpm__bar--selected" },
+        { "screenshot": "tray-openai-live-inspect", "clip": "panel" },
+        { "key": "Escape" },
+        { "expectNoCall": { "cmd": "dismiss_tray_panel" } },
+        { "expectSelector": ".tray-panel-reveal--ready" },
+        { "click": { "selector": "button", "label": "Spend" } },
+        { "expectText": "Daily spend · Last 30 days" },
+        { "expectSelector": ".openai-live-spend[data-mode=\"spend\"] [data-testid=\"openai-live-layer\"][aria-hidden=\"true\"]" },
+        { "click": { "selector": ".openai-tpm__chart", "label": "Daily spend · Last 30 days" } },
+        { "expectText": ": $" },
+        { "expectSelector": "[data-testid=\"openai-spend-layer\"] rect.openai-tpm__bar--selected" },
+        { "screenshot": "tray-openai-spend-inspect", "clip": "panel" }
+      ]
+    },
+    {
+      "name": "settings-claude-desktop-cookies",
+      "query": "window=settings&tab=providers:claude&fixture=default&theme=dark",
+      "size": [880, 620],
+      "steps": [
+        { "expectText": ["Use Claude desktop app cookies", "follow the account signed in to the Claude desktop app"] },
+        { "expectSelector": "option[value=\"claude-desktop\"]" },
+        { "expectCall": { "cmd": "list_detected_browsers", "args": { "providerId": "claude" } } },
+        { "click": { "selector": ".settings-field__label", "label": "Use Claude desktop app cookies" } },
+        { "screenshot": "settings-claude-desktop-cookies" }
       ]
     },
     {

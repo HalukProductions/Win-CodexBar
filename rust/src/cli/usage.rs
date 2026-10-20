@@ -7,6 +7,7 @@ use crate::settings::Settings;
 
 mod claude_swap;
 mod fetch_helpers;
+mod parallel;
 mod render;
 
 use fetch_helpers::{fetch_provider_json_output, fetch_provider_text_output};

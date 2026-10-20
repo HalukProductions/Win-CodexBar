@@ -1,5 +1,6 @@
 //! Browser detection and cookie extraction for Windows and WSL
 
+mod claude_desktop;
 pub mod cookie_cache;
 pub mod cookies;
 pub mod detection;
