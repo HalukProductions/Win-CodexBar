@@ -373,13 +373,14 @@ codexbar hooks list --json
 codexbar hooks enable
 codexbar hooks test usage_updated --provider codex --json
 codexbar hooks watch --provider codex --json
+codexbar hooks watch --provider both
 ```
 
 Hook rules live in `hooks.json` next to `settings.json`. `hooks enable` and `hooks disable` flip its master switch. The desktop Settings > Hooks pane edits the same file. See [CONFIGURATION.md](./CONFIGURATION.md#hooks).
 
 `hooks test` runs the matching rules for a sample event. The events are `quota_low`, `quota_reached`, `quota_reset`, `usage_updated`, `provider_unavailable`, `provider_recovered` and `refresh_failed`.
 
-`hooks watch` polls providers and fires hooks on real changes. `--interval` defaults to 300 seconds, with a minimum of 60. `--provider` takes one or more CLI names, comma-separated or repeated. Without it, the enabled providers are polled.
+`hooks watch` polls providers and fires hooks on real changes. `--interval` defaults to 300 seconds, with a minimum of 60. `--provider` takes one or more CLI names, comma-separated or repeated. `both` means Codex and Claude, and `all` means every provider; they can be mixed with names, and duplicates are dropped. Without `--provider`, the enabled providers are polled.
 
 `usage_updated` is opt-in. It fires after a successful refresh and carries the primary and secondary quota usage, the window lengths and the reset times when known. Failed or superseded refreshes don't fire it.
 
