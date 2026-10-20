@@ -47,9 +47,11 @@ Manual cookies are stored in `manual_cookies.json` in the CodexBar config folder
 | Arc | Same as Chrome | Same as Chrome |
 | Opera | Same as Chrome | Same as Chrome |
 | Opera GX | Same as Chrome | Same as Chrome |
+| Opera Neon | Same as Chrome | Same as Chrome |
+| Aside | Same as Chrome | Same as Chrome |
 | Firefox | Unencrypted SQLite | Works |
 
-Each Chrome channel, Chromium, Edge, Brave, Arc, Opera and Opera GX is a separate choice. Each one reads only its own `User Data` profiles, except Opera and Opera GX, which keep a single profile at `%APPDATA%\Opera Software\Opera Stable` and `%APPDATA%\Opera Software\Opera GX Stable`. Firefox reads the profiles under `%APPDATA%\Mozilla\Firefox\Profiles`.
+Each Chrome channel, Chromium, Edge, Brave, Arc, Opera, Opera GX, Opera Neon and Aside is a separate choice. Each one reads only its own `User Data` profiles (Aside's are under `%LOCALAPPDATA%\Aside\User Data`), except Opera, Opera GX and Opera Neon, which keep a single profile at `%APPDATA%\Opera Software\Opera Stable`, `%APPDATA%\Opera Software\Opera GX Stable` and `%APPDATA%\Opera Software\Opera Neon Stable`. Firefox reads the profiles under `%APPDATA%\Mozilla\Firefox\Profiles`.
 
 ## App-Bound Encryption
 
