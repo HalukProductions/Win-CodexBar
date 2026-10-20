@@ -95,6 +95,46 @@ impl Cookie {
     }
 }
 
+/// The cookies a browser sends with a request to `host`, for sites whose
+/// session cookies live on a parent domain shared with unrelated sites.
+///
+/// A plain domain read returns the domain and every subdomain, so reading the
+/// parent (`google.com`) would also pick up cookies for unrelated sibling
+/// hosts. The scope reads `scan_domain` and keeps only cookies stored for
+/// `host` itself or for one of its parent domains.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CookieRequestScope {
+    /// Domain whose cookie rows are read (the host or one of its parents).
+    pub scan_domain: &'static str,
+    /// Host the request goes to.
+    pub host: &'static str,
+}
+
+impl CookieRequestScope {
+    /// Whether a cookie stored under `host_key` is sent to the scope's host.
+    ///
+    /// A leading dot marks a domain cookie, which a browser sends to the
+    /// domain and its subdomains. Without the dot the cookie is host-only and
+    /// is sent only on an exact host match, so a cookie stored as
+    /// `google.com` must not leak to `gemini.google.com`.
+    pub fn applies_to(&self, host_key: &str) -> bool {
+        let host = self.host.to_ascii_lowercase();
+        let trimmed = host_key.trim();
+        if let Some(dotted) = trimmed.strip_prefix('.') {
+            let domain = dotted.trim_end_matches('.').to_ascii_lowercase();
+            !domain.is_empty() && (host == domain || host.ends_with(&format!(".{domain}")))
+        } else {
+            let stored = trimmed.trim_end_matches('.').to_ascii_lowercase();
+            !stored.is_empty() && host == stored
+        }
+    }
+
+    /// Keep only the cookies sent to the scope's host.
+    pub fn retain(&self, cookies: &mut Vec<Cookie>) {
+        cookies.retain(|cookie| self.applies_to(&cookie.domain));
+    }
+}
+
 /// Cookie extractor for browsers
 pub struct CookieExtractor;
 
@@ -761,6 +801,42 @@ pub fn get_cookie_header_for_domains(domains: &[&str]) -> Result<String, CookieE
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn request_scope_keeps_host_and_dotted_parent_cookies_only() {
+        let scope = CookieRequestScope {
+            scan_domain: "example.com",
+            host: "app.example.com",
+        };
+        assert!(scope.applies_to("app.example.com"));
+        assert!(scope.applies_to(".app.example.com"));
+        assert!(scope.applies_to(".example.com"));
+        assert!(!scope.applies_to("example.com"));
+        assert!(!scope.applies_to("EXAMPLE.COM."));
+        assert!(!scope.applies_to("mail.example.com"));
+        assert!(!scope.applies_to("deep.app.example.com"));
+        assert!(!scope.applies_to("badexample.com"));
+        assert!(!scope.applies_to(""));
+    }
+
+    #[test]
+    fn host_only_cookie_is_not_sent_to_subdomains() {
+        let subdomain = CookieRequestScope {
+            scan_domain: "example.com",
+            host: "app.example.com",
+        };
+        // A host-only cookie (stored without a leading dot) is sent to the
+        // exact host only; a browser would not send it to a subdomain.
+        assert!(!subdomain.applies_to("example.com"));
+        assert!(subdomain.applies_to(".example.com"));
+
+        let exact = CookieRequestScope {
+            scan_domain: "example.com",
+            host: "example.com",
+        };
+        assert!(exact.applies_to("example.com"));
+        assert!(exact.applies_to(".example.com"));
+    }
 
     #[test]
     fn domain_matching_requires_boundary() {

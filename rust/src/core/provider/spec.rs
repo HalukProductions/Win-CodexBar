@@ -192,7 +192,7 @@ pub(crate) static SPECS: [ProviderSpec; COUNT] = [
         .parse_aliases(&["droid"]),
     spec(P::Gemini, "gemini", "Gemini", "#AB87EA")
         .labels("Daily", "Daily")
-        .cookie("aistudio.google.com")
+        .cookie("gemini.google.com")
         .default_enabled()
         .dashboard("https://aistudio.google.com")
         .status("https://status.cloud.google.com")

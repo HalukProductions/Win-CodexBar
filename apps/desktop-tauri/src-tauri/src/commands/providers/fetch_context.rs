@@ -109,6 +109,14 @@ pub(crate) fn build_fetch_context(
             _ if provider.web_is_opt_in() && usage_source != SourceMode::Web => {
                 (usage_source, None, false)
             }
+            // Off with an explicit Web source fails closed on Web instead of
+            // mapping to Cli, when Cli is a different account's credential lane.
+            "off"
+                if usage_source == SourceMode::Web
+                    && provider.explicit_web_survives_cookie_off() =>
+            {
+                (SourceMode::Web, None, true)
+            }
             // Charm Hyper: the cookie source only picks the session, and
             // the usage source keeps routing. Off and an empty Manual
             // source never import a browser session, while Auto keeps its
@@ -300,6 +308,11 @@ pub(crate) fn build_fetch_context(
     }
 }
 
+/// Unscoped first-browser cookie read shared by both call sites above.
+/// Gemini never reaches this path: it owns browser cookie resolution
+/// (`owns_browser_cookie_resolution`), so `defer_provider_browser_cookie_lookup`
+/// suppresses this lookup and its web source reads cookies through
+/// `CookieRequestScope` inside the provider instead.
 fn browser_cookie_header(id: ProviderId, settings: &Settings) -> Option<String> {
     provider_cookie_domain(id, settings).and_then(|domain| {
         codexbar::browser::cookies::get_cookie_header(domain)

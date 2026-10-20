@@ -462,7 +462,7 @@ mod tests {
         assert_eq!(ProviderId::Codex.cookie_domain(), Some("chatgpt.com"));
         assert_eq!(
             ProviderId::Gemini.cookie_domain(),
-            Some("aistudio.google.com")
+            Some("gemini.google.com")
         );
         assert_eq!(ProviderId::Kiro.cookie_domain(), Some("kiro.dev"));
         assert_eq!(ProviderId::Zed.cookie_domain(), Some("zed.dev"));

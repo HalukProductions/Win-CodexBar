@@ -11,7 +11,7 @@
 //! The scan is provider-agnostic: it knows browsers, domains and cookies, not
 //! what a valid session looks like.
 
-use super::cookies::{Cookie, CookieError, CookieExtractor};
+use super::cookies::{Cookie, CookieError, CookieExtractor, CookieRequestScope};
 use super::detection::{BrowserDetector, BrowserType, DetectedBrowser};
 
 /// Where browser installations and their cookies come from. The system store
@@ -87,6 +87,7 @@ pub struct BrowserCookieScan<S: BrowserCookieStore = SystemCookieStore> {
     store: S,
     domains: Vec<String>,
     browser_order: Option<Vec<BrowserType>>,
+    request_scope: Option<CookieRequestScope>,
     browsers: Option<Vec<DetectedBrowser>>,
     order: ScanOrder,
     outer_index: usize,
@@ -109,6 +110,7 @@ impl<S: BrowserCookieStore> BrowserCookieScan<S> {
             store,
             domains: domains.iter().map(|domain| (*domain).to_string()).collect(),
             browser_order: None,
+            request_scope: None,
             browsers: None,
             order: ScanOrder::DomainMajor,
             outer_index: 0,
@@ -131,6 +133,14 @@ impl<S: BrowserCookieStore> BrowserCookieScan<S> {
     pub fn with_browser_order(mut self, order: &[BrowserType]) -> Self {
         self.browser_order = Some(order.to_vec());
         self
+    }
+
+    /// Read `scope.scan_domain` and keep only the cookies a browser sends to
+    /// `scope.host`. A browser left with no such cookie is skipped.
+    pub fn for_request_scope(scope: CookieRequestScope, store: S) -> Self {
+        let mut scan = Self::with_store(store, &[scope.scan_domain]);
+        scan.request_scope = Some(scope);
+        scan
     }
 
     /// The error that describes why the scan produced nothing (more): App-Bound
@@ -188,7 +198,16 @@ impl<S: BrowserCookieStore> Iterator for BrowserCookieScan<S> {
             let domain = self.domains[domain_index].clone();
             let browser_name = browser.browser_type.display_name();
 
-            match self.store.read_cookies(&browser, &domain) {
+            let read = self
+                .store
+                .read_cookies(&browser, &domain)
+                .map(|mut cookies| {
+                    if let Some(scope) = &self.request_scope {
+                        scope.retain(&mut cookies);
+                    }
+                    cookies
+                });
+            match read {
                 Ok(cookies) if !cookies.is_empty() => {
                     let candidate = BrowserCookieCandidate {
                         browser: browser.browser_type,
@@ -246,6 +265,8 @@ pub(crate) mod test_support {
     #[derive(Clone)]
     pub(crate) enum FakeRead {
         Cookies(Vec<(&'static str, &'static str)>),
+        /// `(host_key, name, value)` rows, for reads that span several hosts.
+        HostCookies(Vec<(&'static str, &'static str, &'static str)>),
         AppBoundEncryption,
         Failure,
     }
@@ -279,6 +300,15 @@ pub(crate) mod test_support {
             cookies: &[(&'static str, &'static str)],
         ) -> Self {
             self.with(browser, domain, FakeRead::Cookies(cookies.to_vec()))
+        }
+
+        pub(crate) fn host_cookies(
+            self,
+            browser: BrowserType,
+            domain: &str,
+            cookies: &[(&'static str, &'static str, &'static str)],
+        ) -> Self {
+            self.with(browser, domain, FakeRead::HostCookies(cookies.to_vec()))
         }
 
         pub(crate) fn reads(&self) -> Vec<(BrowserType, String)> {
@@ -318,6 +348,18 @@ pub(crate) mod test_support {
                         name: (*name).to_string(),
                         value: (*value).to_string(),
                         domain: domain.to_string(),
+                        path: "/".into(),
+                        expires: None,
+                        is_secure: true,
+                        is_http_only: true,
+                    })
+                    .collect()),
+                Some(FakeRead::HostCookies(cookies)) => Ok(cookies
+                    .iter()
+                    .map(|(host, name, value)| Cookie {
+                        name: (*name).to_string(),
+                        value: (*value).to_string(),
+                        domain: (*host).to_string(),
                         path: "/".into(),
                         expires: None,
                         is_secure: true,
@@ -453,6 +495,34 @@ mod tests {
         let second = browser_major.next().expect("firefox candidate");
         assert_eq!(second.browser, BrowserType::Firefox);
         assert!(browser_major.next().is_none());
+    }
+
+    #[test]
+    fn request_scope_drops_sibling_host_cookies_and_skips_browsers_left_empty() {
+        let store = FakeCookieStore::default()
+            .host_cookies(
+                BrowserType::Chrome,
+                "a.test",
+                &[("mail.a.test", "mail", "1"), ("other.a.test", "x", "2")],
+            )
+            .host_cookies(
+                BrowserType::Edge,
+                "a.test",
+                &[
+                    (".a.test", "sid", "edge"),
+                    ("app.a.test", "app", "3"),
+                    ("mail.a.test", "mail", "4"),
+                ],
+            );
+        let scope = CookieRequestScope {
+            scan_domain: "a.test",
+            host: "app.a.test",
+        };
+
+        assert_eq!(
+            headers(BrowserCookieScan::for_request_scope(scope, &store)),
+            vec![(BrowserType::Edge, "sid=edge; app=3".into())]
+        );
     }
 
     #[test]
