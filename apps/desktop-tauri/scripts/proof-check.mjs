@@ -37,7 +37,6 @@ import { fileURLToPath } from "node:url";
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const STEP_TIMEOUT_MS = 8_000;
 const CDP_TIMEOUT_MS = 30_000;
-const PROOF_PORT = 1430;
 
 const READY_BY_WINDOW = {
   main: ".tray-panel-reveal--ready",
@@ -141,21 +140,32 @@ async function waitForHttp(url, timeoutMs) {
 async function startProofServer() {
   const vite = join(appDir, "node_modules", "vite", "bin", "vite.js");
   if (!existsSync(vite)) fail(2, "vite is not installed; run pnpm install");
+  // A fixed port let a parallel run in another worktree answer this run's
+  // requests, so each run takes its own free port unless one is pinned.
+  const port = process.env.PROOF_PORT ? Number(process.env.PROOF_PORT) : await freePort();
+  if (!Number.isInteger(port) || port <= 0 || port > 65_535) fail(2, `invalid PROOF_PORT ${process.env.PROOF_PORT}`);
   const child = spawn(
     process.execPath,
-    [vite, "--mode", "proof", "--port", String(PROOF_PORT), "--strictPort", "--host", "127.0.0.1"],
+    [vite, "--mode", "proof", "--port", String(port), "--strictPort", "--host", "127.0.0.1"],
     { cwd: appDir, stdio: ["ignore", "pipe", "pipe"] },
   );
   child.once("error", (error) => fail(2, `proof server failed to start: ${error.message}`));
   // fail() exits the process directly; do not leave the server behind.
   process.once("exit", () => child.kill());
+  let exited = false;
+  child.once("exit", () => (exited = true));
   let log = "";
   child.stdout.on("data", (chunk) => (log += chunk));
   child.stderr.on("data", (chunk) => (log += chunk));
-  const base = `http://127.0.0.1:${PROOF_PORT}`;
-  if (!(await waitForHttp(`${base}/proof.html`, 30_000))) {
+  const base = `http://127.0.0.1:${port}`;
+  // With --strictPort a taken port makes vite exit; stop polling then, or the
+  // other process on that port would be tested instead.
+  const end = Date.now() + 30_000;
+  let up = false;
+  while (!up && !exited && Date.now() < end) up = await waitForHttp(`${base}/proof.html`, 250);
+  if (!up || exited) {
     child.kill();
-    fail(2, `proof server did not start on port ${PROOF_PORT}:\n${log}`);
+    fail(2, `proof server did not start on port ${port}:\n${log}`);
   }
   return { base, stop: () => child.kill() };
 }
