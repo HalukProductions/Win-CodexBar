@@ -633,17 +633,20 @@ impl ClaudeOAuthFetcher {
         credentials: ClaudeOAuthCredentials,
         gate_key: &str,
     ) -> Result<ProviderFetchResult, ProviderError> {
+        let fingerprint = usage_gate::token_fingerprint(&credentials.access_token);
+        // Upstream validates the token before its profile lookup, so an expired
+        // or scope-less token sends no /profile request.
+        Self::check_usage_credentials(&credentials)?;
+        // Started before the usage request so a quick profile answer can still
+        // label this refresh; the usage request never waits for it.
+        let _ = profile::display_email(&self.client, &credentials.access_token, &fingerprint);
         let usage_response = self.fetch_usage(&credentials, gate_key).await?;
         let mut usage = self.build_usage_snapshot(&usage_response, &credentials);
         let spend_cost = apply_spend_only_extra_usage(&mut usage, &usage_response);
-        // Header email only; a profile failure leaves the usage result intact.
+        // Header email only; a missing or failed profile leaves usage intact.
         if usage.account_email.is_none()
-            && let Some(email) = profile::fetch_email(
-                &self.client,
-                &credentials.access_token,
-                &usage_gate::token_fingerprint(&credentials.access_token),
-            )
-            .await
+            && let Some(email) =
+                profile::display_email(&self.client, &credentials.access_token, &fingerprint)
         {
             usage = usage.with_email(email);
         }
@@ -784,12 +787,9 @@ impl ClaudeOAuthFetcher {
         }
     }
 
-    /// Fetch usage data using OAuth credentials
-    pub async fn fetch_usage(
-        &self,
-        credentials: &ClaudeOAuthCredentials,
-        gate_key: &str,
-    ) -> Result<OAuthUsageResponse, ProviderError> {
+    /// Expiry and `user:profile` scope checks that run before any request for
+    /// the token, including the profile lookup.
+    fn check_usage_credentials(credentials: &ClaudeOAuthCredentials) -> Result<(), ProviderError> {
         if credentials.is_expired() {
             return Err(ProviderError::OAuthExpired(
                 "OAuth token expired. Run `claude` to refresh.".to_string(),
@@ -804,6 +804,16 @@ impl ClaudeOAuthFetcher {
                 Self::scope_recovery_message()
             )));
         }
+        Ok(())
+    }
+
+    /// Fetch usage data using OAuth credentials
+    pub async fn fetch_usage(
+        &self,
+        credentials: &ClaudeOAuthCredentials,
+        gate_key: &str,
+    ) -> Result<OAuthUsageResponse, ProviderError> {
+        Self::check_usage_credentials(credentials)?;
 
         if let Some(result) = Self::gate_precheck(self.usage_gate, usage_gate::now_ms(), gate_key) {
             return result;
