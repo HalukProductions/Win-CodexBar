@@ -11,6 +11,7 @@ use codexbar::notifications::{LimitResetObservation, LimitResetSample, WarningSc
 use serde::Serialize;
 use std::sync::Arc;
 
+pub(crate) mod cli_usage_cache;
 mod fetch_context;
 mod notify;
 mod reset_backfill;
@@ -246,6 +247,7 @@ async fn do_refresh_providers_with_policy(
         }
     };
     update_tray_and_notifications(app, &state, &inputs.settings, &inputs.token_accounts)?;
+    cli_usage_cache::publish(&state, inputs.settings.share_usage_with_cli);
 
     events::emit_refresh_complete(app, enabled_count, error_count);
     crate::auto_refresh::schedule_refresh_enrichment(&inputs.settings);
@@ -383,11 +385,12 @@ async fn refresh_provider(
     hooks_enabled: bool,
     pace_work_days: Option<u8>,
 ) {
-    let (mut snapshot, account_identity, retention) =
+    let (mut snapshot, account_identity, retention, fresh_usage) =
         fetch_provider_snapshot(id, ctx, token_account.id, pace_work_days).await;
     snapshot.account_label = token_account.label;
     let token_account_id = token_account.id;
     let fresh_snapshot = snapshot.error.is_none();
+    let fresh_usage = fresh_usage.filter(|_| fresh_snapshot);
     // Captured before last-good preservation can swap in a cached snapshot.
     let fetch_attempt = FetchAttempt::of(&snapshot);
 
@@ -421,6 +424,13 @@ async fn refresh_provider(
                 .cloned();
             let mut snapshot = snapshot;
             reset_backfill::codex_reset_backfill(&mut snapshot, cached.as_ref());
+            cli_usage_cache::record_refresh(
+                &mut guard.cli_usage_entries,
+                id,
+                fresh_usage.as_ref(),
+                token_account_id.is_some(),
+                snapshot.error.is_some(),
+            );
             upsert_provider_cache(&mut guard.provider_cache, snapshot.clone());
             if fresh_snapshot {
                 guard
@@ -637,7 +647,12 @@ async fn fetch_provider_snapshot(
     ctx: FetchContext,
     token_account_id: Option<uuid::Uuid>,
     pace_work_days: Option<u8>,
-) -> (ProviderUsageSnapshot, Option<String>, RefreshRetention) {
+) -> (
+    ProviderUsageSnapshot,
+    Option<String>,
+    RefreshRetention,
+    Option<codexbar::core::UsageSnapshot>,
+) {
     let provider = instantiate_provider(id);
     let metadata = provider.metadata().clone();
     let started = std::time::Instant::now();
@@ -646,7 +661,7 @@ async fn fetch_provider_snapshot(
         tokio::time::timeout(provider_fetch_timeout(id, &ctx), provider.fetch_usage(&ctx))
             .await
             .unwrap_or_else(|_| Err(codexbar::core::ProviderError::Timeout));
-    let (mut snapshot, account_identity, retention) = match outcome {
+    let (mut snapshot, account_identity, retention, fresh_usage) = match outcome {
         Ok(result) => {
             let account_identity = result.account_identity().map(ToOwned::to_owned);
             (
@@ -662,6 +677,7 @@ async fn fetch_provider_snapshot(
                     fresh_owner: result.last_good_owner.clone(),
                     ..RefreshRetention::default()
                 },
+                Some(result.usage),
             )
         }
         Err(e) => (
@@ -677,11 +693,12 @@ async fn fetch_provider_snapshot(
                 failure_ownership: e.failure_ownership(),
                 fresh_owner: None,
             },
+            None,
         ),
     };
 
     record_provider_fetch_duration(id, &mut snapshot, started);
-    (snapshot, account_identity, retention)
+    (snapshot, account_identity, retention, fresh_usage)
 }
 
 fn record_provider_fetch_duration(

@@ -5,6 +5,7 @@ use super::render::{
     render_brief_text, render_json_result, render_text_error, render_text_with_status,
 };
 use crate::cli::fetch_context::populate_api_region_from_settings;
+use crate::cli_usage_cache;
 use crate::core::{
     ProviderFetchResult, ProviderId, TokenAccountKind, TokenAccountOverride, TokenAccountStore,
     TokenAccountSupport, instantiate_provider,
@@ -27,7 +28,10 @@ pub async fn fetch_provider_text_output(provider_id: ProviderId, command: &Usage
                 )
             }
         }
-        Err(e) => render_text_error(provider_id, &e.to_string(), command.use_color),
+        Err(e) => match app_cache_fallback(provider_id, command, &e).await {
+            Some(fallback) => render_app_cache_text(provider_id, command, &fallback),
+            None => render_text_error(provider_id, &e.to_string(), command.use_color),
+        },
     }
 }
 
@@ -42,8 +46,97 @@ pub async fn fetch_provider_json_output(
             status.as_ref(),
             command.weekly_work_days,
         ),
-        Err(e) => crate::cli::error_kind::usage_error_row(provider_id, &e),
+        Err(e) => match app_cache_fallback(provider_id, command, &e).await {
+            Some(fallback) => render_app_cache_json(provider_id, command, fallback),
+            None => crate::cli::error_kind::usage_error_row(provider_id, &e),
+        },
     }
+}
+
+/// Usage served from the desktop app's cache after a failed fetch.
+pub(super) struct AppCacheFallback {
+    pub(super) result: ProviderFetchResult,
+    pub(super) age_seconds: i64,
+    pub(super) status: Option<StatusInfo>,
+}
+
+/// The app-cache answer for a failed default-account fetch (upstream
+/// `CLIUsageCache.fallbackReader`), or `None` to report the error.
+pub(super) async fn app_cache_fallback(
+    provider_id: ProviderId,
+    command: &UsageCommand,
+    error: &anyhow::Error,
+) -> Option<AppCacheFallback> {
+    let provider_error = error.downcast_ref::<crate::core::ProviderError>()?;
+    let hit = cli_usage_cache::fallback_hit(
+        command.app_cache_gate(),
+        provider_id,
+        provider_error,
+        command.app_cache_path.as_deref(),
+        chrono::Utc::now(),
+    )?;
+    let status = if command.fetch_status {
+        fetch_provider_status(provider_id).await
+    } else {
+        None
+    };
+    Some(AppCacheFallback {
+        // Cached rows can be up to MAXIMUM_AGE_SECONDS old, so they must not
+        // feed pace or run-out advice.
+        result: ProviderFetchResult::new(hit.usage, cli_usage_cache::SOURCE_LABEL)
+            .with_non_authoritative_pace(),
+        age_seconds: hit.age_seconds,
+        status,
+    })
+}
+
+pub(super) fn render_app_cache_json(
+    provider_id: ProviderId,
+    command: &UsageCommand,
+    fallback: AppCacheFallback,
+) -> serde_json::Value {
+    let mut row = render_json_result(
+        provider_id,
+        fallback.result,
+        fallback.status.as_ref(),
+        command.weekly_work_days,
+    );
+    row["ageSeconds"] = serde_json::json!(fallback.age_seconds);
+    row
+}
+
+pub(super) fn render_app_cache_text(
+    provider_id: ProviderId,
+    command: &UsageCommand,
+    fallback: &AppCacheFallback,
+) -> String {
+    let note = app_cache_note(fallback.age_seconds);
+    if command.brief {
+        return format!(
+            "{} ({note})",
+            render_brief_text(provider_id, &fallback.result)
+        );
+    }
+    let mut text = render_text_with_status(
+        provider_id,
+        &fallback.result,
+        fallback.status.as_ref(),
+        command.use_color,
+        command.weekly_work_days,
+    );
+    text.push_str(&format!("\n  {note}"));
+    text
+}
+
+fn app_cache_note(age_seconds: i64) -> String {
+    let age = if age_seconds < 60 {
+        format!("{age_seconds}s")
+    } else {
+        format!("{}m", age_seconds / 60)
+    };
+    format!(
+        "Cached by the CodexBar app {age} ago (credentials could not be decrypted in this session)."
+    )
 }
 
 pub async fn fetch_provider_result(

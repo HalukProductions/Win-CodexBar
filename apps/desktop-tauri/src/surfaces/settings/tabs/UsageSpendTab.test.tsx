@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const tauriMocks = vi.hoisted(() => ({
   getUsageSpendSummary: vi.fn(),
   writeUsageSpendExport: vi.fn(),
+  getCodexSessionToolActivity: vi.fn(),
 }));
 
 vi.mock("../../../lib/tauri", () => tauriMocks);
@@ -316,6 +317,29 @@ describe("UsageSpendTab", () => {
     fireEvent.click(within(chats).getByRole("button", { name: /Repair the local service/ }));
     expect(within(chats).getByText("Restart the daemon")).toBeInTheDocument();
     expect(within(chats).queryByText("Elsewhere")).toBeNull();
+  });
+
+  it("reads a conversation's tool activity over the contract's history window", async () => {
+    tauriMocks.getCodexSessionToolActivity.mockResolvedValue({
+      sessionId: "s-1",
+      operations: [],
+      ignoredRecordCount: 0,
+      isPartial: false,
+      redacted: false,
+    });
+    tauriMocks.getUsageSpendSummary.mockImplementation(async (options?: { period?: string }) =>
+      withContract(summary(options?.period ?? "rolling:30"), {
+        conversations: [chatSession("s-1", "chat-1", "Restart the daemon")],
+      }),
+    );
+    renderTab();
+    await screen.findByText("USD");
+    fireEvent.click(screen.getByRole("tab", { name: "UsageSpendViewSessions" }));
+
+    expect(tauriMocks.getCodexSessionToolActivity).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "UsageSpendToolsTitle" }));
+    await waitFor(() => expect(tauriMocks.getCodexSessionToolActivity).toHaveBeenCalledWith("s-1", 30));
+    expect(await screen.findByText("UsageSpendToolsEmpty")).toBeInTheDocument();
   });
 
   it("captions a project with its path only when another project shares its name", async () => {

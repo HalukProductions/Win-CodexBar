@@ -304,6 +304,8 @@ export interface SettingsSnapshot {
   /** Keep the tray panel above other windows after it loses focus. */
   trayPanelAlwaysOnTop: boolean;
   powertoysStatusPipeEnabled: boolean;
+  /** Write the usage cache the `codexbar` CLI falls back to. Machine-local. */
+  shareUsageWithCli: boolean;
   claudeAvoidKeychainPrompts: boolean;
   /** Opt-in external claude-swap (`cswap`) account import (Claude only). */
   claudeSwapEnabled?: boolean;
@@ -464,6 +466,7 @@ export interface SettingsUpdate {
   trayScalePercent?: number;
   trayPanelAlwaysOnTop?: boolean;
   powertoysStatusPipeEnabled?: boolean;
+  shareUsageWithCli?: boolean;
   claudeAvoidKeychainPrompts?: boolean;
   claudeAllowReadingClaudeCodeCredentials?: boolean;
   claudeSwapEnabled?: boolean;
@@ -764,6 +767,48 @@ export interface CodexWorkspacesSessionUsage {
   turnPerformance: CodexWorkspacesTurnPerformance | null;
 }
 
+export type CodexToolOperationKind =
+  | "command"
+  | "mcp"
+  | "dynamic"
+  | "fileChange"
+  | "webSearch"
+  | "image"
+  | "extensionItem";
+
+export type CodexToolOperationOutcome = "completed" | "nonzeroExit" | "toolError" | "declined" | "unknown";
+
+/** Native operations carry their own duration; recorded intervals are labeled. */
+export type CodexToolOperationTiming = "native" | "recordedInterval";
+
+/** One native Codex tool operation (upstream #4363). */
+export interface CodexToolOperation {
+  turnId: string;
+  itemId: string;
+  kind: CodexToolOperationKind;
+  /** `server/tool`, `namespace/tool`, the extension kind, or the item type. */
+  name: string;
+  preview: string | null;
+  completedAt: string;
+  outcome: CodexToolOperationOutcome;
+  exitCode: number | null;
+  /** `null` when no timing was recorded, which is distinct from zero. */
+  durationMilliseconds: number | null;
+  timing: CodexToolOperationTiming | null;
+  needsAttention: boolean;
+  isSlow: boolean;
+}
+
+/** Tool operations of one conversation, newest first (get_codex_session_tool_activity). */
+export interface CodexSessionToolActivity {
+  sessionId: string;
+  operations: CodexToolOperation[];
+  ignoredRecordCount: number;
+  isPartial: boolean;
+  /** Names and previews were removed for Hide personal information. */
+  redacted: boolean;
+}
+
 export interface CodexWorkspacesProjectUsage {
   id: string;
   displayName: string;
@@ -821,4 +866,38 @@ export interface BootstrapState {
   contractVersion: string;
   providers: ProviderCatalogEntry[];
   settings: SettingsSnapshot;
+}
+
+/** Machine-local HTTP server settings (`http_server.json`, DPAPI-protected). */
+export interface HttpServerConfig {
+  enabled: boolean;
+  host: string;
+  port: number;
+  token: string;
+  refreshIntervalSecs: number;
+  requestTimeoutSecs: number;
+  identity: "redacted" | "full";
+  allowPlainHttp: boolean;
+}
+
+export type HttpServerValidationError =
+  | "invalidHost"
+  | "invalidPort"
+  | "invalidTiming"
+  | "invalidIdentity"
+  | "invalidToken"
+  | "plainHttpNotAccepted";
+
+export type HttpServerStatus =
+  | { state: "stopped" }
+  | { state: "running"; url: string }
+  | { state: "invalid"; code: HttpServerValidationError }
+  | { state: "startFailed"; detail: string }
+  | { state: "exited"; detail: string }
+  | { state: "loadFailed" }
+  | { state: "saveFailed" };
+
+export interface HttpServerSnapshot {
+  config: HttpServerConfig;
+  status: HttpServerStatus;
 }

@@ -1953,6 +1953,11 @@
   font-variant-numeric: tabular-nums;
 }
 
+.http-server-port .number-input {
+  width: 72px;
+  font-variant-numeric: tabular-nums;
+}
+
 .provider-quota-warnings.is-dimmed .settings-group__box {
   opacity: 0.45;
 }

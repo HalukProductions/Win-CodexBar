@@ -310,6 +310,74 @@
       ]
     },
     {
+      "name": "settings-advanced-http-server",
+      "query": "window=settings&tab=advanced&theme=dark",
+      "size": [880, 620],
+      "steps": [
+        { "expectText": ["HTTP server", "Enable HTTP server", "Stopped"] },
+        { "click": { "selector": "input", "label": "Enable HTTP server" } },
+        { "click": { "selector": "button", "label": "Apply" } },
+        { "expectCall": { "cmd": "apply_http_server_config", "args": { "config": { "enabled": true, "host": "127.0.0.1", "port": 8080, "token": "", "refreshIntervalSecs": 60, "requestTimeoutSecs": 30, "identity": "redacted", "allowPlainHttp": false } } } },
+        { "expectText": "Generate a token or enter a nonempty token without spaces." },
+        { "screenshot": "settings-advanced-http-server-invalid" },
+        { "click": { "selector": "button", "label": "Generate" } },
+        { "click": { "selector": "button", "label": "Apply" } },
+        { "expectText": ["Running", "http://127.0.0.1:8080/"] },
+        { "screenshot": "settings-advanced-http-server-running" }
+      ]
+    },
+    {
+      "name": "settings-advanced-share-usage-with-cli",
+      "query": "window=settings&tab=advanced&theme=dark",
+      "size": [880, 620],
+      "steps": [
+        { "expectText": ["Share usage with the CLI", "Emails, plans, costs and credentials are not included."] },
+        { "expectSelector": "input[aria-label=\"Share usage with the CLI\"]:not(:checked)" },
+        { "screenshot": "settings-advanced-share-usage-with-cli-off" },
+        { "click": { "selector": "input", "label": "Share usage with the CLI" } },
+        { "expectCall": { "cmd": "update_settings", "args": { "patch": { "shareUsageWithCli": true } } } },
+        { "expectSelector": "input[aria-label=\"Share usage with the CLI\"]:checked" },
+        { "screenshot": "settings-advanced-share-usage-with-cli-on" }
+      ]
+    },
+    {
+      "name": "settings-usage-spend-tool-activity",
+      "query": "window=settings&tab=usageSpend&fixture=codex-tool-activity&theme=dark",
+      "size": [880, 900],
+      "steps": [
+        { "click": { "selector": "[role=tab]", "label": "Sessions" } },
+        { "expectText": "Fix the proof harness" },
+        { "expectNoText": "Timing available" },
+        { "click": { "selector": "button", "label": "Tool activity" } },
+        {
+          "expectCall": {
+            "cmd": "get_codex_session_tool_activity",
+            "args": { "sessionId": "proof-session-tools", "historyDays": 30 }
+          }
+        },
+        {
+          "expectText": [
+            "Operations: 6 · Needs review: 2 · Timing available: 5 / 6",
+            "Longest execution: 48.2 s · shell",
+            "Partial coverage: some records are incomplete",
+            "pnpm test --run",
+            "Nonzero exit · Exit code 101",
+            "2.4 s (Recorded interval)",
+            "95 ms"
+          ]
+        },
+        { "screenshot": "settings-usage-spend-tool-activity-all" },
+        { "click": { "selector": "button", "label": "Needs review" } },
+        { "expectText": ["cargo clippy --all-targets", "docs/search", "Tool error"] },
+        { "expectNoText": ["pnpm test --run", "git status --short"] },
+        { "screenshot": "settings-usage-spend-tool-activity-review" },
+        { "click": { "selector": "button", "label": "Slow (≥10 s)" } },
+        { "expectText": ["pnpm test --run", "cargo clippy --all-targets"] },
+        { "expectNoText": ["docs/search", "git status --short"] },
+        { "screenshot": "settings-usage-spend-tool-activity-slow" }
+      ]
+    },
+    {
       "name": "settings-claude-swap-tcr",
       "query": "window=settings&tab=providers:claude&fixture=claude-swap-tcr&theme=dark",
       "size": [880, 900],

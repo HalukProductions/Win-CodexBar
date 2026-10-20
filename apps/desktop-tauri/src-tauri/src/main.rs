@@ -9,6 +9,7 @@ mod commands;
 mod events;
 mod floatbar;
 mod geometry_store;
+mod http_server;
 mod powertoys;
 mod proof_harness;
 mod shell;
@@ -180,6 +181,15 @@ fn main() {
         initial_state.provider_cache_updated_at = Some(seeded_at);
     }
 
+    // Proof runs must never write the real http_server.json or bind a port:
+    // the pathless controller makes apply fail with SaveFailed up front.
+    let http_server_controller = if is_proof_mode {
+        http_server::proof_controller()
+    } else {
+        http_server::controller()
+    };
+    let http_server_controller_for_exit = http_server_controller.clone();
+
     let context = tauri::generate_context!();
     if is_proof_mode {
         // Proof runs show surfaces for automation but never take focus.
@@ -193,6 +203,7 @@ fn main() {
     tauri::Builder::default()
         .manage(Mutex::new(initial_state))
         .manage(commands::CurrencyRateCache::default())
+        .manage(http_server_controller.clone())
         .plugin(shortcut_bridge::plugin())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
@@ -207,6 +218,8 @@ fn main() {
             commands::get_settings_snapshot,
             commands::get_currency_rates,
             stay_awake::get_stay_awake_status,
+            http_server::get_http_server_state,
+            http_server::apply_http_server_config,
             commands::list_agent_sessions,
             commands::focus_agent_session,
             commands::update_settings,
@@ -284,6 +297,7 @@ fn main() {
             commands::import_preferences,
             commands::get_spend_contract,
             commands::get_codex_workspaces_snapshot,
+            commands::get_codex_session_tool_activity,
             commands::reorder_providers,
             commands::reorder_visible_providers,
             commands::restore_default_provider_order,
@@ -345,6 +359,11 @@ fn main() {
             stay_awake::install(app.handle().clone());
             if settings.powertoys_status_pipe_enabled {
                 powertoys::install(app.handle().clone());
+            }
+            // Proof runs drive surfaces with synthetic data; they never bind the
+            // user's saved server port.
+            if !is_proof_mode {
+                http_server::install(http_server_controller.clone());
             }
 
             // Give the WebView/event loop one turn to finish startup before
@@ -452,9 +471,10 @@ fn main() {
         })
         .build(context)
         .expect("failed to build CodexBar desktop shell")
-        .run(|_app, event| {
+        .run(move |_app, event| {
             if matches!(event, tauri::RunEvent::Exit) {
                 stay_awake::shutdown();
+                http_server_controller_for_exit.shutdown();
             }
         });
 }

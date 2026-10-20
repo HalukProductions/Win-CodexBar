@@ -3,6 +3,8 @@ import { version as appVersion } from "../../package.json";
 import type {
   BootstrapState,
   CurrentSurfaceState,
+  HttpServerConfig,
+  HttpServerSnapshot,
   SettingsSnapshot,
   SettingsUpdate,
   TokenAccountBridge,
@@ -13,6 +15,7 @@ import {
 } from "../surfaces/settings/settingsTabs";
 import type { ProofScenario } from "./fixtures/scenarios";
 import {
+  codexSessionToolActivity,
   proofAppInfo,
   proofCurrencyRates,
   proofHooksConfig,
@@ -164,6 +167,33 @@ export function createProofRouter(
   // them to settings; `get_provider_detail` then reports the chosen source.
   const cookieSources = new Map<string, string>();
   const warned = new Set<string>();
+  let httpServer: HttpServerSnapshot = {
+    config: {
+      enabled: false,
+      host: "127.0.0.1",
+      port: 8080,
+      token: "",
+      refreshIntervalSecs: 60,
+      requestTimeoutSecs: 30,
+      identity: "redacted",
+      allowPlainHttp: false,
+    },
+    status: { state: "stopped" },
+  };
+  // Mirrors only the token rule of the shell's validation; enough for scenarios.
+  const applyHttpServer = (config: HttpServerConfig): HttpServerSnapshot => {
+    if (config.enabled && config.token.trim() === "") {
+      return { ...httpServer, status: { state: "invalid", code: "invalidToken" } };
+    }
+    const host = config.host.trim() === "localhost" ? "127.0.0.1" : config.host.trim();
+    httpServer = {
+      config,
+      status: config.enabled
+        ? { state: "running", url: `http://${host}:${config.port}/` }
+        : { state: "stopped" },
+    };
+    return httpServer;
+  };
 
   const bootstrap = (): BootstrapState => ({
     contractVersion: "v1",
@@ -241,6 +271,9 @@ export function createProofRouter(
     get_app_info: () => proofAppInfo(appVersion),
     get_deepseek_pricing_status: () => null,
     get_stay_awake_status: () => false,
+    get_http_server_state: () => httpServer,
+    apply_http_server_config: (args) =>
+      applyHttpServer(argsRecord(args.config) as unknown as HttpServerConfig),
     get_system_accent_color: () => "#4c8bf5",
     // A fixed 1080p desktop minus the taskbar: headless browsers report a
     // small `screen`, which would cap the tray panel's auto-fit height.
@@ -327,6 +360,8 @@ export function createProofRouter(
     list_jetbrains_detected_ides: () => [],
     get_kiro_status: () => ({ available: false, hint: null }),
     get_codex_workspaces_snapshot: () => null,
+    get_codex_session_tool_activity: (args) =>
+      codexSessionToolActivity(current(), stringArg(args, "sessionId")),
     get_safe_diagnostics: () => "Proof build: mocked IPC, no diagnostics collected.",
     // Window and shell side effects are no-ops in a browser.
     dismiss_tray_panel: () => null,

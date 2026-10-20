@@ -187,6 +187,7 @@ function settings(overrides: Partial<SettingsSnapshot> = {}): SettingsSnapshot {
     trayScalePercent: 100,
     trayPanelAlwaysOnTop: false,
     powertoysStatusPipeEnabled: false,
+    shareUsageWithCli: false,
     claudeAvoidKeychainPrompts: false,
     codexSparkUsageVisible: true,
     disableKeychainAccess: false,

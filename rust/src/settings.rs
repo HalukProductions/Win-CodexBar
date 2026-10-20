@@ -35,6 +35,7 @@ pub const SUBSCRIPTION_USAGE_ITEM_ID: &str = "section:subscription";
 mod api_keys;
 mod config_path;
 mod cost_time_zone;
+mod http_server;
 mod manual_cookies;
 mod model_rate_limits;
 mod optional_details;
@@ -54,6 +55,7 @@ pub use config_path::{
     settings_file_override,
 };
 pub use cost_time_zone::*;
+pub use http_server::*;
 pub use manual_cookies::*;
 pub use model_rate_limits::{ModelRateLimit, rate_limit_number};
 pub use optional_details::provider_has_optional_details;
@@ -407,6 +409,12 @@ pub struct Settings {
     /// Enable the local PowerToys Command Palette status pipe.
     #[serde(default)]
     pub powertoys_status_pipe_enabled: bool,
+
+    /// Write a usage cache that the `codexbar` CLI falls back to when it
+    /// cannot decrypt its own credentials (upstream `shareUsageWithCLI`).
+    /// Off by default; machine-local.
+    #[serde(default)]
+    pub share_usage_with_cli: bool,
 
     /// Show the always-on-top floating capacity bar.
     #[serde(default)]
@@ -824,6 +832,7 @@ impl Default for Settings {
             tray_scale_percent: default_tray_scale_percent(),
             tray_panel_always_on_top: false,
             powertoys_status_pipe_enabled: false,
+            share_usage_with_cli: false,
             float_bar_enabled: false,
             float_bar_opacity: default_float_bar_opacity(),
             float_bar_scale: default_float_bar_scale(),

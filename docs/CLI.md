@@ -72,6 +72,17 @@ Which providers `usage` fetches without `-p`:
 
 An explicit `-p` never reads the enabled list. `--account` needs exactly one provider, even when the enabled list has several.
 
+### App usage cache fallback
+
+When **Settings > Advanced > Share usage with the CLI** is on, the desktop app keeps `%APPDATA%\CodexBar\cli-usage-cache.json` up to date (see [CONFIGURATION.md](./CONFIGURATION.md#advanced)). `usage` shows that copy instead of an error row only when all of these hold (upstream v0.77 #4554):
+
+- Sharing is on in `settings.json`. If `settings.json` itself can't be decrypted in this session, the presence of the cache file counts as opted in, because the app only writes it while sharing is on.
+- The fetch is for the default account: `--source auto`, no `--account` and no `--all-accounts`. `CODEXBAR_CONFIG` turns the fallback off.
+- A DPAPI decrypt failed earlier in the same run (stored credentials or browser cookies), and the provider then failed with a missing-credentials or missing-cookies error. Timeouts, network errors, expired sessions and other failures still print the error row.
+- The cached entry for that provider is at most one hour old and has at least one real limit window.
+
+The JSON row uses `source` `codexbar-app` and adds `ageSeconds`. Text output adds the note "Cached by the CodexBar app 5m ago (credentials could not be decrypted in this session)."; `--brief` appends it in parentheses.
+
 ### Error rows
 
 In JSON and TOON output, a provider that fails becomes a row with `provider`, the readable `error` and an `errorKind`. Scripts can branch on `errorKind` without parsing text.
@@ -210,6 +221,8 @@ codexbar serve --port 8080
 ```
 
 `serve` binds to `127.0.0.1:8080` by default. A non-loopback `--host` needs a dashboard token and `--allow-plain-http`, because the token then crosses the network over cleartext HTTP. Set the token in `CODEXBAR_DASHBOARD_TOKEN` rather than on the command line.
+
+The desktop app can run the same server for you from Settings > Advanced > HTTP server, without a console window. See [CONFIGURATION.md](./CONFIGURATION.md#advanced).
 
 | Route | What it returns |
 | --- | --- |

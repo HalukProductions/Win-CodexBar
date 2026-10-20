@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   HooksConfigSave,
   HooksConfigSnapshot,
+  HttpServerConfig,
+  HttpServerSnapshot,
   ClaudeAccount,
   ClaudeReconciliationSnapshot,
   GrokAccount,
@@ -41,6 +43,7 @@ import type {
   SessionFocusResult,
   TrayVisibilityStatusDto,
   UsageSpendSummary,
+  CodexSessionToolActivity,
   CodexAccount,
   CodexAccountUsageSnapshot,
   CodexAccountsStateBridge,
@@ -113,6 +116,14 @@ export function getCurrencyRates(preferredCurrencyCode: string): Promise<Currenc
 
 export function getStayAwakeStatus(): Promise<boolean> {
   return invoke<boolean>("get_stay_awake_status");
+}
+
+export function getHttpServerState(): Promise<HttpServerSnapshot> {
+  return invoke<HttpServerSnapshot>("get_http_server_state");
+}
+
+export function applyHttpServerConfig(config: HttpServerConfig): Promise<HttpServerSnapshot> {
+  return invoke<HttpServerSnapshot>("apply_http_server_config", { config });
 }
 
 export function getHooksConfig(): Promise<HooksConfigSnapshot> {
@@ -330,6 +341,17 @@ export function getUsageSpendSummary(options?: { period?: string; forceRefresh?:
   return invoke<UsageSpendSummary>("get_usage_spend_summary", {
     period: options?.period ?? null,
     forceRefresh: options?.forceRefresh ?? null,
+  });
+}
+
+/** Native tool operations of one Codex conversation, read on demand. */
+export function getCodexSessionToolActivity(
+  sessionId: string,
+  historyDays?: number,
+): Promise<CodexSessionToolActivity> {
+  return invoke<CodexSessionToolActivity>("get_codex_session_tool_activity", {
+    sessionId,
+    historyDays: historyDays ?? null,
   });
 }
 

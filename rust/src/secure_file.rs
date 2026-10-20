@@ -82,7 +82,9 @@ pub fn read_string(path: &Path) -> io::Result<String> {
             let encrypted = base64::engine::general_purpose::STANDARD
                 .decode(file.payload.as_bytes())
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-            let plain = unprotect(&encrypted)?;
+            let plain = unprotect(&encrypted).inspect_err(|_| {
+                crate::cli_usage_cache::note_dpapi_decrypt_failure();
+            })?;
             String::from_utf8(plain).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
         }
         other => Err(io::Error::new(
@@ -366,6 +368,27 @@ mod tests {
         .unwrap();
 
         assert!(matches!(status(&path), SecureFileStatus::Unreadable(_)));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn failed_decrypt_is_witnessed_for_the_cli_usage_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("protected.json");
+        std::fs::write(
+            &path,
+            serde_json::to_string(&ProtectedFile {
+                format: FORMAT.to_string(),
+                version: VERSION,
+                protection: WINDOWS_DPAPI_USER.to_string(),
+                payload: "AAAAAAAAAAA=".to_string(),
+            })
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert!(read_string(&path).is_err());
+        assert!(crate::cli_usage_cache::dpapi_decrypt_failure_observed());
     }
 
     #[cfg(windows)]
