@@ -16,6 +16,7 @@ use super::project_names::apply_saved_project_names;
 use super::projectless::apply_projectless_chats;
 use super::sidecar::{SidecarError, WorkspaceUsageSidecar};
 use super::thread_names::apply_session_names_and_ranking;
+use super::tool_activity::{CodexSessionToolActivity, ToolActivityScan};
 use super::turn_performance::{CodexTurnPerformanceSummary, TurnSample, scan_session_turns};
 use super::types::{
     CodexLocalProjectUsageSnapshot, CostEstimate, DailyPoint, Progress, ProgressPhase,
@@ -170,36 +171,8 @@ impl CodexWorkspacesIndex {
         }
 
         progress(Progress::phase(ProgressPhase::ScanningLogs));
-        let since = codex_period_start(today, self.history_days);
-        let range = CostUsageDayRange::new(since, today);
-
-        let mut files = list_session_files(&scope.sessions_root, &range);
-        files.extend(list_session_files(&scope.archived_sessions_root, &range));
-        // Codex archives a thread by moving its rollout into the flat
-        // `archived_sessions` folder, and older builds kept rollouts flat in
-        // the sessions root (upstream `listCodexSessionFilesFlat`). A flat
-        // file named like one already listed is a copy of that session, so
-        // it is skipped and the session is counted once.
-        let mut names: HashSet<_> = files
-            .iter()
-            .filter_map(|path| path.file_name().map(ToOwned::to_owned))
-            .collect();
-        for path in list_flat_session_files(&scope.sessions_root, &range)
-            .into_iter()
-            .chain(list_flat_session_files(
-                &scope.archived_sessions_root,
-                &range,
-            ))
-        {
-            if path
-                .file_name()
-                .is_some_and(|name| names.insert(name.to_owned()))
-            {
-                files.push(path);
-            }
-        }
-        files.sort();
-        files.dedup();
+        let range = self.history_range(today);
+        let files = list_rollout_files(&scope, &range);
 
         #[allow(
             clippy::cast_possible_truncation,
@@ -315,6 +288,101 @@ impl CodexWorkspacesIndex {
         sidecar.publish_snapshot(&snapshot)?;
         Ok(snapshot)
     }
+
+    fn history_range(&self, today: NaiveDate) -> CostUsageDayRange {
+        CostUsageDayRange::new(codex_period_start(today, self.history_days), today)
+    }
+
+    /// Native tool operations of one conversation, read on demand from the
+    /// same rollout files the usage index covers. Never touches the sidecar.
+    pub fn load_session_tool_activity(
+        &self,
+        session_id: &str,
+    ) -> Result<CodexSessionToolActivity, IndexError> {
+        self.load_session_tool_activity_at(session_id, Utc::now())
+    }
+
+    pub(super) fn load_session_tool_activity_at(
+        &self,
+        session_id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<CodexSessionToolActivity, IndexError> {
+        let scope = self.scope()?;
+        let zone = crate::cost_reporting_period::cost_bucket_zone();
+        let range = self.history_range(zone.date(now));
+        let files = list_rollout_files(&scope, &range);
+        // Rollout names carry the session id; the first-line identity decides.
+        let mut owned: Vec<&PathBuf> = files
+            .iter()
+            .filter(|path| {
+                path.file_name()
+                    .is_some_and(|name| name.to_string_lossy().contains(session_id))
+            })
+            .filter(|path| rollout_session_id(path).is_some_and(|(id, _)| id == session_id))
+            .collect();
+        if owned.is_empty() {
+            owned = files
+                .iter()
+                .filter(|path| rollout_session_id(path).is_some_and(|(id, _)| id == session_id))
+                .collect();
+        }
+        let mut scan = ToolActivityScan::new(session_id);
+        for path in owned {
+            scan.scan_file(path);
+        }
+        Ok(scan.finish(|completed_at| {
+            let key = CostUsageDayRange::day_key(zone.date(*completed_at));
+            CostUsageDayRange::is_in_range(&key, &range.since_key, &range.until_key)
+        }))
+    }
+}
+
+/// Every rollout in the history window, from dated and flat folders alike.
+fn list_rollout_files(scope: &CodexLocalDataScope, range: &CostUsageDayRange) -> Vec<PathBuf> {
+    let mut files = list_session_files(&scope.sessions_root, range);
+    files.extend(list_session_files(&scope.archived_sessions_root, range));
+    // Codex archives a thread by moving its rollout into the flat
+    // `archived_sessions` folder, and older builds kept rollouts flat in
+    // the sessions root (upstream `listCodexSessionFilesFlat`). A flat
+    // file named like one already listed is a copy of that session, so
+    // it is skipped and the session is counted once.
+    let mut names: HashSet<_> = files
+        .iter()
+        .filter_map(|path| path.file_name().map(ToOwned::to_owned))
+        .collect();
+    for path in list_flat_session_files(&scope.sessions_root, range)
+        .into_iter()
+        .chain(list_flat_session_files(
+            &scope.archived_sessions_root,
+            range,
+        ))
+    {
+        if path
+            .file_name()
+            .is_some_and(|name| names.insert(name.to_owned()))
+        {
+            files.push(path);
+        }
+    }
+    files.sort();
+    files.dedup();
+    files
+}
+
+/// `(session id, cwd)` from the rollout's first line, else the file name.
+fn rollout_session_id(path: &Path) -> Option<(String, Option<String>)> {
+    let first_line = CodexRolloutFirstLineParser::read_first_line(path)?;
+    if let Some(meta) = CodexRolloutFirstLineParser::parse(&first_line) {
+        return Some((meta.session_id, meta.cwd));
+    }
+    let stem = path.file_stem()?.to_string_lossy().into_owned();
+    let id = stem
+        .rsplit('-')
+        .next()
+        .filter(|s| s.len() >= 8)
+        .map(|s| s.to_string())
+        .unwrap_or(stem);
+    Some((id, None))
 }
 
 #[derive(Debug, Clone)]
@@ -496,20 +564,7 @@ fn build_projects(sessions: &HashMap<String, SessionBucket>) -> Vec<ProjectUsage
 }
 
 fn index_one_file(path: &Path, range: &CostUsageDayRange) -> Option<ParsedFile> {
-    let first_line = CodexRolloutFirstLineParser::read_first_line(path)?;
-    let meta = CodexRolloutFirstLineParser::parse(&first_line);
-    let (session_id, cwd) = if let Some(meta) = meta {
-        (meta.session_id, meta.cwd)
-    } else {
-        let stem = path.file_stem()?.to_string_lossy().into_owned();
-        let id = stem
-            .rsplit('-')
-            .next()
-            .filter(|s| s.len() >= 8)
-            .map(|s| s.to_string())
-            .unwrap_or(stem);
-        (id, None)
-    };
+    let (session_id, cwd) = rollout_session_id(path)?;
 
     let parsed = JsonlScanner::parse_codex_file(path, range, 0, None, None).ok()?;
     if parsed.records.is_empty() && parsed.last_model.is_none() {
