@@ -47,6 +47,7 @@ The app keeps its files in `%APPDATA%\CodexBar` (`dirs::config_dir()` plus `Code
 | `history\quota-burndown-v1.json` | `%APPDATA%\CodexBar` | Yes | Quota history |
 | `claude\quota-reset-observations-v1.json`, `codex\quota-reset-observations-v1.json` | `%APPDATA%\CodexBar` | Yes | Observed reset times |
 | `hooks.json` | `%APPDATA%\CodexBar` | No | Hook rules |
+| `http_server.json` | `%APPDATA%\CodexBar` | Yes | Built-in HTTP server settings and its bearer token |
 | `<provider>-cookie.json` | `%LOCALAPPDATA%\CodexBar` | Yes | Cached browser cookies |
 | `codex-weekly-reset-v1.json` | `%LOCALAPPDATA%\CodexBar` | Yes | Codex weekly reset cache |
 
@@ -243,6 +244,14 @@ The float bar section is on this pane too. Every control except the first is dis
 | Network proxy | `http_proxy_enabled`, `http_proxy_url`, `http_proxy_username`, `http_proxy_password` | off |
 
 The proxy password is stored in `settings.json`, which is DPAPI-wrapped. Advanced also has a button that copies diagnostics.
+
+**HTTP server** runs the same server as `codexbar serve` inside the desktop app. It is off by default. Its settings live in `http_server.json`, not in `settings.json`, so they stay on this PC and are not part of portable preferences.
+
+- Fields: bind address (default `127.0.0.1`; `localhost` means `127.0.0.1`), port (8080), bearer token, cache interval (60 s), request timeout (30 s, 0 disables), dashboard identity (redacted or full), and, off loopback, an "accept unencrypted HTTP" switch.
+- A token is required. **Generate** fills in 32 random bytes as hex. Requests without `Authorization: Bearer <token>` get `401`.
+- **Apply** validates the fields, saves them and restarts the server. Invalid fields show an error and are neither saved nor started; a server that is already running keeps running with the saved settings until a valid apply.
+- The server starts with the app when enabled and stops when the app quits. The status row shows Stopped, Running (with the dashboard URL), an invalid-field error, a start failure such as a port already in use, or an unexpected exit.
+- Proof mode (`CODEXBAR_PROOF_MODE`) never starts the server.
 
 **Hide personal information** is in the Privacy group. When it is on:
 
