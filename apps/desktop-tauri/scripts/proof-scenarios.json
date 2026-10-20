@@ -297,6 +297,19 @@
       ]
     },
     {
+      "name": "settings-gemini-usage-source",
+      "query": "window=settings&tab=providers:gemini&fixture=default&theme=dark",
+      "size": [880, 620],
+      "steps": [
+        { "expectText": ["Usage source", "Gemini CLI", "Gemini app", "Uses the Gemini CLI login; the Gemini app browser session is used only when Gemini app is selected."] },
+        { "expectNoText": "Cookie source" },
+        { "screenshot": "settings-gemini-usage-source" },
+        { "click": { "selector": "button", "label": "Gemini app" } },
+        { "expectCall": { "cmd": "set_provider_usage_source", "args": { "providerId": "gemini", "source": "web" } } },
+        { "screenshot": "settings-gemini-usage-source-picker" }
+      ]
+    },
+    {
       "name": "settings-advanced-http-server",
       "query": "window=settings&tab=advanced&theme=dark",
       "size": [880, 620],

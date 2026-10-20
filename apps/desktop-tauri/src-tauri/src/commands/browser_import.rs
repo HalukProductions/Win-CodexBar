@@ -65,7 +65,10 @@ pub fn import_browser_cookies(
     let pid = parse_provider_arg(&provider_id)?;
 
     let settings = Settings::load();
-    let domain = if pid == codexbar::core::ProviderId::MiniMax {
+    let request_scope = codexbar::core::instantiate_provider(pid).cookie_request_scope();
+    let domain = if let Some(scope) = request_scope {
+        scope.host
+    } else if pid == codexbar::core::ProviderId::MiniMax {
         codexbar::providers::MiniMaxProvider::cookie_domain_for_region(Some(
             settings.api_region(pid),
         ))
@@ -81,8 +84,14 @@ pub fn import_browser_cookies(
         .ok_or_else(|| format!("Browser '{browser_type}' not found or not installed"))?;
 
     // Extract the cookie header.
-    let cookies = CookieExtractor::extract_for_domain(&browser, domain)
-        .map_err(|e| e.user_message_for_browser(browser.browser_type))?;
+    let mut cookies = CookieExtractor::extract_for_domain(
+        &browser,
+        request_scope.map_or(domain, |scope| scope.scan_domain),
+    )
+    .map_err(|e| e.user_message_for_browser(browser.browser_type))?;
+    if let Some(scope) = request_scope {
+        scope.retain(&mut cookies);
+    }
 
     if cookies.is_empty() {
         return Err(format!(

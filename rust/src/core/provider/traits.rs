@@ -213,6 +213,22 @@ pub trait Provider: Send + Sync {
         false
     }
 
+    /// Whether an explicitly selected `web` usage source stays `web` when the
+    /// cookie source is Off. The shell then passes `SourceMode::Web` with
+    /// [`FetchContext::manual_cookie_missing`] set, instead of the usual
+    /// cookie-off `Cli` mapping, for providers whose `Cli` source is a real
+    /// credential lane that must not silently replace the web account.
+    fn explicit_web_survives_cookie_off(&self) -> bool {
+        false
+    }
+
+    /// Request host whose cookies browser import reads, for providers whose
+    /// session cookies live on a parent domain shared with unrelated sites.
+    /// `None` imports every cookie under [`ProviderId::cookie_domain`].
+    fn cookie_request_scope(&self) -> Option<crate::browser::cookies::CookieRequestScope> {
+        None
+    }
+
     /// Whether the cookie source only scopes the browser session the
     /// provider may use, leaving the selected usage source in charge of
     /// routing.

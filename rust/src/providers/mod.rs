@@ -346,6 +346,23 @@ pub(crate) fn browser_cookie_sessions_from<S: crate::browser::session_scan::Brow
     }
 }
 
+/// [`browser_cookie_sessions_from`] for the cookies a browser sends to one
+/// request host (see [`crate::browser::cookies::CookieRequestScope`]). The
+/// same `FetchContext::manual_cookie_missing` gate applies.
+pub(crate) fn browser_cookie_request_sessions_from<
+    S: crate::browser::session_scan::BrowserCookieStore,
+>(
+    store: S,
+    ctx: &crate::core::FetchContext,
+    scope: crate::browser::cookies::CookieRequestScope,
+) -> BrowserCookieSessions<S> {
+    BrowserCookieSessions {
+        scan: (!ctx.manual_cookie_missing).then(|| {
+            crate::browser::session_scan::BrowserCookieScan::for_request_scope(scope, store)
+        }),
+    }
+}
+
 pub(crate) struct BrowserCookieSessions<
     S: crate::browser::session_scan::BrowserCookieStore =
         crate::browser::session_scan::SystemCookieStore,

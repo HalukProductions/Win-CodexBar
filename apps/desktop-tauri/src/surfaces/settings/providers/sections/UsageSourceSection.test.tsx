@@ -56,6 +56,19 @@ describe("usage source policy", () => {
     expect(shouldShowCookieSource("alibabatokenplan", "cli")).toBe(false);
     expect(shouldShowCookieSource("alibabatokenplan", "auto")).toBe(true);
     expect(shouldShowCookieSource("codex", "cli")).toBe(true);
+    expect(usageSourcePolicy("gemini")?.options.map((option) => option.value)).toEqual([
+      "auto",
+      "cli",
+      "web",
+    ]);
+    expect(usageSourcePolicy("gemini")?.options.map((option) => option.labelKey)).toEqual([
+      "ProviderSourceAutoShort",
+      "ProviderGeminiCli",
+      "ProviderGeminiApp",
+    ]);
+    expect(shouldShowCookieSource("gemini", "auto")).toBe(false);
+    expect(shouldShowCookieSource("gemini", "cli")).toBe(false);
+    expect(shouldShowCookieSource("gemini", "web")).toBe(true);
   });
 });
 
@@ -81,6 +94,29 @@ describe("UsageSourceSection", () => {
 
     await waitFor(() => {
       expect(tauriMocks.setProviderUsageSource).toHaveBeenCalledWith("alibabatokenplan", "cli");
+      expect(onChanged).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("offers the Gemini app as an explicit source next to the Gemini CLI", async () => {
+    const onChanged = vi.fn();
+    tauriMocks.setProviderUsageSource.mockReset();
+    tauriMocks.setProviderUsageSource.mockResolvedValue(undefined);
+
+    render(
+      <UsageSourceSection providerId="gemini" currentValue="cli" t={(key) => key} onChanged={onChanged} />,
+    );
+
+    expect(screen.getByRole("radio", { name: "ProviderGeminiCli" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByText("ProviderGeminiUsageSourceCliHelp")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("radio", { name: "ProviderGeminiApp" }));
+
+    await waitFor(() => {
+      expect(tauriMocks.setProviderUsageSource).toHaveBeenCalledWith("gemini", "web");
       expect(onChanged).toHaveBeenCalledTimes(1);
     });
   });

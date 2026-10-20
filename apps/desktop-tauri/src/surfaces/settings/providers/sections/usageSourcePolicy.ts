@@ -94,6 +94,32 @@ const POLICIES: Readonly<Record<string, UsageSourcePolicy>> = {
       },
     ],
   },
+  gemini: {
+    options: [
+      {
+        value: "auto",
+        label: "Auto",
+        labelKey: "ProviderSourceAutoShort",
+        description: "Uses the Gemini CLI login; the Gemini app browser session is used only when Gemini app is selected.",
+        descriptionKey: "ProviderGeminiUsageSourceAutoHelp",
+      },
+      {
+        value: "cli",
+        label: "Gemini CLI",
+        labelKey: "ProviderGeminiCli",
+        description: "Uses the Gemini CLI login only.",
+        descriptionKey: "ProviderGeminiUsageSourceCliHelp",
+      },
+      {
+        value: "web",
+        label: "Gemini app",
+        labelKey: "ProviderGeminiApp",
+        description: "Reads the Gemini app 5-hour and weekly limits from the selected gemini.google.com browser session or manual cookie header only, with no Gemini CLI fallback.",
+        descriptionKey: "ProviderGeminiUsageSourceWebHelp",
+      },
+    ],
+    hideCookieSourceValues: ["auto", "cli"],
+  },
   gitkraken: {
     options: [
       { value: "auto", label: "Auto", description: "Uses the configured GitKraken access token." },

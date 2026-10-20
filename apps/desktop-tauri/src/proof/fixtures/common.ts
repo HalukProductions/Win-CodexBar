@@ -89,7 +89,7 @@ export const PROOF_PROVIDER_CATALOG: ProviderCatalogEntry[] = [
     cliAliases: ["claude-platform"],
   },
   { id: "cursor", displayName: "Cursor", cookieDomain: "cursor.com" },
-  { id: "gemini", displayName: "Gemini", cookieDomain: null },
+  { id: "gemini", displayName: "Gemini", cookieDomain: "gemini.google.com" },
   { id: "copilot", displayName: "Copilot", cookieDomain: null },
   { id: "openrouter", displayName: "OpenRouter", cookieDomain: null },
   { id: "factory", displayName: "Factory", cookieDomain: "app.factory.ai" },

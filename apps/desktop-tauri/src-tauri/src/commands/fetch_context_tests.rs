@@ -222,6 +222,99 @@ fn fetch_context_resolves_each_case() {
             },
         ),
         (
+            // The Gemini app source is opt-in: a stored cookie or Automatic
+            // cookies never turn the CLI source into the browser account.
+            "fetch_context_gemini_stored_cookie_keeps_cli_source",
+            ProviderId::Gemini,
+            CtxInput {
+                manual_cookie: Some("SID=stored"),
+                ..Default::default()
+            },
+            Expect {
+                source: Some(Auto),
+                cookie: Some(None),
+                missing: Some(false),
+                ..Default::default()
+            },
+        ),
+        (
+            "fetch_context_gemini_automatic_cookies_keep_cli_source",
+            ProviderId::Gemini,
+            CtxInput {
+                cookie_source: Some("auto"),
+                usage_source: Some("cli"),
+                ..Default::default()
+            },
+            Expect {
+                source: Some(Cli),
+                cookie: Some(None),
+                missing: Some(false),
+                ..Default::default()
+            },
+        ),
+        (
+            "fetch_context_gemini_web_uses_stored_cookie",
+            ProviderId::Gemini,
+            CtxInput {
+                usage_source: Some("web"),
+                manual_cookie: Some("SID=stored"),
+                ..Default::default()
+            },
+            Expect {
+                source: Some(Web),
+                cookie: Some(Some("SID=stored")),
+                missing: Some(false),
+                ..Default::default()
+            },
+        ),
+        (
+            // Automatic leaves browser traversal to the provider.
+            "fetch_context_gemini_web_automatic_defers_browser_sessions",
+            ProviderId::Gemini,
+            CtxInput {
+                usage_source: Some("web"),
+                cookie_source: Some("auto"),
+                ..Default::default()
+            },
+            Expect {
+                source: Some(Web),
+                cookie: Some(None),
+                missing: Some(false),
+                ..Default::default()
+            },
+        ),
+        (
+            "fetch_context_gemini_web_empty_manual_fails_closed",
+            ProviderId::Gemini,
+            CtxInput {
+                usage_source: Some("web"),
+                ..Default::default()
+            },
+            Expect {
+                source: Some(Web),
+                cookie: Some(None),
+                missing: Some(true),
+                ..Default::default()
+            },
+        ),
+        (
+            // Off must not fall back to the Gemini CLI account.
+            "fetch_context_gemini_web_cookie_off_stays_web_and_fails_closed",
+            ProviderId::Gemini,
+            CtxInput {
+                usage_source: Some("web"),
+                cookie_source: Some("off"),
+                manual_cookie: Some("SID=stored"),
+                ..Default::default()
+            },
+            Expect {
+                source: Some(Web),
+                cookie: Some(None),
+                missing: Some(true),
+                ..Default::default()
+            },
+        ),
+        (
             "fetch_context_opencode_empty_manual_remaps_to_web",
             ProviderId::OpenCode,
             CtxInput::default(),
