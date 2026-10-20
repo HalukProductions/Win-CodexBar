@@ -300,6 +300,7 @@ codexbar config providers
 codexbar config providers --json --pretty
 codexbar config enable -p cursor
 codexbar config disable cursor --json
+codexbar config set-source --provider codex --source cli
 printf '%s' $env:OPENROUTER_API_KEY | codexbar config set-api-key -p openrouter --stdin
 codexbar config claude-code-credentials status --json
 codexbar config preferences export --file C:\temp\codexbar-preferences.json
@@ -315,18 +316,22 @@ codexbar config validate
 | `dump` | Prints the configuration. Secrets are redacted. |
 | `providers` | Lists providers and whether each is enabled. |
 | `enable`, `disable` | Turns a provider on or off and saves the setting. |
+| `set-source` | Saves a provider's usage source (`--source auto\|web\|cli\|oauth`) without changing whether it is enabled. `auto` returns to the default. |
 | `set-api-key` | Stores a provider API key. `--stdin` reads it from stdin. `--no-enable` stores it without enabling the provider. |
 | `path` | Shows the configuration file paths. |
 | `preferences export`, `preferences import` | Exports or imports portable preferences. See [CONFIGURATION.md](./CONFIGURATION.md#portable-preferences). |
 | `claude-code-credentials` | `allow`, `deny` or `status`. |
 
-`enable`, `disable` and `set-api-key` take the provider as a positional name or with `-p`/`--provider`. `usage -p <id>` is a one-off choice and doesn't change the enabled list.
+`enable`, `disable`, `set-source` and `set-api-key` take the provider as a positional name or with `-p`/`--provider`. `usage -p <id>` is a one-off choice and doesn't change the enabled list.
 
-`config providers`, `enable`, `disable` and `claude-code-credentials` accept `--format text|json`, `--json` and `--pretty`. Their JSON matches upstream:
+`config providers`, `enable`, `disable`, `set-source` and `claude-code-credentials` accept `--format text|json`, `--json` and `--pretty`. Their JSON matches upstream:
 
 - `config providers` prints one `{provider, displayName, enabled, defaultEnabled}` object per provider. Retired providers (`kimik2`, `crossmodel`) are listed only while enabled, like in Settings. They still resolve by name, for example `--provider kimik2`.
 - `config enable` and `config disable` print `{provider, displayName, enabled, configPath}`.
+- `config set-source` prints `{provider, displayName, enabled, source, configPath}`.
 - `config claude-code-credentials allow|deny|status` prints `{allowed, configPath}`.
+
+`set-source` writes the same per-provider usage source as the Settings > Providers source picker. It checks the source against what that provider supports, so `codexbar config set-source codex --source web` fails with `Source web is not supported for codex. Supported sources: auto, cli, oauth.` Upstream also accepts `api`. This port has no separate API source; API-key providers use `oauth` for their token lane.
 
 `claude-code-credentials` controls whether CodexBar may read and refresh Claude Code's own OAuth credentials (`~/.claude/.credentials.json` or Windows Credential Manager). It is the same choice as the desktop setting, and it is off by default. While it is off, Claude Auto falls back to CLI usage, which has less detail. `allow` and `deny` save the choice. `status` only reports it.
 
