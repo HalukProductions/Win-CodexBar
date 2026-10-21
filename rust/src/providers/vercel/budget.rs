@@ -79,13 +79,29 @@ fn parse_failure() -> ProviderError {
     ProviderError::Parse(UNRECOGNIZED.into())
 }
 
+/// The two requests on the personal budget path. A 403 means different things
+/// on each: `/v2/user` answers 403 for a token it does not accept (a bogus
+/// token was observed to get 403 there), while the budget list answers 403 when
+/// the token's user lacks a role that can read budgets.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Endpoint {
+    CurrentUser,
+    Budgets,
+}
+
+const REJECTED_TOKEN: &str = "Vercel rejected the access token. Check or replace it in Settings.";
+// Vercel answers 403 both for a bogus token and for a scoped token without the
+// `user` permission, so the message has to cover both.
+const USER_ACCESS_DENIED: &str = "Vercel rejected the access token, or the token lacks permission to read the current user. Check its scope or replace it in Settings.";
+
 /// Status mapping keeps the code but never the response body.
-fn status_error(status: StatusCode) -> ProviderError {
+fn status_error(status: StatusCode, endpoint: Endpoint) -> ProviderError {
     let code = status.as_u16();
     match status {
-        StatusCode::UNAUTHORIZED => ProviderError::Other(
-            "Vercel rejected the access token. Check or replace it in Settings.".into(),
-        ),
+        StatusCode::UNAUTHORIZED => ProviderError::Other(REJECTED_TOKEN.into()),
+        StatusCode::FORBIDDEN if endpoint == Endpoint::CurrentUser => {
+            ProviderError::Other(USER_ACCESS_DENIED.into())
+        }
         StatusCode::FORBIDDEN => ProviderError::Other(format!(
             "Vercel returned HTTP {code}; the token's user needs a non-Contributor role on this team to read budgets."
         )),
@@ -283,7 +299,11 @@ impl VercelProvider {
         let team_env = std::env::var(TEAM_ENV).ok();
         let team = resolve_team(ctx.workspace_id.as_deref(), team_env.as_deref())?;
         let user_url = format!("{}/v2/user", self.api_base_url);
-        let user = parse_user(&self.get_budget_json(&user_url, token, &[]).await?)?;
+        let user = parse_user(
+            &self
+                .get_budget_json(&user_url, token, &[], Endpoint::CurrentUser)
+                .await?,
+        )?;
 
         let budgets_url = format!("{}/ai-gateway/budgets/list", self.api_base_url);
         let mut matches: Vec<Value> = Vec::new();
@@ -299,7 +319,9 @@ impl VercelProvider {
             if let Some(current) = cursor.as_deref() {
                 query.push(("cursor", current));
             }
-            let body = self.get_budget_json(&budgets_url, token, &query).await?;
+            let body = self
+                .get_budget_json(&budgets_url, token, &query, Endpoint::Budgets)
+                .await?;
             let rows = body
                 .get("budgets")
                 .and_then(Value::as_array)
@@ -337,6 +359,7 @@ impl VercelProvider {
         url: &str,
         token: &str,
         query: &[(&str, &str)],
+        endpoint: Endpoint,
     ) -> Result<Value, ProviderError> {
         let response = self
             .client
@@ -348,7 +371,7 @@ impl VercelProvider {
             .await?;
         let status = response.status();
         if status != StatusCode::OK {
-            return Err(status_error(status));
+            return Err(status_error(status, endpoint));
         }
         let body = read_bounded_response(response, MAX_BUDGET_RESPONSE_BYTES)
             .await

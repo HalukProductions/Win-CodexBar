@@ -862,9 +862,20 @@ Authorization: Bearer <access token>
   A `none` budget is cumulative and has no reset.
 
 The access token is sent only to `api.vercel.com`. The AI Gateway key is sent
-only to `ai-gateway.vercel.sh`. 401 asks you to check the token; 403, 429 and 5xx
-report their status. A token without a Team ID fails with a message that asks
-for one. Response bodies are never echoed in errors.
+only to `ai-gateway.vercel.sh`.
+
+Status handling differs by request:
+
+- `/v2/user`: 401 means Vercel did not accept the token, so the card asks you
+  to check or replace it. 403 is returned both for a bogus token and for a
+  scoped token without the `user` permission, so the card asks you to check the
+  token's scope or replace it.
+- `/ai-gateway/budgets/list`: 401 asks you to check the token. 403 means the
+  token's user needs a non-Contributor role on the team to read budgets.
+- 429 and 5xx report their status on either request.
+
+A token without a Team ID fails with a message that asks for one. Response
+bodies are never echoed in errors.
 
 ## Grok
 
