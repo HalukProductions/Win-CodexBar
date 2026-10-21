@@ -90,6 +90,9 @@ enum Endpoint {
 }
 
 const REJECTED_TOKEN: &str = "Vercel rejected the access token. Check or replace it in Settings.";
+// Vercel answers 403 both for a bogus token and for a scoped token without the
+// `user` permission, so the message has to cover both.
+const USER_ACCESS_DENIED: &str = "Vercel rejected the access token, or the token lacks permission to read the current user. Check its scope or replace it in Settings.";
 
 /// Status mapping keeps the code but never the response body.
 fn status_error(status: StatusCode, endpoint: Endpoint) -> ProviderError {
@@ -97,7 +100,7 @@ fn status_error(status: StatusCode, endpoint: Endpoint) -> ProviderError {
     match status {
         StatusCode::UNAUTHORIZED => ProviderError::Other(REJECTED_TOKEN.into()),
         StatusCode::FORBIDDEN if endpoint == Endpoint::CurrentUser => {
-            ProviderError::Other(REJECTED_TOKEN.into())
+            ProviderError::Other(USER_ACCESS_DENIED.into())
         }
         StatusCode::FORBIDDEN => ProviderError::Other(format!(
             "Vercel returned HTTP {code}; the token's user needs a non-Contributor role on this team to read budgets."

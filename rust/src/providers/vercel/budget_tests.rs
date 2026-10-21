@@ -397,11 +397,16 @@ async fn rows_for_other_scopes_are_ignored_even_when_malformed() {
 
 #[tokio::test]
 async fn user_endpoint_401_or_403_reads_as_a_rejected_token() {
-    for status_line in ["401 Unauthorized", "403 Forbidden"] {
+    for (status_line, mentions_scope) in [("401 Unauthorized", false), ("403 Forbidden", true)] {
         let (result, heads) = budget(vec![(status_line, "private-response".into())]).await;
         let message = result.expect_err(status_line).to_string();
         assert!(
             message.contains("rejected the access token"),
+            "{status_line}: {message}"
+        );
+        assert_eq!(
+            message.contains("lacks permission to read the current user"),
+            mentions_scope,
             "{status_line}: {message}"
         );
         assert!(
