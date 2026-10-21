@@ -16,14 +16,22 @@ use crate::agent_sessions::pi_family::roots::{
     EnvMap, PiProfile, omp_all_profile_roots, omp_default_profile_root, omp_named_profile_root,
     omp_profile_selector, pi_settings_session_directory,
 };
-use crate::core::CostUsagePricing;
+use crate::core::{CostUsagePricing, ModelsDevPricingSnapshot, pricing_snapshot};
 use crate::cost_scanner::CostSummary;
 
+/// The Pi backend that owns a row's pricing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PiMappedProvider {
     Codex,
     Claude,
+    /// Standalone Pi history on `amazon-bedrock`. Native Codex/Claude scans
+    /// never mirror these rows; they are priced from the models.dev
+    /// `amazon-bedrock` entry with an exact regional model-ID match.
+    Bedrock,
 }
+
+/// models.dev provider id that prices [`PiMappedProvider::Bedrock`] rows.
+const BEDROCK_MODELS_DEV_PROVIDER_ID: &str = "amazon-bedrock";
 
 #[derive(Debug, Default)]
 pub struct PiDailyScan {
@@ -136,6 +144,7 @@ pub fn scan_pi_compatible_into(
         seen_entries,
         pi_compatible_session_roots(scan_home()),
         Some(target),
+        &pricing_snapshot(),
     )
 }
 
@@ -158,19 +167,26 @@ pub fn scan_pi_into(
         seen_entries,
         pi_compatible_session_roots(scan_home()),
         None,
+        &pricing_snapshot(),
     )
 }
 
 /// Scan standalone Pi/OMP history into daily cost and token buckets.
 pub fn scan_pi_daily(days: u32, cancel: Option<&AtomicBool>) -> PiDailyScan {
     let cutoff = Utc::now() - Duration::days(days as i64);
-    scan_pi_daily_from_roots(cutoff, cancel, pi_compatible_session_roots(scan_home()))
+    scan_pi_daily_from_roots(
+        cutoff,
+        cancel,
+        pi_compatible_session_roots(scan_home()),
+        &pricing_snapshot(),
+    )
 }
 
 fn scan_pi_daily_from_roots(
     cutoff: DateTime<Utc>,
     cancel: Option<&AtomicBool>,
     roots: Vec<PathBuf>,
+    pricing: &ModelsDevPricingSnapshot,
 ) -> PiDailyScan {
     let mut result = PiDailyScan::default();
     let mut seen_entries = HashSet::new();
@@ -187,7 +203,7 @@ fn scan_pi_daily_from_roots(
             if cancelled(cancel) {
                 return false;
             }
-            let file = for_each_pi_entry(path, cutoff, None, &mut seen_entries, |entry| {
+            let file = for_each_pi_entry(path, cutoff, None, &mut seen_entries, pricing, |entry| {
                 let Some(timestamp) = entry.timestamp else {
                     missing_timestamp = true;
                     return;
@@ -227,6 +243,7 @@ fn scan_roots_into(
     seen_entries: &mut HashSet<String>,
     roots: Vec<PathBuf>,
     target: Option<PiMappedProvider>,
+    pricing: &ModelsDevPricingSnapshot,
 ) -> PiScanEvidence {
     let mut sessions = 0u32;
     let mut evidence = PiScanEvidence::default();
@@ -242,7 +259,7 @@ fn scan_roots_into(
                 return false;
             }
             let before = seen_entries.len();
-            let file = for_each_pi_entry(path, cutoff, target, seen_entries, |entry| {
+            let file = for_each_pi_entry(path, cutoff, target, seen_entries, pricing, |entry| {
                 apply_entry(summary, &entry);
             });
             if file.counted > 0 || seen_entries.len() > before {
@@ -339,6 +356,7 @@ fn for_each_pi_entry(
     cutoff: DateTime<Utc>,
     target: Option<PiMappedProvider>,
     seen: &mut HashSet<String>,
+    pricing: &ModelsDevPricingSnapshot,
     mut on_entry: impl FnMut(PiEntry),
 ) -> PiFileScanResult {
     let Ok(file) = File::open(path) else {
@@ -370,7 +388,7 @@ fn for_each_pi_entry(
                 .filter(|_| value.get("type").and_then(Value::as_str) == Some("session"))
                 .map(str::to_string);
         }
-        let Some(entry) = parse_pi_assistant_entry_any(&value) else {
+        let Some(entry) = parse_pi_assistant_entry_any(&value, pricing) else {
             // Malformed rows from unsupported backends affect only standalone
             // history, so a native scan keeps its completeness.
             let unsupported_backend = assistant_backend_text(&value)
@@ -476,6 +494,9 @@ fn map_provider(raw: &str) -> Option<PiMappedProvider> {
     if n.contains("anthropic") || n.contains("claude") {
         return Some(PiMappedProvider::Claude);
     }
+    if n == BEDROCK_MODELS_DEV_PROVIDER_ID {
+        return Some(PiMappedProvider::Bedrock);
+    }
     None
 }
 
@@ -492,7 +513,10 @@ fn assistant_backend_text(value: &Value) -> Option<&str> {
         .filter(|s| !s.is_empty())
 }
 
-fn parse_pi_assistant_entry_any(value: &Value) -> Option<PiEntry> {
+fn parse_pi_assistant_entry_any(
+    value: &Value,
+    pricing: &ModelsDevPricingSnapshot,
+) -> Option<PiEntry> {
     // Accept either flat or nested { message: {...} } pi-compatible rows.
     let message = value.get("message").unwrap_or(value);
     let role = message
@@ -564,11 +588,32 @@ fn parse_pi_assistant_entry_any(value: &Value) -> Option<PiEntry> {
     if input == 0 && output == 0 && cache_read == 0 && cache_create == 0 {
         return None;
     }
+    // The one-hour share prices only Bedrock rows. The Anthropic branch keeps
+    // billing every cache write at the 5-minute rate, as before this change.
+    let cache_write_1h = cache_write_1h_tokens(&usage).min(cache_create);
 
     let timestamp = entry_timestamp(value);
     let (cost, pricing_known) = match mapped {
         // Unpriced backends never borrow another provider's rates.
         None => (0.0, false),
+        // Provider-specific by design: Bedrock rows stay in Pi history and must
+        // match the full regional catalog ID. Unknown IDs stay unpriced.
+        Some(PiMappedProvider::Bedrock) => {
+            match pricing.lookup_exact(BEDROCK_MODELS_DEV_PROVIDER_ID, &model) {
+                Some(rates) => (
+                    CostUsagePricing::claude_models_dev_cost_usd_with_one_hour_writes(
+                        rates,
+                        input,
+                        cache_read,
+                        cache_create,
+                        cache_write_1h,
+                        output,
+                    ),
+                    true,
+                ),
+                None => (0.0, false),
+            }
+        }
         // Upstream prices each row at its timestamp, so usage from before a
         // model's repricing keeps the rates it was billed at.
         Some(PiMappedProvider::Codex) => match timestamp.map_or_else(
@@ -649,6 +694,18 @@ fn parse_pi_assistant_entry_any(value: &Value) -> Option<PiEntry> {
         cost,
         pricing_known,
     })
+}
+
+/// One-hour cache-write tokens. The first present flat spelling wins; the
+/// nested `cttl.ephemeral1h` form is read only when no flat key exists.
+fn cache_write_1h_tokens(usage: &Value) -> u64 {
+    let flat = ["cacheWrite1h", "cache_write_1h"];
+    if flat.iter().any(|key| usage.get(*key).is_some()) {
+        return num(usage, &flat);
+    }
+    usage
+        .get("cttl")
+        .map_or(0, |cttl| num(cttl, &["ephemeral1h", "ephemeral_1h"]))
 }
 
 fn num(usage: &Value, keys: &[&str]) -> u64 {

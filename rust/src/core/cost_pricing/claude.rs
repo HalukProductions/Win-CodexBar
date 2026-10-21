@@ -210,6 +210,30 @@ impl CostUsagePricing {
         )
     }
 
+    /// Cost of Claude-family usage priced from one exact models.dev entry, with
+    /// the one-hour cache-write share billed at twice the input rate. Pi
+    /// `amazon-bedrock` history uses this after an exact model-ID lookup, so it
+    /// never falls back to another model's rates. The catalog threshold applies;
+    /// the bundled OpenAI boundary does not.
+    pub(crate) fn claude_models_dev_cost_usd_with_one_hour_writes(
+        pricing: models_dev_pricing::DynamicModelPricing,
+        input: u64,
+        cache_read: u64,
+        cache_write: u64,
+        cache_write_1h: u64,
+        output: u64,
+    ) -> f64 {
+        claude_routed_pricing::cost_usd_from_u64_counts_with_one_hour_writes(
+            pricing,
+            pricing.threshold_tokens,
+            input,
+            cache_read,
+            cache_write,
+            cache_write_1h,
+            output,
+        )
+    }
+
     /// Base per-token input rate for a Claude model. Exposed for callers that
     /// need a rate the standard cost function doesn't model — e.g. the usage
     /// scanner's one-hour cache-write premium, billed at 2x the input rate.
