@@ -76,6 +76,11 @@ pub fn validate_provider_workspace_value(
             "FLORA workspace ID",
             crate::providers::flora::is_workspace_id,
         ),
+        ProviderId::Vercel => validate_id(
+            trimmed,
+            "Vercel Team ID",
+            crate::providers::vercel::is_team_id,
+        ),
         ProviderId::Exa => {
             if trimmed.is_empty() || trimmed == "." || trimmed == ".." {
                 return Err(
@@ -257,6 +262,28 @@ mod tests {
         );
         assert!(validate_provider_workspace_value(ProviderId::GitKraken, "org id").is_err());
         assert!(validate_provider_workspace_value(ProviderId::GitKraken, "org\n123").is_err());
+    }
+
+    #[test]
+    fn validates_vercel_team_ids() {
+        assert_eq!(
+            validate_provider_workspace_value(ProviderId::Vercel, " team_abc123 ").unwrap(),
+            "team_abc123"
+        );
+        assert_eq!(
+            validate_provider_workspace_value(ProviderId::Vercel, "my-team").unwrap(),
+            "my-team"
+        );
+        assert_eq!(
+            validate_provider_workspace_value(ProviderId::Vercel, "  ").unwrap(),
+            ""
+        );
+        for invalid in ["team id", "team/../x", "team?x=1", "team\n1"] {
+            assert!(
+                validate_provider_workspace_value(ProviderId::Vercel, invalid).is_err(),
+                "{invalid:?} must be rejected"
+            );
+        }
     }
 
     #[test]

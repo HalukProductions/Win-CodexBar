@@ -65,7 +65,9 @@ pub(super) fn resolve_team(
     Ok(team.to_string())
 }
 
-fn is_team_id(value: &str) -> bool {
+/// Shape accepted for a Vercel team ID or slug. Also used when saving the
+/// Team ID setting, so an invalid value is rejected before any request.
+pub(crate) fn is_team_id(value: &str) -> bool {
     value.len() <= 128
         && value
             .bytes()
