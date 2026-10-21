@@ -38,7 +38,14 @@ export function useClaudeTokenOverviewAccounts({ enabled = true }: { enabled?: b
   }, []);
 
   useEffect(() => {
-    if (enabled) void load();
+    if (enabled) {
+      void load();
+      return;
+    }
+    // Disabled: drop the view so re-enabling never shows removed accounts, and
+    // invalidate any load still in flight so it cannot set the view afterwards.
+    requestRef.current += 1;
+    setView(null);
   }, [enabled, load]);
 
   useTauriEvent<ProviderUsageSnapshot>(
