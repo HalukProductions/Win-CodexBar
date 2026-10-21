@@ -579,6 +579,42 @@ fn enabled_provider_ids_follow_custom_provider_order() {
 }
 
 #[test]
+fn provider_default_order_ignores_saved_order_and_hides_unlisted_providers() {
+    let listed_in_canonical_order: Vec<String> = ProviderId::all()
+        .iter()
+        .filter(|provider| !provider.is_deprecated())
+        .map(|provider| provider.cli_name().to_string())
+        .collect();
+
+    let defaults = Settings::default();
+    assert_eq!(
+        defaults.provider_default_order_names(),
+        listed_in_canonical_order
+    );
+
+    let customized = Settings {
+        provider_order: normalize_provider_order(&["gemini".to_string(), "claude".to_string()]),
+        ..Settings::default()
+    };
+    assert_eq!(
+        customized.provider_default_order_names(),
+        listed_in_canonical_order
+    );
+
+    let with_deprecated_enabled = Settings {
+        enabled_providers: [ProviderId::KimiK2.cli_name().to_string()]
+            .into_iter()
+            .collect(),
+        ..Settings::default()
+    };
+    assert!(
+        with_deprecated_enabled
+            .provider_default_order_names()
+            .contains(&ProviderId::KimiK2.cli_name().to_string())
+    );
+}
+
+#[test]
 fn test_api_key_provider_catalog_includes_token_providers() {
     let providers = get_api_key_providers();
     for id in [

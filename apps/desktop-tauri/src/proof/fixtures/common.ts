@@ -108,6 +108,7 @@ export function baseSettings(overrides: Partial<SettingsSnapshot> = {}): Setting
     preferredCurrencyCode: "AUTO",
     enabledProviders: [],
     providerOrder: catalogOrder(),
+    providerDefaultOrder: catalogOrder(),
     refreshIntervalSecs: 300,
     adaptiveRefresh: false,
     refreshAllProvidersOnMenuOpen: false,

@@ -170,7 +170,7 @@ pub(crate) static SPECS: [ProviderSpec; COUNT] = [
         .credits()
         .default_enabled()
         .primary()
-        .dashboard("https://chatgpt.com/codex/cloud/settings/analytics#usage")
+        .dashboard("https://chatgpt.com/settings/usage?tab=overview")
         .status("https://status.openai.com")
         .aliases(&["openai"]),
     spec(P::Claude, "claude", "Claude", "#CC7C5E")

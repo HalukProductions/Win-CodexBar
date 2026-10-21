@@ -21,6 +21,8 @@ const RATES: Record<string, number> = {
   IDR: 17836,
   VND: 25962,
   UAH: 44.86,
+  // Upstream ILS fallback rate (open.er-api.com, 2026-10-19).
+  ILS: 3.109,
 };
 
 describe("preferred currency display", () => {
@@ -31,7 +33,7 @@ describe("preferred currency display", () => {
   });
 
   it("converts each added currency through the USD pivot", () => {
-    for (const code of ["NZD", "SEK", "NOK", "DKK", "PLN", "BRL", "MXN", "ZAR", "THB", "IDR", "VND", "UAH"]) {
+    for (const code of ["NZD", "SEK", "NOK", "DKK", "PLN", "BRL", "MXN", "ZAR", "THB", "IDR", "VND", "UAH", "ILS"]) {
       const rate = RATES[code];
       // The rendered string carries the Intl symbol prefix (e.g. "NZ$17.61",
       // "17 618 Rp"), so assert on the exact converted digits.
