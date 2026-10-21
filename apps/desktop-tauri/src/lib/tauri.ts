@@ -393,6 +393,37 @@ export function addTokenAccount(
   });
 }
 
+/**
+ * Edit a saved account in place. A blank `label` keeps the saved label; a
+ * `null` or blank `token` keeps the saved credential, which is never returned.
+ */
+export function updateTokenAccount(
+  providerId: string,
+  accountId: string,
+  label: string,
+  token: string | null,
+): Promise<ProviderTokenAccountsBridge> {
+  return invoke<ProviderTokenAccountsBridge>("update_token_account", {
+    providerId,
+    accountId,
+    label,
+    token,
+  });
+}
+
+/** Move a saved account to `index` in the list; the active account does not change. */
+export function moveTokenAccount(
+  providerId: string,
+  accountId: string,
+  index: number,
+): Promise<ProviderTokenAccountsBridge> {
+  return invoke<ProviderTokenAccountsBridge>("move_token_account", {
+    providerId,
+    accountId,
+    index,
+  });
+}
+
 export function removeTokenAccount(
   providerId: string,
   accountId: string,
