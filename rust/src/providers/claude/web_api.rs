@@ -244,13 +244,10 @@ impl<'de> Deserialize<'de> for UsageResponse {
                     "cowork",
                 ],
             )?,
+            // Entry by entry: one malformed limit must not hide its siblings.
             limits: map
-                .get("limits")
-                .filter(|value| !value.is_null())
-                .cloned()
-                .map(serde_json::from_value)
-                .transpose()
-                .map_err(serde::de::Error::custom)?
+                .remove("limits")
+                .map(super::scoped_weekly::limits_from_value)
                 .unwrap_or_default(),
             extra_usage: map
                 .remove("extra_usage")

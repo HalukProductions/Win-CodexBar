@@ -168,6 +168,48 @@ fn parses_current_snake_case_oauth_usage_response() {
     assert_eq!(scoped.window.used_percent, 7.0);
 }
 
+/// Upstream #4614: a malformed or Boolean-percent limit entry is read as missing
+/// and keeps the valid model-scoped sibling, instead of dropping the whole list.
+#[test]
+fn malformed_limit_entries_keep_valid_model_scoped_siblings() {
+    let usage = snapshot(
+        r#"{
+            "five_hour": {"utilization": 3, "resets_at": "2026-05-29T10:00:00Z"},
+            "limits": [
+                "not an object",
+                {
+                    "kind": "weekly_scoped",
+                    "group": "weekly",
+                    "percent": true,
+                    "scope": {"model": {"id": "bool-percent", "display_name": "Bool"}}
+                },
+                {
+                    "kind": 7,
+                    "group": "weekly",
+                    "percent": 9,
+                    "scope": {"model": {"id": "bad-kind", "display_name": "BadKind"}}
+                },
+                {
+                    "kind": "weekly_scoped",
+                    "group": "weekly",
+                    "percent": 12,
+                    "resets_at": "2026-05-29T10:00:00Z",
+                    "scope": {"model": {"id": "fable", "display_name": "Fable"}}
+                }
+            ]
+        }"#,
+        &test_credentials("token"),
+    );
+
+    let scoped: Vec<&str> = usage
+        .extra_rate_windows
+        .iter()
+        .map(|window| window.id.as_str())
+        .filter(|id| id.starts_with("claude-weekly-scoped-"))
+        .collect();
+    assert_eq!(scoped, vec!["claude-weekly-scoped-fable"]);
+}
+
 /// Upstream #4126: an account with only model-scoped weekly limits keeps the
 /// session placeholder and no weekly lane, and every scoped window carries the
 /// id prefix that Automatic falls back to.
