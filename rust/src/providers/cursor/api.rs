@@ -10,6 +10,9 @@ use serde::Deserialize;
 const BASE_URL: &str = "https://cursor.com";
 pub(super) const GROK_BOT_WINDOW_ID: &str = "cursor-grok-bot";
 pub(super) const GROK_BOT_TITLE: &str = "Grok Bot";
+/// Optional monthly additional spend for unified personal memberships.
+const UNIFIED_USAGE_PATH: &str = "/api/dashboard/v2/usage-status";
+const UNIFIED_USAGE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 #[derive(Debug)]
 pub struct CursorUsageResult {
@@ -69,13 +72,46 @@ impl CursorApi {
         );
 
         let usage_summary = usage_result?;
+        let unified_personal = usage_summary.uses_unified_personal_billing();
         let user_info = user_result.ok();
         let team_budget = self
             .resolve_team_budget(&usage_summary, user_info.as_ref(), cookie_header)
             .await;
         let mut result = self.build_result_with_team_budget(usage_summary, user_info, team_budget);
         result.grok_bot = sand_result.ok().flatten();
+        if unified_personal && let Some(cost) = self.fetch_unified_monthly_cost(cookie_header).await
+        {
+            // Upstream #4593: the monthly billing read replaces the summary's
+            // spend, cap and reset. Without a valid read the summary values stay.
+            result.cost = Some(cost);
+        }
         Ok(result)
+    }
+
+    /// Optional monthly additional spend for unified personal memberships.
+    /// Every failure collapses to `None` so the usage-summary values remain.
+    async fn fetch_unified_monthly_cost(&self, cookie_header: &str) -> Option<CostSnapshot> {
+        let url = format!("{}{UNIFIED_USAGE_PATH}", self.base_url);
+        let status = self
+            .client
+            .get(&url)
+            .query(&[("scope", "user")])
+            .header("Cookie", cookie_header)
+            .header("Accept", "application/json")
+            .timeout(UNIFIED_USAGE_TIMEOUT)
+            .send()
+            .await
+            .and_then(reqwest::Response::error_for_status)
+            .ok()?
+            .json::<UnifiedUsageStatus>()
+            .await;
+        match status {
+            Ok(status) => unified_monthly_cost(&status, Utc::now()),
+            Err(err) => {
+                tracing::debug!("Cursor unified additional spend unavailable: {err}");
+                None
+            }
+        }
     }
 
     async fn fetch_usage_summary(
@@ -386,6 +422,18 @@ pub(super) struct UsageSummary {
 }
 
 impl UsageSummary {
+    /// Upstream `usesUnifiedPersonalBilling`: unified membership with a
+    /// user-level limit. Team budgets keep their own path.
+    pub(super) fn uses_unified_personal_billing(&self) -> bool {
+        self.membership_type
+            .as_deref()
+            .is_some_and(|membership| membership.to_ascii_lowercase().starts_with("unified_"))
+            && self
+                .limit_type
+                .as_deref()
+                .is_some_and(|limit_type| limit_type.eq_ignore_ascii_case("user"))
+    }
+
     pub(super) fn is_team_plan(&self) -> bool {
         matches!(
             self.membership_type
@@ -512,6 +560,49 @@ impl SandUsageStatus {
             RateWindow::with_details(used, minutes, reset, None),
         ))
     }
+}
+
+/// `/api/dashboard/v2/usage-status?scope=user`. Fields stay optional so a
+/// missing or null value makes the response invalid instead of a zero.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UnifiedUsageStatus {
+    availability: Option<String>,
+    monthly_usage: Option<UnifiedMonthlyUsage>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UnifiedMonthlyUsage {
+    used_cents: Option<f64>,
+    limit_cents: Option<f64>,
+    period_start: Option<String>,
+    resets_at: Option<String>,
+}
+
+/// Monthly additional spend as a cost snapshot, or `None` when the response is
+/// unavailable, malformed, or outside its period. A valid zero stays zero.
+fn unified_monthly_cost(status: &UnifiedUsageStatus, now: DateTime<Utc>) -> Option<CostSnapshot> {
+    if status.availability.as_deref() != Some("available") {
+        return None;
+    }
+    let usage = status.monthly_usage.as_ref()?;
+    let used_cents = usage.used_cents?;
+    let limit_cents = usage.limit_cents?;
+    if !used_cents.is_finite() || used_cents < 0.0 || !limit_cents.is_finite() || limit_cents < 0.0
+    {
+        return None;
+    }
+    let start = parse_iso_date(usage.period_start.as_deref()?)?;
+    let reset = parse_iso_date(usage.resets_at.as_deref()?)?;
+    if start > now || now >= reset {
+        return None;
+    }
+    let mut cost = CostSnapshot::new(used_cents / 100.0, "USD", "On-demand (monthly)");
+    if limit_cents > 0.0 {
+        cost = cost.with_limit(limit_cents / 100.0);
+    }
+    Some(cost.with_resets_at(reset))
 }
 
 #[derive(Debug, Deserialize)]

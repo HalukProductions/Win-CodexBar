@@ -933,6 +933,14 @@ Codex local cost prices **Priority (Fast)** turns at the Fast rate.
 - Models without a Fast rate stay Standard.
 - Older cost caches rebuild once. Codex cache schema v4 records each row's turn id.
 
+### Cursor unified personal spend
+
+Cursor accounts on a unified membership with a user-level limit (`membershipType` starts with `unified_` and `limitType` is `user`) read monthly additional spend from `GET /api/dashboard/v2/usage-status?scope=user`, using the same session cookie.
+
+- A valid, available response supplies the spend, the cap (cents converted to USD) and the reset time. Separate credit consumption is not added to the spend.
+- The read has a five-second budget. If it fails, or the response is unavailable, malformed, or outside its period, the usage-summary values stay in place.
+- A valid zero stays zero. Team budgets, legacy plans and the Grok Bot allowance keep their existing paths.
+
 ## API key notes
 
 ### OpenRouter keys
