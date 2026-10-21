@@ -284,6 +284,8 @@ fn main() {
             commands::get_token_account_providers,
             commands::get_token_accounts,
             commands::add_token_account,
+            commands::update_token_account,
+            commands::move_token_account,
             commands::remove_token_account,
             commands::set_active_token_account,
             commands::set_token_account_claude_config_dir,
