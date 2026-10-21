@@ -163,6 +163,44 @@ fn non_blob_rows_make_coverage_partial() {
     drop(conn);
     assert_eq!(expect_summary(&dir).coverage, LocalHistoryCoverage::Partial);
 }
+
+#[test]
+fn history_beyond_the_former_row_cap_produces_a_complete_summary() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = cli_root(&dir);
+    let now = Utc::now();
+    let timestamp = u64::try_from(now.timestamp()).unwrap();
+    // 6 files x 10,000 rows = 60,000 rows, past the former 50,000 aggregate cap.
+    // Each row is worth 198 tokens (the input-100 turn used above).
+    let blob = valid_turn_blob(100, timestamp);
+    for file in 0..6 {
+        let conn = database_at(&root, &format!("session-{file}.db"));
+        conn.execute_batch("BEGIN").unwrap();
+        for idx in 1..=10_000 {
+            insert_row(&conn, idx, blob.as_slice());
+        }
+        conn.execute_batch("COMMIT").unwrap();
+    }
+
+    let SQLiteScan::Summary(summary) = summarize(&[root], now, 30) else {
+        panic!("supported databases should produce coverage");
+    };
+
+    assert_eq!(summary.coverage, LocalHistoryCoverage::Complete);
+    assert_eq!(summary.total_tokens, 60_000 * 198);
+}
+
+#[test]
+fn scan_allowances_are_the_expanded_history_bounds() {
+    assert_eq!(MAX_ROWS, 100_000);
+    assert_eq!(MAX_TOTAL_BYTES, 512 * 1024 * 1024);
+    assert_eq!(MAX_SCAN_DURATION, StdDuration::from_secs(30));
+    // Per-file, per-record and schema bounds are unchanged.
+    assert_eq!(MAX_ROWS_PER_DATABASE, 10_000);
+    assert_eq!(MAX_DATABASE_BYTES, 64 * 1024 * 1024);
+    assert_eq!(MAX_BLOB_BYTES, 16 * 1024 * 1024);
+}
+
 #[test]
 fn discovery_allows_exactly_500_databases_but_marks_501_partial() {
     let dir = tempfile::tempdir().unwrap();
