@@ -246,6 +246,27 @@ impl GrokProvider {
         })
     }
 
+    /// A token-account row may be routed to Cli/OAuth by its usage source
+    /// even though the account only carries a cookie. Ambient ~/.grok
+    /// credentials belong to whichever account is switched in, so never
+    /// read them here.
+    async fn fetch_isolated_account(
+        &self,
+        ctx: &FetchContext,
+    ) -> Result<ProviderFetchResult, ProviderError> {
+        match grok_isolated_route(ctx) {
+            GrokIsolatedRoute::Bearer(token) => {
+                let credentials = GrokCredentials::from_bearer(token);
+                self.fetch_with_auth(&credentials, GrokAuthKind::OAuth, ctx)
+                    .await
+            }
+            GrokIsolatedRoute::Cookie(cookie_header) => {
+                self.fetch_with_cookie(cookie_header, ctx).await
+            }
+            GrokIsolatedRoute::Missing => Err(isolated_account_missing_credential()),
+        }
+    }
+
     async fn fetch_with_oauth_fallback(
         &self,
         credentials: &GrokCredentials,
@@ -271,7 +292,7 @@ impl GrokProvider {
 
     async fn fetch_auto(&self, ctx: &FetchContext) -> Result<ProviderFetchResult, ProviderError> {
         let allow_browser_cookie_fallback = !ctx.auto_prefer_web;
-        for step in grok_auto_steps(
+        for step in grok_steps_for_context(
             ctx.api_key
                 .as_deref()
                 .is_some_and(|token| !token.trim().is_empty()),
@@ -279,6 +300,7 @@ impl GrokProvider {
                 .as_deref()
                 .is_some_and(|cookie| !cookie.trim().is_empty()),
             allow_browser_cookie_fallback,
+            ctx.token_account_isolated,
         ) {
             match step {
                 GrokAutoStep::AmbientOAuth => {
@@ -565,11 +587,24 @@ impl Provider for GrokProvider {
     async fn fetch_usage(&self, ctx: &FetchContext) -> Result<ProviderFetchResult, ProviderError> {
         match ctx.source_mode {
             SourceMode::Auto => self.fetch_auto(ctx).await,
+            SourceMode::Web if ctx.token_account_isolated => {
+                match ctx
+                    .manual_cookie_header
+                    .as_deref()
+                    .filter(|cookie| !cookie.trim().is_empty())
+                {
+                    Some(cookie_header) => self.fetch_with_cookie(cookie_header, ctx).await,
+                    None => Err(isolated_account_missing_credential()),
+                }
+            }
             SourceMode::Web => {
                 if let Some(cookie_header) = &ctx.manual_cookie_header {
                     return self.fetch_with_cookie(cookie_header, ctx).await;
                 }
                 self.fetch_with_cookie_refresh(ctx).await
+            }
+            SourceMode::Cli | SourceMode::OAuth if ctx.token_account_isolated => {
+                self.fetch_isolated_account(ctx).await
             }
             SourceMode::Cli => {
                 let credentials = Self::load_credentials(GrokAuthKind::Cli).await?;
@@ -636,6 +671,55 @@ fn grok_auto_steps(
         steps.push(GrokAutoStep::CookieRefresh);
     }
     steps
+}
+
+/// An isolated token-account fetch (one row per configured account) must
+/// read only that account's credential: the ambient ~/.grok login and the
+/// browser session belong to whichever account is switched in.
+fn grok_steps_for_context(
+    has_api_key: bool,
+    has_manual_cookie: bool,
+    allow_browser_cookie_fallback: bool,
+    token_account_isolated: bool,
+) -> Vec<GrokAutoStep> {
+    let mut steps = grok_auto_steps(
+        has_api_key,
+        has_manual_cookie,
+        allow_browser_cookie_fallback,
+    );
+    if token_account_isolated {
+        steps.retain(|step| matches!(step, GrokAutoStep::ApiKey | GrokAutoStep::ManualCookie));
+    }
+    steps
+}
+
+fn isolated_account_missing_credential() -> ProviderError {
+    ProviderError::Other(
+        "This Grok account has no saved token or cookie. Add one in Settings.".to_string(),
+    )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GrokIsolatedRoute<'a> {
+    Bearer(&'a str),
+    Cookie(&'a str),
+    Missing,
+}
+
+fn grok_isolated_route(ctx: &FetchContext) -> GrokIsolatedRoute<'_> {
+    fn non_empty(value: &Option<String>) -> Option<&str> {
+        value
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+    }
+    if let Some(token) = non_empty(&ctx.api_key) {
+        return GrokIsolatedRoute::Bearer(token);
+    }
+    if let Some(cookie_header) = non_empty(&ctx.manual_cookie_header) {
+        return GrokIsolatedRoute::Cookie(cookie_header);
+    }
+    GrokIsolatedRoute::Missing
 }
 
 #[derive(Debug, Clone)]

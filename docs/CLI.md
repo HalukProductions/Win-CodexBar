@@ -240,6 +240,27 @@ The desktop app can run the same server for you from Settings > Advanced > HTTP 
 
 `--identity redacted|full` sets how much account identity the snapshot shows. Without it, each request follows the app's Hide Personal Info setting.
 
+`--all-accounts` adds an `accounts` list to the dashboard snapshot for each provider that has configured token accounts. Each account is fetched with its own credential, through the same source routing the desktop app uses when that account is selected; it never falls back to another login on the machine. The provider's top-level row shows the active account, so that account is fetched only once. Account ids have the form `token:<uuid>`. Claude keeps its existing account section. `/usage` doesn't change, and `/metrics` keeps one series per provider, taken from the top-level row.
+
+How much identity the expanded snapshot shows depends on `--identity`:
+
+| `--identity` | Account labels | Emails and other identity | Error text |
+| --- | --- | --- | --- |
+| not set | `Account 1`, `Account 2` ... | hidden | `Account usage unavailable`, `Account list unavailable` |
+| `redacted` | `Account 1`, `Account 2` ... | redacted, as without `--all-accounts` | `Account usage unavailable`, `Account list unavailable` |
+| `full` | the labels you gave the accounts | shown | the real error |
+
+These rules cover Claude's account rows too. If an account's fetch fails before it produces a row, the provider reports `Account list incomplete`.
+
+Providers are fetched at the same time, and so are their account lists, all under the build's 75-second deadline. Within one provider, up to three accounts are fetched at once, and a slow account doesn't hold back the ones queued after it. Neuralwatt is the exception: its quota endpoint allows one request per second, so its accounts are fetched one after another with a one-second pause between them. An account that is still waiting when the deadline passes becomes a timeout row, and every timeout row reports the 75-second build budget. Claude's account rows are not under the shared deadline: each Claude account gets its own 75-second timeout.
+
+```powershell
+codexbar serve --all-accounts
+codexbar serve --all-accounts --identity full
+```
+
+Windows differences: upstream also lists visible Codex managed profiles; Windows lists only configured token accounts. Upstream fetches each provider's accounts one at a time; Windows fetches up to three at once, unless the provider needs a pause between accounts.
+
 ### Provider icons
 
 The dashboard shows each provider's brand icon from the embedded `/icons/` route. The icons are copies of the upstream `ProviderIcon-*.svg` files. #828 added icons for ClawRouter, IBM Bob, Langdock, LithosAI, MuseAI, Synthetic and WorkBuddy. A provider with no embedded icon shows a neutral dot. Icons that use `currentColor` render dark inside the page's `<img>` tags, as upstream does.
@@ -300,6 +321,7 @@ codexbar config providers
 codexbar config providers --json --pretty
 codexbar config enable -p cursor
 codexbar config disable cursor --json
+codexbar config set-source --provider codex --source cli
 printf '%s' $env:OPENROUTER_API_KEY | codexbar config set-api-key -p openrouter --stdin
 codexbar config claude-code-credentials status --json
 codexbar config preferences export --file C:\temp\codexbar-preferences.json
@@ -315,18 +337,22 @@ codexbar config validate
 | `dump` | Prints the configuration. Secrets are redacted. |
 | `providers` | Lists providers and whether each is enabled. |
 | `enable`, `disable` | Turns a provider on or off and saves the setting. |
+| `set-source` | Saves a provider's usage source (`--source auto\|web\|cli\|oauth`) without changing whether it is enabled. `auto` returns to the default. |
 | `set-api-key` | Stores a provider API key. `--stdin` reads it from stdin. `--no-enable` stores it without enabling the provider. |
 | `path` | Shows the configuration file paths. |
 | `preferences export`, `preferences import` | Exports or imports portable preferences. See [CONFIGURATION.md](./CONFIGURATION.md#portable-preferences). |
 | `claude-code-credentials` | `allow`, `deny` or `status`. |
 
-`enable`, `disable` and `set-api-key` take the provider as a positional name or with `-p`/`--provider`. `usage -p <id>` is a one-off choice and doesn't change the enabled list.
+`enable`, `disable`, `set-source` and `set-api-key` take the provider as a positional name or with `-p`/`--provider`. `usage -p <id>` is a one-off choice and doesn't change the enabled list.
 
-`config providers`, `enable`, `disable` and `claude-code-credentials` accept `--format text|json`, `--json` and `--pretty`. Their JSON matches upstream:
+`config providers`, `enable`, `disable`, `set-source` and `claude-code-credentials` accept `--format text|json`, `--json` and `--pretty`. Their JSON matches upstream:
 
 - `config providers` prints one `{provider, displayName, enabled, defaultEnabled}` object per provider. Retired providers (`kimik2`, `crossmodel`) are listed only while enabled, like in Settings. They still resolve by name, for example `--provider kimik2`.
 - `config enable` and `config disable` print `{provider, displayName, enabled, configPath}`.
+- `config set-source` prints `{provider, displayName, enabled, source, configPath}`.
 - `config claude-code-credentials allow|deny|status` prints `{allowed, configPath}`.
+
+`set-source` writes the same per-provider usage source as the Settings > Providers source picker. It checks the source against what that provider supports, so `codexbar config set-source codex --source web` fails with `Source web is not supported for codex. Supported sources: auto, cli, oauth.` Upstream also accepts `api`. This port has no separate API source; API-key providers use `oauth` for their token lane.
 
 `claude-code-credentials` controls whether CodexBar may read and refresh Claude Code's own OAuth credentials (`~/.claude/.credentials.json` or Windows Credential Manager). It is the same choice as the desktop setting, and it is off by default. While it is off, Claude Auto falls back to CLI usage, which has less detail. `allow` and `deny` save the choice. `status` only reports it.
 
@@ -368,13 +394,14 @@ codexbar hooks list --json
 codexbar hooks enable
 codexbar hooks test usage_updated --provider codex --json
 codexbar hooks watch --provider codex --json
+codexbar hooks watch --provider both
 ```
 
 Hook rules live in `hooks.json` next to `settings.json`. `hooks enable` and `hooks disable` flip its master switch. The desktop Settings > Hooks pane edits the same file. See [CONFIGURATION.md](./CONFIGURATION.md#hooks).
 
 `hooks test` runs the matching rules for a sample event. The events are `quota_low`, `quota_reached`, `quota_reset`, `usage_updated`, `provider_unavailable`, `provider_recovered` and `refresh_failed`.
 
-`hooks watch` polls providers and fires hooks on real changes. `--interval` defaults to 300 seconds, with a minimum of 60. `--provider` takes one or more CLI names, comma-separated or repeated. Without it, the enabled providers are polled.
+`hooks watch` polls providers and fires hooks on real changes. `--interval` defaults to 300 seconds, with a minimum of 60. `--provider` takes one or more CLI names, comma-separated or repeated. `both` means Codex and Claude, and `all` means every provider; they can be mixed with names, and duplicates are dropped. Without `--provider`, the enabled providers are polled.
 
 `usage_updated` is opt-in. It fires after a successful refresh and carries the primary and secondary quota usage, the window lengths and the reset times when known. Failed or superseded refreshes don't fire it.
 

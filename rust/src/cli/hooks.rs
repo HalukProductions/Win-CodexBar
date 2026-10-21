@@ -1,6 +1,7 @@
 //! `codexbar hooks` — list / enable / disable / test / watch external hook rules.
 
 use super::print_json;
+use super::usage::ProviderSelection;
 use clap::{Args, Subcommand};
 use serde::Serialize;
 use std::sync::Arc;
@@ -72,7 +73,7 @@ pub struct HooksWatchArgs {
     #[arg(long, default_value_t = HOOKS_WATCH_DEFAULT_INTERVAL)]
     pub interval: u64,
 
-    /// Provider CLI name(s); comma-separated or repeated. Default: enabled providers.
+    /// Provider CLI name(s), `both` (codex + claude) or `all`; comma-separated or repeated. Default: enabled providers.
     #[arg(long, value_delimiter = ',')]
     pub provider: Vec<String>,
 
@@ -237,10 +238,18 @@ fn decode_hooks_watch_providers(names: &[String]) -> anyhow::Result<Option<Vec<P
     }
     let mut selected = Vec::new();
     for name in names {
-        let id = ProviderId::from_cli_name(name)
-            .ok_or_else(|| anyhow::anyhow!("Unknown provider: {name}"))?;
-        if !selected.contains(&id) {
-            selected.push(id);
+        let ids = match name.to_ascii_lowercase().as_str() {
+            "both" => ProviderSelection::Both.as_list(),
+            "all" => ProviderSelection::All.as_list(),
+            other => vec![
+                ProviderId::from_cli_name(other)
+                    .ok_or_else(|| anyhow::anyhow!("Unknown provider: {name}"))?,
+            ],
+        };
+        for id in ids {
+            if !selected.contains(&id) {
+                selected.push(id);
+            }
         }
     }
     Ok(Some(selected))
@@ -787,5 +796,45 @@ Options:
             .unwrap();
         assert_eq!(got, vec![ProviderId::Codex]);
         assert!(decode_hooks_watch_providers(&[]).unwrap().is_none());
+    }
+
+    #[test]
+    fn watch_providers_expand_both_and_all() {
+        let both = decode_hooks_watch_providers(&["BOTH".into()])
+            .unwrap()
+            .unwrap();
+        assert_eq!(both, vec![ProviderId::Codex, ProviderId::Claude]);
+
+        let all = decode_hooks_watch_providers(&["all".into()])
+            .unwrap()
+            .unwrap();
+        assert_eq!(all, ProviderId::all().to_vec());
+
+        let mixed = decode_hooks_watch_providers(&["claude".into(), "both".into()])
+            .unwrap()
+            .unwrap();
+        assert_eq!(mixed, vec![ProviderId::Claude, ProviderId::Codex]);
+    }
+
+    #[test]
+    fn watch_provider_flag_accepts_aliases_in_lists() {
+        use clap::Parser;
+        let cli = crate::cli::Cli::try_parse_from([
+            "codexbar",
+            "hooks",
+            "watch",
+            "--provider",
+            "both,cursor",
+            "--provider",
+            "all",
+        ])
+        .unwrap();
+        let Some(crate::cli::Commands::Hooks(HooksArgs {
+            command: HooksCommand::Watch(args),
+        })) = cli.command
+        else {
+            panic!("expected hooks watch");
+        };
+        assert_eq!(args.provider, vec!["both", "cursor", "all"]);
     }
 }

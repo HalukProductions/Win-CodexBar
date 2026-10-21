@@ -68,6 +68,7 @@ fn validate_serve_args_accepts_loopback_without_token() {
         metrics: false,
         allow_plain_http: false,
         identity: Some("redacted".into()),
+        all_accounts: false,
     })
     .unwrap();
     assert_eq!(config.host, "127.0.0.1");
@@ -86,6 +87,7 @@ fn validate_serve_args_rejects_lan_without_token() {
         metrics: false,
         allow_plain_http: true,
         identity: Some("redacted".into()),
+        all_accounts: false,
     })
     .unwrap_err()
     .to_string();
@@ -103,6 +105,7 @@ fn validate_serve_args_rejects_lan_without_allow_plain_http() {
         metrics: true,
         allow_plain_http: false,
         identity: Some("redacted".into()),
+        all_accounts: false,
     })
     .unwrap_err()
     .to_string();
@@ -119,6 +122,7 @@ fn loopback_args(request_timeout: f64) -> ServeArgs {
         metrics: false,
         allow_plain_http: false,
         identity: None,
+        all_accounts: false,
     }
 }
 
@@ -153,6 +157,25 @@ fn request_timeout_is_off_by_default_and_capped_at_one_day() {
         let err = timeout(invalid).unwrap_err().to_string();
         assert_eq!(err, "--request-timeout must be zero or greater.");
     }
+}
+
+#[test]
+fn all_accounts_flag_defaults_off() {
+    #[derive(clap::Parser)]
+    struct Wrapper {
+        #[command(flatten)]
+        args: ServeArgs,
+    }
+    let parse = |argv: &[&str]| {
+        <Wrapper as clap::Parser>::try_parse_from(
+            std::iter::once("serve").chain(argv.iter().copied()),
+        )
+        .map(|wrapper| wrapper.args)
+    };
+    assert!(!parse(&[]).unwrap().all_accounts);
+    let args = parse(&["--all-accounts", "--identity", "full"]).unwrap();
+    assert!(args.all_accounts);
+    assert_eq!(args.identity.as_deref(), Some("full"));
 }
 
 #[tokio::test(start_paused = true)]

@@ -21,7 +21,7 @@ pub struct RawCostPayload {
     pub last_30_days_usd: Option<f64>,
 }
 
-/// One collected account row for the Claude multi-account section.
+/// One collected account row for a provider's multi-account section.
 pub struct AccountFetchEnvelope {
     pub id: String,
     pub label: String,
@@ -29,9 +29,13 @@ pub struct AccountFetchEnvelope {
     pub fetch: Result<ProviderFetchResult, String>,
 }
 
-/// Claude multi-account ("claude-swap" upstream) section input.
+/// Multi-account section input: Claude token accounts ("claude-swap"
+/// upstream), or any provider's token accounts under `serve --all-accounts`.
 pub struct ClaudeAccountsInput {
     pub accounts: Result<Vec<AccountFetchEnvelope>, String>,
+    /// Some configured account produced no row (its fetch task failed);
+    /// the snapshot reports "Account list incomplete".
+    pub incomplete: bool,
 }
 
 /// Raw collection shared by the dashboard and metrics projections.
@@ -39,6 +43,9 @@ pub struct SnapshotCollection {
     pub providers: Vec<ProviderFetchEnvelope>,
     pub costs: HashMap<String, RawCostPayload>,
     pub claude_accounts: Option<ClaudeAccountsInput>,
+    /// Token-account sections for other providers, keyed by provider id.
+    /// Only `serve --all-accounts` fills it.
+    pub provider_accounts: HashMap<String, ClaudeAccountsInput>,
     pub generated_at: DateTime<Utc>,
     pub refresh_seconds: u32,
     /// Ordered provider ids from settings (`provider_order`).

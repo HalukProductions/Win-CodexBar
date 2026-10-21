@@ -11,6 +11,7 @@ mod cost_cli_extension;
 mod cost_pricing;
 pub mod curl_capture;
 mod display_detail;
+mod fetch_context_builder;
 mod hook_transition;
 mod hooks;
 
@@ -50,6 +51,7 @@ pub(crate) use cost_cli_extension::{
 pub use cost_pricing::*;
 pub use curl_capture::*;
 pub use display_detail::*;
+pub use fetch_context_builder::{build_fetch_context, provider_cookie_domain};
 pub use hook_transition::*;
 pub use hooks::*;
 

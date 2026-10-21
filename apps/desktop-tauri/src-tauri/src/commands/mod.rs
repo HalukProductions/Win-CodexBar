@@ -3,8 +3,8 @@ use std::sync::Mutex;
 
 use codexbar::core::{
     FetchContext, ManualEmptyCookiePolicy, ProviderAccountData, ProviderFetchResult, ProviderId,
-    ProviderMetadata, RateWindow, SourceMode, TokenAccount, TokenAccountOverride,
-    TokenAccountStore, instantiate_provider,
+    ProviderMetadata, RateWindow, SourceMode, TokenAccount, TokenAccountStore,
+    instantiate_provider,
 };
 use codexbar::locale;
 use codexbar::login::{self, LoginOutcome, LoginPhase};

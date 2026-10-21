@@ -114,6 +114,12 @@ pub struct ServeArgs {
     /// request (upstream 0.50.1 #2960).
     #[arg(long, value_parser = ["redacted", "full"])]
     pub identity: Option<String>,
+
+    /// Include all local accounts in dashboard snapshots: every configured
+    /// token account, with neutral labels and no identity unless --identity
+    /// is set. /usage keeps its single-account rows.
+    #[arg(long = "all-accounts", default_value_t = false)]
+    pub all_accounts: bool,
 }
 
 /// Normalized serve bind configuration after startup validation.
@@ -191,6 +197,7 @@ pub async fn bind(args: ServeArgs) -> anyhow::Result<BoundServer> {
     config.dashboard = Some(dashboard::DashboardState::live(
         refresh_interval,
         config.identity,
+        args.all_accounts,
     ));
     let listener = TcpListener::bind((config.host.as_str(), config.port)).await?;
     Ok(BoundServer { listener, config })

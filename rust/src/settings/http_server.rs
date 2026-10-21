@@ -141,6 +141,7 @@ impl HttpServerConfig {
             metrics: false,
             allow_plain_http: self.allow_plain_http,
             identity: Some(self.identity.clone()),
+            all_accounts: false,
         }
     }
 

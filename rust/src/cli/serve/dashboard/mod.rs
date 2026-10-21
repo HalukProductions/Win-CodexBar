@@ -38,8 +38,13 @@ impl std::fmt::Debug for DashboardState {
 
 impl DashboardState {
     /// Production wiring: live producer behind the TTL coordinator.
-    pub fn live(refresh_seconds: u32, identity: Option<DashboardIdentity>) -> Self {
-        let producer = source::SnapshotProducer::new(refresh_seconds, identity);
+    pub fn live(
+        refresh_seconds: u32,
+        identity: Option<DashboardIdentity>,
+        all_accounts: bool,
+    ) -> Self {
+        let producer = source::SnapshotProducer::new(refresh_seconds, identity)
+            .with_all_accounts(all_accounts);
         let coordinator = SnapshotCoordinator::new_with_artifacts(
             std::time::Duration::from_secs(refresh_seconds.max(1) as u64),
             std::sync::Arc::new(move || producer.collect_artifacts()),

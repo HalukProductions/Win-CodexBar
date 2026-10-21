@@ -28,6 +28,10 @@ const API_URL_ENV: &str = "NEURALWATT_API_URL";
 const RETRY_DEFAULT_DELAY: Duration = Duration::from_secs(1);
 /// Upper bound applied to a server-provided `Retry-After`.
 const RETRY_MAX_DELAY: f64 = 10.0;
+/// The quota endpoint allows one request per second, so refreshing several
+/// token accounts must space them out (upstream
+/// `minimumDelayBetweenAccountRefreshes: .seconds(1)`).
+pub const MIN_DELAY_BETWEEN_ACCOUNT_REFRESHES: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Deserialize, Default)]
 #[allow(

@@ -19,6 +19,7 @@ fn stub_build(identity: DashboardIdMode, with_accounts: bool, delay: Duration) -
             usage.account_email = Some("dev@example.com".to_string());
             usage.login_method = Some("Claude Max".to_string());
             let claude_accounts = with_accounts.then(|| ClaudeAccountsInput {
+                incomplete: false,
                 accounts: Ok(vec![AccountFetchEnvelope {
                     id: "u-1".to_string(),
                     label: "Work".to_string(),
@@ -37,6 +38,7 @@ fn stub_build(identity: DashboardIdMode, with_accounts: bool, delay: Duration) -
                     }],
                     costs: std::collections::HashMap::new(),
                     claude_accounts,
+                    provider_accounts: std::collections::HashMap::new(),
                     generated_at: chrono::Utc::now(),
                     refresh_seconds: 60,
                     order: vec![],
@@ -46,6 +48,7 @@ fn stub_build(identity: DashboardIdMode, with_accounts: bool, delay: Duration) -
                 version: Some("test".to_string()),
                 usage_bars_show_used: None,
                 weekly_work_days: None,
+                all_accounts: false,
             }))
         })
     })
@@ -70,6 +73,7 @@ fn stub_state_ok() -> dashboard::DashboardState {
                         }],
                         costs: std::collections::HashMap::new(),
                         claude_accounts: None,
+                        provider_accounts: std::collections::HashMap::new(),
                         generated_at: chrono::Utc::now(),
                         refresh_seconds: 60,
                         order: vec!["codex".to_string()],
@@ -79,6 +83,7 @@ fn stub_state_ok() -> dashboard::DashboardState {
                     version: Some("test".to_string()),
                     usage_bars_show_used: None,
                     weekly_work_days: None,
+                    all_accounts: false,
                 };
                 Ok(SnapshotArtifacts {
                     dashboard: build_snapshot(&input),

@@ -1,10 +1,11 @@
 use super::{
-    ClaudeCodeCredentialsConsent, ConfigCommand, ConfigFileError, ConfigOutputArgs, ConsentAction,
-    apply_consent_action, consent_text, provider_statuses, read_json_config,
-    sanitize_settings_for_dump,
+    ClaudeCodeCredentialsConsent, ConfigCommand, ConfigFileError, ConfigOutputArgs,
+    ConfigSetSourceResult, ConsentAction, apply_consent_action, config_source_selection,
+    consent_text, provider_statuses, read_json_config, sanitize_settings_for_dump,
+    source_mode_name,
 };
 use crate::cli::{Cli, Commands};
-use crate::core::ProviderId;
+use crate::core::{ProviderId, SourceMode};
 #[cfg(windows)]
 use crate::secure_file;
 use crate::settings::{ManualCookies, Settings};
@@ -189,6 +190,101 @@ fn provider_subcommands_accept_the_positional_or_provider_option() {
     assert!(
         parse_config(&["enable", "cursor", "--provider", "codex"]).is_err(),
         "positional and --provider conflict"
+    );
+}
+
+#[test]
+fn set_source_parses_provider_and_source() {
+    for argv in [
+        &["set-source", "codex", "--source", "cli"][..],
+        &[
+            "set-source",
+            "--provider",
+            "codex",
+            "--source",
+            "cli",
+            "--json",
+        ][..],
+    ] {
+        let ConfigCommand::SetSource { target, source, .. } = parse_config(argv).unwrap() else {
+            panic!("expected set-source for {argv:?}");
+        };
+        assert_eq!(target.name(), "codex");
+        assert_eq!(source, "cli");
+    }
+    assert!(
+        parse_config(&["set-source", "codex"]).is_err(),
+        "--source is required"
+    );
+    assert!(
+        parse_config(&["set-source", "--source", "cli"]).is_err(),
+        "provider is required"
+    );
+}
+
+#[test]
+fn set_source_validates_provider_and_supported_source() {
+    let (id, mode) = config_source_selection("Codex", "CLI").unwrap();
+    assert_eq!(id, ProviderId::Codex);
+    assert_eq!(mode, SourceMode::Cli);
+    assert_eq!(
+        config_source_selection("codex", "auto").unwrap().1,
+        SourceMode::Auto
+    );
+
+    let unknown_provider = config_source_selection("nosuch", "cli").unwrap_err();
+    assert!(unknown_provider.to_string().contains("Unknown provider"));
+
+    let unknown_source = config_source_selection("codex", "api").unwrap_err();
+    assert!(
+        unknown_source
+            .to_string()
+            .contains("Use --source auto|web|cli|oauth")
+    );
+
+    let unsupported = config_source_selection("codex", "web").unwrap_err();
+    assert_eq!(
+        unsupported.to_string(),
+        "Source web is not supported for codex. Supported sources: auto, cli, oauth."
+    );
+}
+
+#[test]
+fn set_source_persists_without_changing_enablement() {
+    let mut settings = Settings::default();
+    settings.enabled_providers.clear();
+    let (id, mode) = config_source_selection("codex", "oauth").unwrap();
+    settings.set_usage_source(id, source_mode_name(mode));
+
+    let json = serde_json::to_string(&settings).unwrap();
+    let loaded: Settings = serde_json::from_str(&json).unwrap();
+    assert_eq!(loaded.usage_source(ProviderId::Codex), "oauth");
+    assert!(!loaded.is_provider_enabled(ProviderId::Codex));
+
+    let mut loaded = loaded;
+    loaded.set_usage_source(id, source_mode_name(SourceMode::Auto));
+    assert_eq!(loaded.usage_source(ProviderId::Codex), "auto");
+}
+
+#[test]
+fn set_source_json_matches_the_upstream_shape() {
+    let value = serde_json::to_value(ConfigSetSourceResult {
+        provider: "codex".to_string(),
+        display_name: "Codex".to_string(),
+        enabled: true,
+        source: "cli".to_string(),
+        config_path: Some("settings.json".to_string()),
+    })
+    .unwrap();
+    assert_eq!(
+        value,
+        json!({
+            "provider": "codex",
+            "displayName": "Codex",
+            "enabled": true,
+            "source": "cli",
+            "configPath": "settings.json"
+        })
     );
 }
 

@@ -68,6 +68,7 @@ fn input_with_enabled(
         providers,
         costs,
         claude_accounts: None,
+        provider_accounts: std::collections::HashMap::new(),
         generated_at: at(0),
         refresh_seconds: 60,
         order,
@@ -90,6 +91,7 @@ fn artifacts(collection: SnapshotCollection) -> SnapshotArtifacts<MetricsSnapsho
         version: Some("0.56.8".to_string()),
         usage_bars_show_used: None,
         weekly_work_days: None,
+        all_accounts: false,
     };
     SnapshotArtifacts {
         dashboard: build_snapshot(&input),

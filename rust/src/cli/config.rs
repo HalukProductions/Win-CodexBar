@@ -8,7 +8,7 @@ use serde::de::DeserializeOwned;
 use std::path::Path;
 
 use super::usage::OutputFormat;
-use crate::core::{ProviderId, TokenAccountStore, instantiate_provider};
+use crate::core::{ProviderId, SourceMode, TokenAccountStore, instantiate_provider};
 use crate::settings::{ApiKeys, ManualCookies, PreferencesDocument, Settings};
 
 /// Arguments for the config command
@@ -47,6 +47,16 @@ pub enum ConfigCommand {
     Disable {
         #[command(flatten)]
         target: ConfigProviderArg,
+        #[command(flatten)]
+        output: ConfigOutputArgs,
+    },
+    /// Store a provider's usage data source (auto clears the override)
+    SetSource {
+        #[command(flatten)]
+        target: ConfigProviderArg,
+        /// Persistent source: auto, web, cli, or oauth
+        #[arg(long)]
+        source: String,
         #[command(flatten)]
         output: ConfigOutputArgs,
     },
@@ -181,6 +191,11 @@ pub async fn run(args: ConfigArgs) -> anyhow::Result<()> {
         ConfigCommand::Disable { target, output } => {
             set_provider_enabled(target.name(), false, output).await
         }
+        ConfigCommand::SetSource {
+            target,
+            source,
+            output,
+        } => set_provider_source(target.name(), &source, output).await,
         ConfigCommand::SetApiKey {
             target,
             api_key,
@@ -549,6 +564,83 @@ async fn set_provider_enabled(
     }
     let state = if enabled { "enabled" } else { "disabled" };
     println!("Config: {state} {}", id.display_name());
+    Ok(())
+}
+
+/// `config set-source` JSON result (upstream `ConfigSetSourceResult`).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ConfigSetSourceResult {
+    provider: String,
+    display_name: String,
+    enabled: bool,
+    source: String,
+    config_path: Option<String>,
+}
+
+const SET_SOURCE_CHOICES: &str = "auto|web|cli|oauth";
+
+fn source_mode_name(mode: SourceMode) -> &'static str {
+    match mode {
+        SourceMode::Auto => "auto",
+        SourceMode::OAuth => "oauth",
+        SourceMode::Web => "web",
+        SourceMode::Cli => "cli",
+    }
+}
+
+/// Validate `set-source` arguments without reading settings, so argument
+/// errors surface before the config file is touched (upstream ordering).
+fn config_source_selection(
+    raw_provider: &str,
+    raw_source: &str,
+) -> anyhow::Result<(ProviderId, SourceMode)> {
+    let id = parse_provider(raw_provider)?;
+    let source = SourceMode::parse(raw_source.trim()).ok_or_else(|| {
+        anyhow::anyhow!("Unknown source '{raw_source}'. Use --source {SET_SOURCE_CHOICES}.")
+    })?;
+    let mut supported: Vec<&str> = instantiate_provider(id)
+        .available_sources()
+        .into_iter()
+        .map(source_mode_name)
+        .collect();
+    if !supported.contains(&source_mode_name(source)) {
+        supported.sort_unstable();
+        supported.dedup();
+        anyhow::bail!(
+            "Source {} is not supported for {}. Supported sources: {}.",
+            source_mode_name(source),
+            id.cli_name(),
+            supported.join(", ")
+        );
+    }
+    Ok((id, source))
+}
+
+/// Store a provider's usage source without touching its enablement.
+async fn set_provider_source(
+    provider: &str,
+    source: &str,
+    output: ConfigOutputArgs,
+) -> anyhow::Result<()> {
+    let (id, mode) = config_source_selection(provider, source)?;
+    let mut settings = Settings::load();
+    settings.set_usage_source(id, source_mode_name(mode));
+    settings.save()?;
+    if output.is_json() {
+        return output.print_json(&ConfigSetSourceResult {
+            provider: id.cli_name().to_string(),
+            display_name: id.display_name().to_string(),
+            enabled: settings.is_provider_enabled(id),
+            source: source_mode_name(mode).to_string(),
+            config_path: Settings::settings_path().map(|path| path.display().to_string()),
+        });
+    }
+    println!(
+        "Config: {} source set to {}",
+        id.display_name(),
+        source_mode_name(mode)
+    );
     Ok(())
 }
 
