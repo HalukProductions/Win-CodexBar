@@ -113,7 +113,7 @@ fn usd_from_exact_cents(cents: i64) -> Option<f64> {
         .then(|| value / 100.0)
 }
 
-fn parse_timestamp(raw: Option<&str>) -> Option<DateTime<Utc>> {
+pub(super) fn parse_timestamp(raw: Option<&str>) -> Option<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(raw?)
         .ok()
         .map(|parsed| parsed.with_timezone(&Utc))
@@ -123,7 +123,7 @@ fn parse_timestamp(raw: Option<&str>) -> Option<DateTime<Utc>> {
 /// is not in the future, so a reset timestamp alone never invents a cadence.
 /// Upstream `GrokCreditsProxyFetcher.windowMinutes` keeps the length of a
 /// period that has already ended.
-fn window_minutes(
+pub(super) fn window_minutes(
     start: Option<&str>,
     end: Option<DateTime<Utc>>,
     now: DateTime<Utc>,

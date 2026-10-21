@@ -28,6 +28,32 @@ impl ClaudeProjectsRoots {
     pub(super) fn has_possible_roots(&self) -> bool {
         !self.paths.is_empty() || self.read_failures > 0
     }
+
+    /// Adds Claude Desktop cost roots (project stores and Cowork audit files),
+    /// de-duplicated by resolved path against the roots already present. An
+    /// incomplete discovery walk counts as a read failure, so the estimate
+    /// stays unavailable rather than silently missing Desktop history.
+    pub(super) fn add_desktop_roots(&mut self, desktop: Vec<PathBuf>, complete: bool) {
+        if !complete {
+            self.read_failures = self.read_failures.saturating_add(1);
+        }
+        let mut seen: HashSet<PathBuf> = self.paths.iter().map(|root| resolved(root)).collect();
+        for root in desktop {
+            if seen.insert(resolved(&root)) {
+                self.paths.push(root);
+            }
+        }
+    }
+}
+
+/// True when `CLAUDE_CONFIG_DIR` is unset or blank. Only the default history
+/// takes Claude Desktop roots; a configured directory keeps them out.
+pub(super) fn config_dir_is_unset(config_dir: Option<&str>) -> bool {
+    config_dir.map(str::trim).is_none_or(str::is_empty)
+}
+
+fn resolved(path: &Path) -> PathBuf {
+    fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 /// Existing Claude transcript roots, de-duplicated by resolved path.
@@ -396,5 +422,31 @@ mod tests {
         assert!(roots.paths.is_empty());
         assert_eq!(roots.read_failures, 1);
         assert!(roots.has_possible_roots());
+    }
+
+    #[test]
+    fn desktop_roots_join_once_and_an_incomplete_walk_is_a_read_failure() {
+        let home = tempfile::tempdir().unwrap();
+        let projects = make_projects(&home.path().join(".claude"));
+        let audit = home.path().join("audit.jsonl");
+        fs::write(&audit, b"{}\n").unwrap();
+
+        let mut roots = claude_projects_roots(None, Some(home.path()));
+        // The projects directory found again by Desktop discovery is not added twice.
+        roots.add_desktop_roots(vec![projects.clone(), audit.clone()], true);
+        assert_eq!(roots.paths, vec![projects.clone(), audit.clone()]);
+        assert_eq!(roots.read_failures, 0);
+
+        roots.add_desktop_roots(Vec::new(), false);
+        assert_eq!(roots.read_failures, 1);
+        assert!(roots.has_possible_roots());
+    }
+
+    #[test]
+    fn only_an_unset_or_blank_config_dir_takes_desktop_roots() {
+        assert!(config_dir_is_unset(None));
+        assert!(config_dir_is_unset(Some("")));
+        assert!(config_dir_is_unset(Some("   ")));
+        assert!(!config_dir_is_unset(Some("D:\\claude-profile")));
     }
 }
