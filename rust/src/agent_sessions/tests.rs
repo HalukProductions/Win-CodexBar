@@ -509,6 +509,74 @@ bad line
     }
 
     #[test]
+    fn claude_desktop_cost_discovery_admits_cowork_audit_files_only_for_cost() {
+        let app_data = tempfile::tempdir().expect("tempdir");
+        let session = app_data
+            .path()
+            .join("local-agent-mode-sessions")
+            .join("account")
+            .join("workspace")
+            .join("session");
+        fs::create_dir_all(&session).expect("session dir");
+        let audit = session.join("audit.jsonl");
+        fs::write(&audit, "{}\n").expect("audit file");
+        let projects = app_data
+            .path()
+            .join("claude-code-sessions")
+            .join("account")
+            .join(".claude")
+            .join("projects");
+        fs::create_dir_all(&projects).expect("desktop projects");
+        let roots_input = [app_data.path().to_path_buf()];
+
+        let mut budget = pi_family::DirectoryScanBudget::new(512, 4, Duration::from_secs(5));
+        let cost = claude_desktop::ClaudeDesktopProjectsLocator::cost_roots_under(
+            &roots_input,
+            &mut budget,
+        );
+        let mut expected = vec![
+            pi_family::canonicalize_for_scan(&audit),
+            pi_family::canonicalize_for_scan(&projects),
+        ];
+        expected.sort();
+        assert_eq!(
+            cost,
+            claude_desktop::ClaudeDesktopCostRoots {
+                paths: expected,
+                complete: true,
+            }
+        );
+
+        // Live-session discovery keeps its project-only output.
+        let mut live_budget = pi_family::DirectoryScanBudget::new(512, 4, Duration::from_secs(5));
+        let live = claude_desktop::ClaudeDesktopProjectsLocator::roots_under(
+            app_data.path(),
+            &mut live_budget,
+        );
+        assert_eq!(live, vec![pi_family::canonicalize_for_scan(&projects)]);
+
+        // An expired clock and an exhausted entry cap both report incomplete.
+        let mut expired_budget = pi_family::DirectoryScanBudget::new_with_deadline_for_test(
+            512,
+            4,
+            Instant::now(),
+        );
+        let expired = claude_desktop::ClaudeDesktopProjectsLocator::cost_roots_under(
+            &roots_input,
+            &mut expired_budget,
+        );
+        assert!(expired.paths.is_empty());
+        assert!(!expired.complete);
+
+        let mut capped_budget = pi_family::DirectoryScanBudget::new(1, 4, Duration::from_secs(5));
+        let capped = claude_desktop::ClaudeDesktopProjectsLocator::cost_roots_under(
+            &roots_input,
+            &mut capped_budget,
+        );
+        assert!(!capped.complete);
+    }
+
+    #[test]
     fn focus_rejects_remote_and_file_only_targets_explicitly() {
         let remote = AgentSession {
             id: "remote".to_string(),
