@@ -98,6 +98,7 @@ pub struct SettingsSnapshot {
     menu_bar_pace_reserve_positive: bool,
     providers_sorted_alphabetically: bool,
     providers_enabled_only: bool,
+    provider_default_order: Vec<String>,
     show_as_used: bool,
     show_all_token_accounts_in_menu: bool,
     enable_animations: bool,
@@ -230,6 +231,7 @@ impl From<Settings> for SettingsSnapshot {
         let wayfinder_gateway_url = settings.gateway_url(ProviderId::Wayfinder).to_string();
 
         let provider_order = settings.provider_display_order_names();
+        let provider_default_order = settings.provider_default_order_names();
         let enabled_providers = provider_order
             .iter()
             .filter(|provider_id| settings.enabled_providers.contains(*provider_id))
@@ -286,6 +288,7 @@ impl From<Settings> for SettingsSnapshot {
             menu_bar_pace_reserve_positive: settings.menu_bar_pace_reserve_positive,
             providers_sorted_alphabetically: settings.providers_sorted_alphabetically,
             providers_enabled_only: settings.providers_enabled_only,
+            provider_default_order,
             show_as_used: settings.show_as_used,
             show_all_token_accounts_in_menu: settings.show_all_token_accounts_in_menu,
             enable_animations: settings.enable_animations,
