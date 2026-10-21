@@ -47,7 +47,9 @@ pub(super) fn profiles(user_data_dir: &Path) -> Vec<BrowserProfile> {
     }]
 }
 
-fn msix_store_dirs(local: &Path) -> Vec<PathBuf> {
+/// Microsoft Store (MSIX) Claude package stores under `local`, sorted. The
+/// directories are not checked for existence.
+pub(crate) fn msix_store_dirs(local: &Path) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(local.join("Packages")) else {
         return Vec::new();
     };

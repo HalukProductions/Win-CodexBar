@@ -338,7 +338,7 @@ pub struct AgentSessionDiscovery {
     remote: RemoteSessionFetcher,
 }
 
-mod claude_desktop;
+pub(crate) mod claude_desktop;
 mod focus;
 mod native_processes;
 mod parsers;
