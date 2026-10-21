@@ -14,6 +14,8 @@ import ProviderGrid from "../components/ProviderGrid";
 import AgentSessions from "../components/AgentSessions";
 import { accentSelectionStyle } from "../lib/menuSelection";
 import { filterUsageSpendSummaryForOverview } from "../lib/usageSpendSharing";
+import { expandOverviewAccountRows, type OverviewEntry } from "../lib/overviewAccountRows";
+import { useCodexAccountsState } from "../hooks/useCodexAccountsState";
 
 /**
  * Tray popover surface — two modes like macOS CodexBar:
@@ -52,6 +54,10 @@ export default function TrayPanel({ state }: { state: BootstrapState }) {
     handleGestureEnd,
     revealClassName,
   } = useTrayPanelController(state);
+  // Read the cached Codex account store only while "Show all accounts in Overview" is on.
+  const codexAccounts = useCodexAccountsState({
+    enabled: settings.mergedOverviewAllAccounts === true,
+  });
 
   const surfaceStyle = {
     zoom: trayScale,
@@ -70,20 +76,24 @@ export default function TrayPanel({ state }: { state: BootstrapState }) {
     />
   );
 
-  const renderProviderCard = (p: ProviderUsageSnapshot) => {
+  const renderProviderCard = (p: ProviderUsageSnapshot, entry: OverviewEntry | null = null) => {
     const isSelected =
       selectedProviderId !== null && p.providerId === selectedProviderId;
+    const rowKey = entry?.key ?? p.providerId;
+    // An account row's label is already privacy-safe (generic when hidden), so
+    // it stays visible; a plain card keeps the account email hidden as before.
+    const hideEmail = entry?.accountId != null ? false : settings.hidePersonalInfo;
     return (
       <div
         className={`menu-stack__item${isSelected ? " menu-stack__item--selected" : ""}`}
-        id={`card-${p.providerId}`}
-        key={p.providerId}
+        id={`card-${rowKey}`}
+        key={rowKey}
       >
         <MenuCard
           provider={p}
           isRefreshing={refreshingProviderIds.has(p.providerId)}
           display={{
-            hideEmail: settings.hidePersonalInfo,
+            hideEmail,
             resetTimeRelative: settings.resetTimeRelative,
             showResetWhenExhausted: settings.showResetWhenExhausted,
             showPace: settings.showPace ?? true,
@@ -97,6 +107,7 @@ export default function TrayPanel({ state }: { state: BootstrapState }) {
             workdayTickStyle: settings.workdayTickStyle ?? "subtle",
             costTrackingEnabled: settings.costUsageEnabled ?? true,
             costReportingPeriod: settings.costReportingPeriod,
+            accountScoped: entry?.accountId != null,
           }}
           accentColor={settings.providerAccentColors[p.providerId]}
           onLayoutChange={requestLayout}
@@ -104,6 +115,21 @@ export default function TrayPanel({ state }: { state: BootstrapState }) {
       </div>
     );
   };
+
+  // Overview: each selected provider, expanded to one row per cached Codex account
+  // when the setting is on. Rows never take a provider slot; the cap applies first.
+  const cardEntries: OverviewEntry[] =
+    selectedProviderId === null && settings.mergedOverviewAllAccounts === true && codexAccounts.loaded
+      ? expandOverviewAccountRows(visibleProviders, codexAccounts, {
+          hidePersonalInfo: settings.hidePersonalInfo,
+          accountWord: t("Account"),
+          unavailableText: t("CodexAccountsUsageUnavailable"),
+        })
+      : visibleProviders.map((provider) => ({
+          key: provider.providerId,
+          provider,
+          accountId: null,
+        }));
 
   const stayAwakeStatus = stayAwakeHeld ? (
     <p className="menu-surface__hint" role="status">
@@ -155,10 +181,10 @@ export default function TrayPanel({ state }: { state: BootstrapState }) {
           />
         )}
         <div className="menu-stack">
-          {visibleProviders.map((p, idx) => (
-            <Fragment key={p.providerId}>
+          {cardEntries.map((entry, idx) => (
+            <Fragment key={entry.key}>
               {idx > 0 && <div className="menu-stack__sep" />}
-              {renderProviderCard(p)}
+              {renderProviderCard(entry.provider, entry)}
             </Fragment>
           ))}
         </div>
