@@ -214,9 +214,22 @@ export default function MenuTab({ settings, set, saving }: TabProps) {
         >
           <Toggle
             variant="switch"
+            ariaLabel={t("AgentSessionsEnableLabel")}
             checked={settings.agentSessionsEnabled ?? false}
             disabled={saving}
             onChange={(v) => set({ agentSessionsEnabled: v })}
+          />
+        </Field>
+        <Field
+          label={t("AgentSessionsLocalOnlyLabel")}
+          description={t("AgentSessionsLocalOnlyHelper")}
+        >
+          <Toggle
+            variant="switch"
+            ariaLabel={t("AgentSessionsLocalOnlyLabel")}
+            checked={settings.agentSessionsLocalOnly ?? false}
+            disabled={saving || !settings.agentSessionsEnabled}
+            onChange={(v) => set({ agentSessionsLocalOnly: v })}
           />
         </Field>
         <Field
@@ -229,7 +242,11 @@ export default function MenuTab({ settings, set, saving }: TabProps) {
             value={sshHostsDraft}
             aria-label={t("AgentSessionsSshHostsLabel")}
             placeholder="user@host, user@host"
-            disabled={saving || !settings.agentSessionsEnabled}
+            disabled={
+              saving ||
+              !settings.agentSessionsEnabled ||
+              (settings.agentSessionsLocalOnly ?? false)
+            }
             onChange={(event) => setSshHostsDraft(event.target.value)}
             onBlur={() => set({ agentSessionSshHosts: parseSshHosts(sshHostsDraft) })}
             onKeyDown={(event) => {

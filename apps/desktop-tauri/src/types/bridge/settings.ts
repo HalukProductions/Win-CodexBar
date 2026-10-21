@@ -285,6 +285,8 @@ export interface SettingsSnapshot {
   /** Extra Gemini profile homes whose Antigravity local history is combined with the default home. */
   antigravityAdditionalProfileHomes: string[];
   agentSessionsEnabled?: boolean;
+  /** Agent sessions on this PC only: no Tailscale or SSH discovery. */
+  agentSessionsLocalOnly?: boolean;
   /** Hold system awake while a local agent session is live. */
   stayAwakeEnabled?: boolean;
   agentSessionSshHosts?: string[];
@@ -453,6 +455,7 @@ export interface SettingsUpdate {
   codexCustomSessionsDirs?: string[];
   antigravityAdditionalProfileHomes?: string[];
   agentSessionsEnabled?: boolean;
+  agentSessionsLocalOnly?: boolean;
   stayAwakeEnabled?: boolean;
   agentSessionSshHosts?: string[];
   hooksEnabled?: boolean;

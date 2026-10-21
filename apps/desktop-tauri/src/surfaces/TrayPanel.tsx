@@ -117,7 +117,7 @@ export default function TrayPanel({ state }: { state: BootstrapState }) {
         <MenuSurface banner={banner} footerGroups={footerGroups}
           statusLine={statusLine} style={surfaceStyle} hoverHighlight={hoverHighlight}>
           {stayAwakeStatus}
-          {settings.agentSessionsEnabled && <AgentSessions />}
+          {settings.agentSessionsEnabled && <AgentSessions key={settings.agentSessionsLocalOnly ? "local-only" : "all-hosts"} />}
           <MenuEmpty
             isLoading={isRefreshing && !hasCachedData}
             onSettings={openSettings}
@@ -132,7 +132,7 @@ export default function TrayPanel({ state }: { state: BootstrapState }) {
       <MenuSurface banner={banner} footerGroups={footerGroups}
         statusLine={statusLine} style={surfaceStyle} hoverHighlight={hoverHighlight}>
         {stayAwakeStatus}
-        {settings.agentSessionsEnabled && <AgentSessions />}
+        {settings.agentSessionsEnabled && <AgentSessions key={settings.agentSessionsLocalOnly ? "local-only" : "all-hosts"} />}
         <ProviderGrid
           providers={gridProviders}
           selectedProviderId={selectedProviderId}
