@@ -53,6 +53,8 @@ pub const CURRENCIES: &[CurrencyInfo] = &[
     currency("IDR", "Rp", 17836.0),
     currency("VND", "₫", 25962.0),
     currency("UAH", "₴", 44.86),
+    // Rate from open.er-api.com on 2026-10-19.
+    currency("ILS", "₪", 3.109),
 ];
 
 pub fn is_supported_currency(code: &str) -> bool {
@@ -341,6 +343,7 @@ mod tests {
         ("IDR", "Rp", 17836.0),
         ("VND", "₫", 25962.0),
         ("UAH", "₴", 44.86),
+        ("ILS", "₪", 3.109),
     ];
 
     #[test]

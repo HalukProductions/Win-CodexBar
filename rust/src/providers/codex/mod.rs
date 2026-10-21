@@ -457,10 +457,10 @@ mod credits_detail_tests {
 mod descriptor_tests {
     use super::*;
 
-    /// Upstream 0.68.0 (#4005): the Usage Dashboard resolves the Codex cloud
-    /// analytics page, not the retired `codex/settings/usage` route.
+    /// Upstream 0.79 (#4607): the Usage Dashboard opens the ChatGPT usage
+    /// overview tab, not the legacy cloud analytics redirect.
     #[test]
-    fn usage_dashboard_resolves_the_registered_codex_analytics_usage_url() {
+    fn usage_dashboard_resolves_the_codex_usage_overview_tab() {
         let provider = CodexProvider::new();
         let dashboard_url = provider
             .metadata()
@@ -469,10 +469,12 @@ mod descriptor_tests {
         let url = reqwest::Url::parse(dashboard_url).expect("dashboard URL parses");
         assert_eq!(
             url.as_str(),
-            "https://chatgpt.com/codex/cloud/settings/analytics#usage"
+            "https://chatgpt.com/settings/usage?tab=overview"
         );
         assert_eq!(url.scheme(), "https");
         assert_eq!(url.host_str(), Some("chatgpt.com"));
-        assert_eq!(url.fragment(), Some("usage"));
+        assert_eq!(url.path(), "/settings/usage");
+        assert_eq!(url.query(), Some("tab=overview"));
+        assert_eq!(url.fragment(), None);
     }
 }
