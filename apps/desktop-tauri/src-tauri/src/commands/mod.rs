@@ -46,6 +46,7 @@ mod grok_accounts;
 mod hooks;
 mod locale_cmd;
 mod openai_live;
+mod ordered_save;
 mod preferences_transfer;
 mod provider_account_usage;
 mod provider_detail;
