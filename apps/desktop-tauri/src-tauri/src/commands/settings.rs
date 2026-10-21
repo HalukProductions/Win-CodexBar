@@ -66,6 +66,7 @@ pub struct SettingsUpdate {
     /// Extra Gemini profile homes scanned for Antigravity local history.
     pub antigravity_additional_profile_homes: Option<Vec<String>>,
     pub agent_sessions_enabled: Option<bool>,
+    pub agent_sessions_local_only: Option<bool>,
     pub stay_awake_enabled: Option<bool>,
     pub agent_session_ssh_hosts: Option<Vec<String>>,
     pub hooks_enabled: Option<bool>,
@@ -516,6 +517,9 @@ impl SettingsUpdate {
         }
         if let Some(v) = self.agent_sessions_enabled {
             settings.agent_sessions_enabled = v;
+        }
+        if let Some(v) = self.agent_sessions_local_only {
+            settings.agent_sessions_local_only = v;
         }
         if let Some(v) = self.stay_awake_enabled {
             settings.stay_awake_enabled = v;

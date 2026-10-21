@@ -316,7 +316,11 @@ pub struct ClaudeTranscriptMetadata {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AgentSessionDiscoveryMode {
     Disabled,
-    Enabled { ssh_hosts: Vec<String> },
+    /// Local sessions only: no Tailscale probe and no SSH polling.
+    LocalOnly,
+    Enabled {
+        ssh_hosts: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -884,17 +888,43 @@ impl AgentSessionDiscovery {
     }
 
     pub async fn scan(&self, mode: AgentSessionDiscoveryMode) -> AgentSessionDiscoveryResult {
-        let AgentSessionDiscoveryMode::Enabled { ssh_hosts } = mode else {
-            return AgentSessionDiscoveryResult::Disabled;
+        self.scan_with(
+            mode,
+            RemoteSessionFetcher::tailscale_hosts,
+            |hosts| async move { self.remote.fetch(&hosts).await },
+        )
+        .await
+    }
+
+    /// Scan with injectable Tailscale probe and SSH fetch so tests can assert which
+    /// remote paths run. `LocalOnly` returns before either seam is touched.
+    async fn scan_with<P, PF, R, RF>(
+        &self,
+        mode: AgentSessionDiscoveryMode,
+        probe_tailscale: P,
+        fetch_remote: R,
+    ) -> AgentSessionDiscoveryResult
+    where
+        P: FnOnce() -> PF,
+        PF: Future<Output = Result<Vec<String>, String>>,
+        R: FnOnce(Vec<String>) -> RF,
+        RF: Future<Output = Vec<AgentSessionHostResult>>,
+    {
+        let ssh_hosts = match mode {
+            AgentSessionDiscoveryMode::Disabled => return AgentSessionDiscoveryResult::Disabled,
+            AgentSessionDiscoveryMode::LocalOnly => {
+                let local = self.local.scan().await;
+                return AgentSessionDiscoveryResult::Hosts(vec![local]);
+            }
+            AgentSessionDiscoveryMode::Enabled { ssh_hosts } => ssh_hosts,
         };
-        let (local, automatic) =
-            tokio::join!(self.local.scan(), RemoteSessionFetcher::tailscale_hosts());
+        let (local, automatic) = tokio::join!(self.local.scan(), probe_tailscale());
         let (automatic_hosts, tailscale_error) = match automatic {
             Ok(hosts) => (hosts, None),
             Err(error) => (Vec::new(), Some(error)),
         };
         let merged_hosts = RemoteSessionFetcher::merge_hosts(&ssh_hosts, &automatic_hosts);
-        let mut remote = self.remote.fetch(&merged_hosts).await;
+        let mut remote = fetch_remote(merged_hosts).await;
         if let Some(error) = tailscale_error {
             remote.push(AgentSessionHostResult::failed("tailscale", error));
         }

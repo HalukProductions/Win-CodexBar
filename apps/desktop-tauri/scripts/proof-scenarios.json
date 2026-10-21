@@ -276,6 +276,25 @@
       ]
     },
     {
+      "name": "settings-menu-agent-sessions-local-only",
+      "query": "window=settings&tab=menu&theme=dark",
+      "size": [880, 620],
+      "steps": [
+        { "expectText": ["Local sessions only", "Skip Tailscale and SSH discovery. Only sessions on this PC are shown."] },
+        { "expectSelector": "input[aria-label=\"Local sessions only\"]:disabled" },
+        { "expectSelector": "input[aria-label=\"Local sessions only\"]:not(:checked)" },
+        { "screenshot": "settings-menu-agent-sessions-local-only-disabled" },
+        { "click": { "selector": "input", "label": "Agent sessions" } },
+        { "expectCall": { "cmd": "update_settings", "args": { "patch": { "agentSessionsEnabled": true } } } },
+        { "expectSelector": "input[aria-label=\"Local sessions only\"]:not(:disabled)" },
+        { "click": { "selector": "input", "label": "Local sessions only" } },
+        { "expectCall": { "cmd": "update_settings", "args": { "patch": { "agentSessionsLocalOnly": true } } } },
+        { "expectSelector": "input[aria-label=\"Local sessions only\"]:checked" },
+        { "expectSelector": "input[aria-label=\"Additional SSH hosts\"]:disabled" },
+        { "screenshot": "settings-menu-agent-sessions-local-only-on" }
+      ]
+    },
+    {
       "name": "tray-openai-live-spend",
       "query": "window=main&fixture=openai-live-spend",
       "size": [310, 1032],

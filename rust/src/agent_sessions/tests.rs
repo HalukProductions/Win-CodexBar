@@ -642,4 +642,119 @@ bad line
 
         assert_eq!(result, AgentSessionDiscoveryResult::Disabled);
     }
+
+    #[tokio::test]
+    async fn local_only_discovery_never_probes_tailscale_or_fetches_ssh() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let probes = Arc::new(AtomicUsize::new(0));
+        let fetches = Arc::new(AtomicUsize::new(0));
+        let result = AgentSessionDiscovery::default()
+            .scan_with(
+                AgentSessionDiscoveryMode::LocalOnly,
+                || {
+                    let probes = Arc::clone(&probes);
+                    async move {
+                        probes.fetch_add(1, Ordering::SeqCst);
+                        Ok(vec!["peer.example.invalid".to_string()])
+                    }
+                },
+                |_hosts| {
+                    let fetches = Arc::clone(&fetches);
+                    async move {
+                        fetches.fetch_add(1, Ordering::SeqCst);
+                        Vec::new()
+                    }
+                },
+            )
+            .await;
+
+        assert_eq!(probes.load(Ordering::SeqCst), 0);
+        assert_eq!(fetches.load(Ordering::SeqCst), 0);
+        let AgentSessionDiscoveryResult::Hosts(hosts) = result else {
+            panic!("local-only discovery should return the local host result");
+        };
+        assert_eq!(hosts.len(), 1);
+        assert!(
+            hosts
+                .iter()
+                .all(|host| host.host != "peer.example.invalid" && host.host != "tailscale")
+        );
+    }
+
+    #[tokio::test]
+    async fn enabled_discovery_merges_manual_and_tailscale_hosts_through_the_seams() {
+        let fetched = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let fetched_for_closure = Arc::clone(&fetched);
+        let _ = AgentSessionDiscovery::default()
+            .scan_with(
+                AgentSessionDiscoveryMode::Enabled {
+                    ssh_hosts: vec!["manual.example.invalid".to_string()],
+                },
+                || async { Ok(vec!["auto.example.invalid".to_string()]) },
+                |hosts| {
+                    *fetched_for_closure.lock().unwrap() = hosts;
+                    async { Vec::new() }
+                },
+            )
+            .await;
+
+        let hosts = fetched.lock().unwrap().clone();
+        assert!(hosts.iter().any(|host| host == "manual.example.invalid"));
+        assert!(hosts.iter().any(|host| host == "auto.example.invalid"));
+    }
+
+    #[test]
+    fn tailscale_cli_resolution_skips_gui_client_launchers_and_scripts() {
+        let gui_dir = tempfile::tempdir().unwrap();
+        let script_dir = tempfile::tempdir().unwrap();
+        let cli_dir = tempfile::tempdir().unwrap();
+        fs::write(gui_dir.path().join("tailscale-ipn.exe"), b"MZ\x90\x00").unwrap();
+        fs::write(gui_dir.path().join("tailscale.cmd"), b"@echo off\r\n").unwrap();
+        fs::write(
+            script_dir.path().join(super::remote::TAILSCALE_CLI_FILE_NAME),
+            b"#!/bin/sh\nexec tailscale-ipn \"$@\"\n",
+        )
+        .unwrap();
+        let cli = cli_dir.path().join(super::remote::TAILSCALE_CLI_FILE_NAME);
+        fs::write(&cli, b"MZ\x90\x00").unwrap();
+
+        let path_var = std::env::join_paths([gui_dir.path(), script_dir.path(), cli_dir.path()])
+            .unwrap();
+        let resolved = super::remote::tailscale_cli_path(Some(path_var.as_os_str()));
+
+        assert_eq!(resolved.as_deref(), cli.to_str());
+        assert_eq!(super::remote::tailscale_cli_path(None), None);
+    }
+
+    #[test]
+    fn tailscale_cli_resolution_returns_none_without_a_standalone_cli() {
+        let gui_dir = tempfile::tempdir().unwrap();
+        fs::write(gui_dir.path().join("tailscale-ipn.exe"), b"MZ\x90\x00").unwrap();
+        let path_var = std::env::join_paths([gui_dir.path()]).unwrap();
+
+        assert_eq!(
+            super::remote::tailscale_cli_path(Some(path_var.as_os_str())),
+            None
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn tailscale_cli_resolution_rejects_symlinks_into_other_binaries() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("real-tailscale");
+        fs::write(&target, b"MZ\x90\x00").unwrap();
+        std::os::unix::fs::symlink(
+            &target,
+            dir.path().join(super::remote::TAILSCALE_CLI_FILE_NAME),
+        )
+        .unwrap();
+        let path_var = std::env::join_paths([dir.path()]).unwrap();
+
+        assert_eq!(
+            super::remote::tailscale_cli_path(Some(path_var.as_os_str())),
+            None
+        );
+    }
 }

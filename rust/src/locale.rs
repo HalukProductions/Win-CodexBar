@@ -981,6 +981,8 @@ locale_keys! {
     AgentSessionsTitle,
     AgentSessionsEnableLabel,
     AgentSessionsEnableHelper,
+    AgentSessionsLocalOnlyLabel,
+    AgentSessionsLocalOnlyHelper,
     AgentSessionsStayAwakeLabel,
     AgentSessionsStayAwakeHelper,
     AgentSessionsSshHostsLabel,

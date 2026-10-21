@@ -217,11 +217,16 @@ These controls set the tray panel and the float bar.
 | Show all token accounts | `show_all_token_accounts_in_menu` | off |
 | Stay awake | `stay_awake_enabled` | off |
 | Agent sessions | `agent_sessions_enabled` | off |
+| Local sessions only | `agent_sessions_local_only` (skips Tailscale and SSH discovery) | off |
 | SSH hosts for agent sessions | `agent_session_ssh_hosts` (comma-separated) | none |
 | Cost summary | `cost_summary_display_style` (`compact`, `detailed`, `hidden`) | `compact` |
 | Cost reporting period | `cost_reporting_period` | `rolling:30` |
 
-Workday ticks are disabled while Work days is Automatic. SSH hosts are disabled while agent sessions are off.
+Workday ticks are disabled while Work days is Automatic. SSH hosts are disabled while agent sessions are off or local-only is on.
+
+With **Local sessions only** on, agent sessions never run `tailscale status` and never open SSH connections. The tray panel's session list reloads when the setting changes while the panel is open, and on its next open otherwise, so remote rows already shown are dropped then. Remote discovery stays on by default, so existing installs behave as before until this is turned on.
+
+Tailscale discovery runs only a standalone `tailscale.exe` found on `PATH`. The GUI client `tailscale-ipn.exe`, `.cmd`/`.bat` launchers, and symlinks are never executed. If no standalone CLI is found, Tailscale discovery is skipped without an error row.
 
 The float bar section is on this pane too. Every control except the first is disabled while the float bar is off.
 

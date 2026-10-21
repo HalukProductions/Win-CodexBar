@@ -28,6 +28,7 @@ const baseSettings = {
   costSummaryDisplayStyle: "compact",
   costReportingPeriod: "rolling:30",
   agentSessionsEnabled: false,
+  agentSessionsLocalOnly: false,
   stayAwakeEnabled: false,
   agentSessionSshHosts: [],
   trayScalePercent: 100,
@@ -199,12 +200,17 @@ describe("MenuTab Content section", () => {
 });
 
 describe("MenuTab Agent sessions section", () => {
-  it("orders Stay Awake, Agent sessions, then Additional SSH hosts", () => {
+  it("orders Stay Awake, Agent sessions, Local sessions only, then Additional SSH hosts", () => {
     renderTab();
     const group = screen.getByRole("region", { name: "AgentSessionsTitle" });
     expect(
       Array.from(group.querySelectorAll(".settings-field__label"), (n) => n.textContent),
-    ).toEqual(["AgentSessionsStayAwakeLabel", "AgentSessionsEnableLabel", "AgentSessionsSshHostsLabel"]);
+    ).toEqual([
+      "AgentSessionsStayAwakeLabel",
+      "AgentSessionsEnableLabel",
+      "AgentSessionsLocalOnlyLabel",
+      "AgentSessionsSshHostsLabel",
+    ]);
   });
 
   it("toggles Stay Awake and Agent sessions", () => {
@@ -213,6 +219,28 @@ describe("MenuTab Agent sessions section", () => {
     expect(set).toHaveBeenCalledWith({ stayAwakeEnabled: true });
     fireEvent.click(screen.getByRole("checkbox", { name: "AgentSessionsEnableLabel" }));
     expect(set).toHaveBeenCalledWith({ agentSessionsEnabled: true });
+  });
+
+  it("keeps remote discovery on by default and saves the local-only toggle", () => {
+    const off = renderTab({ agentSessionsEnabled: true });
+    expect(screen.getByRole("checkbox", { name: "AgentSessionsLocalOnlyLabel" })).not.toBeChecked();
+    off.unmount();
+
+    const { set } = renderTab({ agentSessionsEnabled: true });
+    fireEvent.click(screen.getByRole("checkbox", { name: "AgentSessionsLocalOnlyLabel" }));
+    expect(set).toHaveBeenCalledWith({ agentSessionsLocalOnly: true });
+  });
+
+  it("disables the local-only toggle while agent sessions are off", () => {
+    renderTab();
+    expect(screen.getByRole("checkbox", { name: "AgentSessionsLocalOnlyLabel" })).toBeDisabled();
+  });
+
+  it("disables SSH hosts in local-only mode even when agent sessions are on", () => {
+    renderTab({ agentSessionsEnabled: true, agentSessionsLocalOnly: true });
+    const input = screen.getByRole("textbox", { name: "AgentSessionsSshHostsLabel" }) as HTMLInputElement;
+    expect(input.disabled).toBe(true);
+    expect(screen.getByRole("checkbox", { name: "AgentSessionsLocalOnlyLabel" })).toBeChecked();
   });
 
   it("disables SSH hosts until agent sessions are on, then saves the parsed list on blur", () => {

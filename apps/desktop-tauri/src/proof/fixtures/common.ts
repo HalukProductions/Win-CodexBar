@@ -169,6 +169,7 @@ export function baseSettings(overrides: Partial<SettingsSnapshot> = {}): Setting
     codexCustomSessionsDirs: [],
     antigravityAdditionalProfileHomes: [],
     agentSessionsEnabled: false,
+    agentSessionsLocalOnly: false,
     stayAwakeEnabled: false,
     agentSessionSshHosts: [],
     hooksEnabled: false,

@@ -340,6 +340,11 @@ pub struct Settings {
     #[serde(default)]
     pub agent_sessions_enabled: bool,
 
+    /// Limit Agent Sessions to this PC: no Tailscale probe and no SSH polling.
+    /// Off by default, so remote discovery keeps running as before.
+    #[serde(default)]
+    pub agent_sessions_local_only: bool,
+
     /// Keep the system awake (no idle sleep) while a local agent session is live.
     #[serde(default)]
     pub stay_awake_enabled: bool,
@@ -816,6 +821,7 @@ impl Default for Settings {
             codex_custom_sessions_dirs: Vec::new(),
             antigravity_additional_profile_homes: Vec::new(),
             agent_sessions_enabled: false,
+            agent_sessions_local_only: false,
             stay_awake_enabled: false,
             agent_session_ssh_hosts: Vec::new(),
             hooks_enabled: false,
