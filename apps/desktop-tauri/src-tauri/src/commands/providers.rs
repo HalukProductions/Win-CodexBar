@@ -395,7 +395,7 @@ async fn refresh_provider(
     let fetch_attempt = FetchAttempt::of(&snapshot);
 
     let state = app.state::<Mutex<AppState>>();
-    let mut account_usage_to_persist = None;
+    let mut account_usage_to_persist: Option<CacheSnapshot> = None;
     let published = if let Ok(mut guard) = state.lock() {
         if !is_current_provider_refresh_generation(&guard, generation) {
             tracing::debug!(
@@ -438,15 +438,8 @@ async fn refresh_provider(
                     .provider_cache_updated_at_by_provider
                     .insert(id, std::time::Instant::now());
             }
-            if let Some(account_id) = token_account_id
-                && observe_fetch(
-                    &mut guard.provider_account_usage,
-                    id,
-                    &account_id.to_string(),
-                    &snapshot,
-                )
-            {
-                account_usage_to_persist = Some(guard.provider_account_usage.clone());
+            if observe_refresh(&mut guard, id, token_account_id, fresh_snapshot, &snapshot) {
+                account_usage_to_persist = Some(snapshot_after_change(&mut guard));
             }
             // Read consent after the fetch completes, so a toggle change made
             // while the request was in flight takes effect for this outcome.

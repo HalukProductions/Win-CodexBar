@@ -196,18 +196,73 @@ fn save_provider_account_usage(cache: &ProviderAccountUsageCache) -> io::Result<
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    // One fixed staging name is overwritten on each save, so no temp files accumulate.
+    // Saves are serialized by SAVE_GATE, so one fixed staging name is never
+    // written by two saves at once. It is overwritten on each save, so no temp
+    // files accumulate.
     let staged = path.with_extension("json.tmp");
     secure_file::write_string(&staged, &raw)?;
     atomic_file::replace_staged(&staged, &path)
 }
 
-/// Write a cache snapshot taken under the state lock. Runs after the lock is
+/// Highest revision accepted for a disk write. It is held for the whole write,
+/// so writes are serialized and an older snapshot can never land after a newer
+/// one.
+static SAVE_GATE: Mutex<u64> = Mutex::new(0);
+
+/// Runs `write` only when `revision` is newer than every revision accepted so
+/// far. The revision is recorded before the write, so a failed write still
+/// blocks older snapshots. Returns whether `write` ran.
+fn write_in_order(
+    gate: &Mutex<u64>,
+    revision: u64,
+    write: impl FnOnce() -> io::Result<()>,
+) -> io::Result<bool> {
+    let mut accepted = gate.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    if revision <= *accepted {
+        return Ok(false);
+    }
+    *accepted = revision;
+    write().map(|()| true)
+}
+
+/// A cache copy taken under the state lock, tagged with its revision.
+pub(crate) struct CacheSnapshot {
+    revision: u64,
+    cache: ProviderAccountUsageCache,
+}
+
+/// Call under the state lock right after the cache changes. The revision and
+/// the copy are taken together, so a higher revision always holds newer data.
+pub(crate) fn snapshot_after_change(state: &mut AppState) -> CacheSnapshot {
+    state.provider_account_usage_revision += 1;
+    CacheSnapshot {
+        revision: state.provider_account_usage_revision,
+        cache: state.provider_account_usage.clone(),
+    }
+}
+
+/// Write a snapshot taken under the state lock. Runs after the lock is
 /// released so disk I/O never blocks other commands.
-pub(crate) fn persist(cache: &ProviderAccountUsageCache) {
-    if let Err(error) = save_provider_account_usage(cache) {
+pub(crate) fn persist(snapshot: &CacheSnapshot) {
+    let result = write_in_order(&SAVE_GATE, snapshot.revision, || {
+        save_provider_account_usage(&snapshot.cache)
+    });
+    if let Err(error) = result {
         tracing::warn!("failed to persist provider account usage: {error}");
     }
+}
+
+/// Drop one account's entry and mark the account removed, so refreshes that
+/// are still in flight cannot add it back. Returns whether an entry was removed.
+fn forget_token_account_in_state(
+    state: &mut AppState,
+    provider: ProviderId,
+    account_id: &str,
+) -> bool {
+    state
+        .removed_token_account_usage
+        .insert(account_id.to_string());
+    forget_account(&mut state.provider_account_usage, provider, account_id)
 }
 
 /// Remove one token account's cached usage, e.g. when the account is deleted.
@@ -219,25 +274,59 @@ pub(crate) fn forget_token_account(
     let account_id = account_id.to_string();
     let snapshot = app.try_state::<Mutex<AppState>>().and_then(|state| {
         let mut state = state.lock().ok()?;
-        forget_account(&mut state.provider_account_usage, provider, &account_id)
-            .then(|| state.provider_account_usage.clone())
+        forget_token_account_in_state(&mut state, provider, &account_id)
+            .then(|| snapshot_after_change(&mut state))
     });
-    if let Some(cache) = snapshot {
-        persist(&cache);
+    if let Some(snapshot) = snapshot {
+        persist(&snapshot);
     }
 }
 
 /// Remove every cached account entry for a provider, e.g. when its token
-/// accounts are cleared.
-pub(crate) fn forget_provider_accounts(app: &tauri::AppHandle, provider: ProviderId) {
+/// accounts are cleared. `account_ids` are the accounts being removed, so their
+/// in-flight refreshes are ignored too.
+pub(crate) fn forget_provider_accounts(
+    app: &tauri::AppHandle,
+    provider: ProviderId,
+    account_ids: &[uuid::Uuid],
+) {
     let snapshot = app.try_state::<Mutex<AppState>>().and_then(|state| {
         let mut state = state.lock().ok()?;
+        state
+            .removed_token_account_usage
+            .extend(account_ids.iter().map(uuid::Uuid::to_string));
         forget_provider(&mut state.provider_account_usage, provider)
-            .then(|| state.provider_account_usage.clone())
+            .then(|| snapshot_after_change(&mut state))
     });
-    if let Some(cache) = snapshot {
-        persist(&cache);
+    if let Some(snapshot) = snapshot {
+        persist(&snapshot);
     }
+}
+
+/// Record a refresh outcome for the active token account. Only a fresh fetch
+/// counts. A preserved last-good snapshot keeps its old `updatedAt`, and it may
+/// belong to whichever account was active before. An account removed since the
+/// refresh started is never re-added. Returns whether the cache changed.
+pub(crate) fn observe_refresh(
+    state: &mut AppState,
+    provider: ProviderId,
+    account_id: Option<uuid::Uuid>,
+    fresh_snapshot: bool,
+    snapshot: &super::ProviderUsageSnapshot,
+) -> bool {
+    let Some(account_id) = account_id.filter(|_| fresh_snapshot) else {
+        return false;
+    };
+    let account_id = account_id.to_string();
+    if state.removed_token_account_usage.contains(&account_id) {
+        return false;
+    }
+    observe_fetch(
+        &mut state.provider_account_usage,
+        provider,
+        &account_id,
+        snapshot,
+    )
 }
 
 /// Cached usage for one provider's token accounts, keyed by account id.
@@ -401,5 +490,128 @@ mod tests {
         assert_eq!(keys, vec!["primary", "secondary", "updatedAt"]);
         assert!(!raw.contains("work@example.com"));
         assert!(!raw.contains("Max"));
+    }
+
+    #[test]
+    fn writes_apply_in_revision_order_and_skip_older_snapshots() {
+        let gate = Mutex::new(0);
+        let mut writes = Vec::new();
+        assert!(
+            write_in_order(&gate, 2, || {
+                writes.push("r2");
+                Ok(())
+            })
+            .unwrap()
+        );
+        // An older revision that arrives late must not land after the newer one.
+        assert!(
+            !write_in_order(&gate, 1, || {
+                writes.push("r1");
+                Ok(())
+            })
+            .unwrap()
+        );
+        // Equal revision is a repeat, not a new change.
+        assert!(
+            !write_in_order(&gate, 2, || {
+                writes.push("r2-again");
+                Ok(())
+            })
+            .unwrap()
+        );
+        assert!(
+            write_in_order(&gate, 3, || {
+                writes.push("r3");
+                Ok(())
+            })
+            .unwrap()
+        );
+        assert_eq!(writes, vec!["r2", "r3"]);
+    }
+
+    #[test]
+    fn failed_write_still_blocks_older_revisions() {
+        let gate = Mutex::new(0);
+        let failed = write_in_order(&gate, 5, || Err(io::Error::other("disk full")));
+        assert!(failed.is_err());
+        let mut wrote_older = false;
+        assert!(
+            !write_in_order(&gate, 4, || {
+                wrote_older = true;
+                Ok(())
+            })
+            .unwrap()
+        );
+        assert!(!wrote_older);
+    }
+
+    #[test]
+    fn each_change_takes_a_higher_revision() {
+        let mut state = AppState::new();
+        let first = snapshot_after_change(&mut state).revision;
+        let second = snapshot_after_change(&mut state).revision;
+        assert!(second > first);
+        assert_eq!(state.provider_account_usage_revision, second);
+    }
+
+    #[test]
+    fn removed_account_cannot_be_readded_by_an_inflight_refresh() {
+        let mut state = AppState::new();
+        let id = uuid::Uuid::new_v4();
+        assert!(observe_refresh(
+            &mut state,
+            ProviderId::Claude,
+            Some(id),
+            true,
+            &fresh(22.0, 41.0),
+        ));
+        assert!(forget_token_account_in_state(
+            &mut state,
+            ProviderId::Claude,
+            &id.to_string(),
+        ));
+        // The refresh that started before the removal finishes afterwards.
+        assert!(!observe_refresh(
+            &mut state,
+            ProviderId::Claude,
+            Some(id),
+            true,
+            &fresh(9.0, 9.0),
+        ));
+        assert!(entries_for(&state.provider_account_usage, ProviderId::Claude).is_empty());
+        // Other accounts are unaffected.
+        let other = uuid::Uuid::new_v4();
+        assert!(observe_refresh(
+            &mut state,
+            ProviderId::Claude,
+            Some(other),
+            true,
+            &fresh(1.0, 2.0),
+        ));
+    }
+
+    #[test]
+    fn preserved_last_good_snapshot_is_not_recorded_for_the_current_account() {
+        let mut state = AppState::new();
+        let id = uuid::Uuid::new_v4();
+        // A transient failure keeps the previous snapshot, which has no error.
+        // Its data is not from this fetch, so it must not be recorded.
+        assert!(!observe_refresh(
+            &mut state,
+            ProviderId::Claude,
+            Some(id),
+            false,
+            &fresh(22.0, 41.0),
+        ));
+        assert!(entries_for(&state.provider_account_usage, ProviderId::Claude).is_empty());
+        // No active token account: nothing to record either.
+        assert!(!observe_refresh(
+            &mut state,
+            ProviderId::Claude,
+            None,
+            true,
+            &fresh(22.0, 41.0),
+        ));
+        assert!(state.provider_account_usage.is_empty());
     }
 }
