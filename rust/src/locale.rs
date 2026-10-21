@@ -1486,6 +1486,12 @@ locale_keys! {
     TokenAccountTabHint,
     TokenAccountNoSupported,
     TokenAccountInlineSummary,
+    TokenAccountEdit,
+    TokenAccountEditSave,
+    TokenAccountEditCancel,
+    TokenAccountEditKeepCredentialHint,
+    TokenAccountMoveUp,
+    TokenAccountMoveDown,
 
     // Phase 9 - Tray / pop-out pace badges + countdowns
     TrayPaceBadgeSlow,
