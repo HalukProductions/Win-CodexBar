@@ -826,6 +826,14 @@ Origin: https://app.cosmicjs.com
 - 401, 403, and 429 report their status; response bodies are never echoed in
   errors.
 
+## Antigravity Gemini quota summary
+
+The Antigravity quota summary picks one Gemini row for the primary and secondary windows (upstream #4659).
+
+- The ordinary Gemini buckets win: `gemini-5h` (or a session alias such as `gemini-session`) and `gemini-weekly`. Their IDs are matched after lowercasing, with `_` read as `-` and a trailing ` limit` ignored. Display labels never decide this.
+- A model-specific Gemini allowance, such as `gemini-2.5-pro-5h`, represents Gemini only when the ordinary bucket of that cadence is absent, unknown or disabled.
+- Every bucket stays visible as an extra window with its own usage and reset.
+
 ## Window lengths that match the Mac
 
 These providers set window lengths so their rows get the same pace as in the Mac app, and the tray tint can score them. Where the stored length differs from the Mac's, the row says so:
