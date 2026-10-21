@@ -218,6 +218,35 @@ fn golden_codex_default_report() {
     assert_eq!(plain(&codex, CostGroupBy::None), CODEX_DEFAULT);
 }
 
+fn opencodego_summary() -> CostSummary {
+    let mut summary = CostSummary {
+        total_cost_usd: 2.5,
+        input_tokens: 1_000,
+        output_tokens: 200,
+        sessions_count: 3,
+        ..CostSummary::default()
+    };
+    summary.by_model.insert("fixture-model".to_string(), 2.5);
+    summary
+}
+
+const OPENCODEGO_DEFAULT: &str = "\
+OpenCode Go Cost (Last 30 days)
+  Total:    $2.50
+  Tokens:   1,000 input, 200 output, 0 cached
+  Sessions: 3
+  By model:
+    fixture-model: $2.50
+";
+
+#[test]
+fn golden_opencodego_reads_local_history_instead_of_reporting_unavailable() {
+    let opencodego = [result(ProviderId::OpenCodeGo, opencodego_summary(), true)];
+    let text = plain(&opencodego, CostGroupBy::None);
+    assert_eq!(text, OPENCODEGO_DEFAULT);
+    assert!(!text.contains("not available"));
+}
+
 #[test]
 fn golden_codex_default_report_marks_partial_history() {
     let codex = [result(ProviderId::Codex, codex_summary(false), true)];

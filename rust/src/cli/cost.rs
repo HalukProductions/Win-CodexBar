@@ -195,6 +195,9 @@ async fn run_with_settings(
                 (summary, true, None)
             }
             ProviderId::Pi => (scanner.scan_pi(), true, None),
+            // Recorded OpenCode Go local history, honoring the selected window
+            // (upstream #4606).
+            ProviderId::OpenCodeGo => (scanner.scan_opencodego_with_cancel(None), true, None),
             ProviderId::Antigravity => (
                 CostSummary::default(),
                 true,
