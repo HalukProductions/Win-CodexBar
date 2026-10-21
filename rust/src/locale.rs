@@ -2086,6 +2086,8 @@ locale_keys! {
     OverviewProvidersConfigure,
     OverviewProvidersChooseUpTo,
     OverviewProvidersDefaultSummary,
+    OverviewAllAccountsLabel,
+    OverviewAllAccountsHelper,
     QuotaWarningMarkersLabel,
     QuotaWarningMarkersHelper,
     WorkDaysLabel,

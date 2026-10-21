@@ -43,6 +43,7 @@ const tauriMocks = vi.hoisted(() => ({
   setUiLanguage: vi.fn(),
   getDeepSeekPricingStatus: vi.fn().mockResolvedValue(null),
   getUsageSpendSummary: vi.fn(),
+  getCodexAccountsState: vi.fn(),
   claudeReconciliationState: vi.fn().mockResolvedValue(null),
 }));
 
@@ -159,6 +160,7 @@ function settings(overrides: Partial<SettingsSnapshot> = {}): SettingsSnapshot {
     menuBarShowsPercent: false,
     menuBarIconStyle: "bars",
     mergedOverviewSelectedProviders: [],
+    mergedOverviewAllAccounts: false,
     quotaWarningMarkersVisible: true,
     workdayTickStyle: "subtle",
     menuBarColorPace: false,
@@ -1357,5 +1359,183 @@ describe("TrayPanel provider grid", () => {
     expect(off.container.querySelector(".menu-surface")).toHaveClass(
       "menu-surface--hover-highlight-off",
     );
+  });
+});
+
+function codexAccountRecord(id: string, emailHint: string) {
+  return {
+    id,
+    nickname: null,
+    emailHint,
+    authSubject: null,
+    providerAccountId: null,
+    codexHomePath: `/example/${id}`,
+    source: "managedByApp" as const,
+    createdAt: "2026-05-01T00:00:00Z",
+    updatedAt: "2026-05-01T00:00:00Z",
+    lastAuthenticatedAt: null,
+  };
+}
+
+function codexAccountUsage(usedPercent: number) {
+  return {
+    email: null,
+    providerAccountId: null,
+    plan: "plus",
+    allowed: true,
+    limitReached: false,
+    primaryWindow: { usedPercent, resetAt: null, limitWindowSeconds: 18_000 },
+    secondaryWindow: null,
+    credits: null,
+    updatedAt: "2026-05-24T00:00:00Z",
+  };
+}
+
+/** Two cached managed Codex accounts: `work` has usage, `home` has none. */
+function codexAccountsState() {
+  return {
+    accounts: [
+      codexAccountRecord("acc-work", "work@example.com"),
+      codexAccountRecord("acc-home", "home@example.com"),
+    ],
+    snapshots: { "acc-work": codexAccountUsage(42) },
+    displayNames: {
+      "acc-work": "work@example.com",
+      "acc-home": "home@example.com",
+    },
+    accountOrdinals: { "acc-work": 1, "acc-home": 2 },
+    needsAuthentication: {},
+  };
+}
+
+describe("TrayPanel overview account rows", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    eventMocks.listeners.clear();
+    tauriMocks.claudeReconciliationState.mockResolvedValue(null);
+    tauriMocks.getDeepSeekPricingStatus.mockResolvedValue(null);
+    tauriMocks.getUsageSpendSummary.mockResolvedValue({ rows: [], models: [] });
+    tauriMocks.getAppInfo.mockResolvedValue({
+      name: "CodexBar",
+      version: "0.70.0",
+      buildNumber: "1",
+      updateChannel: "stable",
+      tagline: "",
+    });
+    tauriMocks.getSystemAccentColor.mockResolvedValue(null);
+    tauriMocks.getProviderDetail.mockResolvedValue({ dashboardUrl: null, statusPageUrl: null });
+    tauriMocks.getProviderStatuses.mockResolvedValue([]);
+    tauriMocks.getWorkAreaRect.mockResolvedValue({ x: 0, y: 0, width: 1440, height: 900 });
+    tauriMocks.getCurrentSurfaceState.mockResolvedValue({
+      mode: "trayPanel",
+      target: { kind: "summary" },
+    });
+    tauriMocks.getUpdateState.mockResolvedValue({
+      status: "idle",
+      version: null,
+      error: null,
+      progress: null,
+      releaseUrl: null,
+      canDownload: false,
+      canApply: false,
+      lastCheckedAt: null,
+    });
+    tauriMocks.getLocaleStrings.mockResolvedValue(buildBundle({ ActionRefresh: "Refresh" }));
+    tauriMocks.updateSettings.mockResolvedValue(settings());
+    tauriMocks.getCodexAccountsState.mockResolvedValue(codexAccountsState());
+    tauriMocks.getProviderChartData.mockResolvedValue({
+      providerId: "codex",
+      costHistory: [],
+      creditsHistory: [],
+      usageBreakdown: [],
+      localUsage: null,
+    });
+    eventMocks.listen.mockImplementation(
+      (event: string, handler: (event: { payload: unknown }) => void) => {
+        const listeners = eventMocks.listeners.get(event) ?? [];
+        listeners.push(handler);
+        eventMocks.listeners.set(event, listeners);
+        return Promise.resolve(() => {});
+      },
+    );
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  /** Eight catalog providers; the default Overview shows the first six, codex among them. */
+  function overviewProviders() {
+    return TEST_PROVIDER_CATALOG.slice(0, 8).map(([id, displayName], index) =>
+      provider(id, displayName, (index * 7) % 100),
+    );
+  }
+
+  it("keeps one card per provider and does not read accounts while the setting is off", async () => {
+    const { container } = renderTrayPanel(overviewProviders(), overviewOrder(8), overviewCatalog(8));
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".menu-stack__item")).toHaveLength(6);
+    });
+    expect(container.querySelector("#card-codex")).not.toBeNull();
+    expect(container.querySelector("#card-codex\\/account\\/acc-work")).toBeNull();
+    expect(tauriMocks.getCodexAccountsState).not.toHaveBeenCalled();
+  });
+
+  it("expands Codex into one row per cached account, keeping the six-provider cap", async () => {
+    const { container } = renderTrayPanel(
+      overviewProviders(),
+      { ...overviewOrder(8), mergedOverviewAllAccounts: true },
+      overviewCatalog(8),
+    );
+
+    // Six providers, with Codex as two rows: rows do not take provider slots.
+    await waitFor(() => {
+      expect(container.querySelector("#card-codex\\/account\\/acc-work")).not.toBeNull();
+    });
+    expect(container.querySelectorAll(".menu-stack__item")).toHaveLength(7);
+    expect(container.querySelector("#card-codex")).toBeNull();
+    expect(container.querySelector("#card-codex\\/account\\/acc-home")).not.toBeNull();
+    expect(container.querySelectorAll(".menu-stack__item")[7]).toBeUndefined();
+    expect(tauriMocks.getCodexAccountsState).toHaveBeenCalled();
+    // Local-log charts are per provider; account rows never read them.
+    expect(
+      tauriMocks.getProviderChartData.mock.calls.some(([providerId]) => providerId === "codex"),
+    ).toBe(false);
+  });
+
+  it("labels account rows generically under Hide personal information", async () => {
+    const { container } = renderTrayPanel(
+      overviewProviders(),
+      { ...overviewOrder(8), mergedOverviewAllAccounts: true, hidePersonalInfo: true },
+      overviewCatalog(8),
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector("#card-codex\\/account\\/acc-work")).not.toBeNull();
+    });
+    const work = container.querySelector("#card-codex\\/account\\/acc-work")!;
+    const home = container.querySelector("#card-codex\\/account\\/acc-home")!;
+    expect(work.textContent).toContain("Account 1");
+    expect(home.textContent).toContain("Account 2");
+    expect(container.textContent).not.toContain("work@example.com");
+    expect(container.textContent).not.toContain("home@example.com");
+  });
+
+  it("shows an account with no cached usage as unavailable instead of borrowing quota", async () => {
+    const { container } = renderTrayPanel(
+      overviewProviders(),
+      { ...overviewOrder(8), mergedOverviewAllAccounts: true },
+      overviewCatalog(8),
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector("#card-codex\\/account\\/acc-home")).not.toBeNull();
+    });
+    const home = container.querySelector("#card-codex\\/account\\/acc-home")!;
+    expect(home.textContent).toContain("CodexAccountsUsageUnavailable");
+    expect(home.textContent).not.toContain("42%");
+    const work = container.querySelector("#card-codex\\/account\\/acc-work")!;
+    expect(work.textContent).not.toContain("CodexAccountsUsageUnavailable");
   });
 });

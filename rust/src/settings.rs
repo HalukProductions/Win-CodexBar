@@ -203,6 +203,11 @@ pub struct Settings {
     #[serde(default)]
     pub merged_overview_selected_providers: Vec<String>,
 
+    /// Expand each selected Overview provider into one row per cached account
+    /// (claude-swap/tcr, managed Codex, token accounts). Off by default; adds no fetches.
+    #[serde(default)]
+    pub merged_overview_all_accounts: bool,
+
     /// Draw quota-warning threshold ticks on usage bars.
     #[serde(default = "default_true")]
     pub quota_warning_markers_visible: bool,
@@ -790,6 +795,7 @@ impl Default for Settings {
             menu_bar_shows_percent: false,
             menu_bar_icon_style: MenuBarIconStyle::Bars,
             merged_overview_selected_providers: Vec::new(),
+            merged_overview_all_accounts: false,
             quota_warning_markers_visible: true,
             highlight_menu_cards_on_hover: true,
             workday_tick_style: WorkdayTickStyle::Subtle,

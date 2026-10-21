@@ -146,6 +146,7 @@ export function baseSettings(overrides: Partial<SettingsSnapshot> = {}): Setting
     menuBarShowsPercent: false,
     menuBarIconStyle: "bars",
     mergedOverviewSelectedProviders: [],
+    mergedOverviewAllAccounts: false,
     quotaWarningMarkersVisible: true,
     highlightMenuCardsOnHover: true,
     workdayTickStyle: "subtle",
