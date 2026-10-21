@@ -338,6 +338,30 @@ export function createProofRouter(
       );
       return tokenAccounts("claude");
     },
+    // Mirrors the shell's rules for the fixture: a blank label keeps the
+    // saved one, and the credential is not modelled (the bridge never returns it).
+    update_token_account: (args) => {
+      const accountId = stringArg(args, "accountId");
+      const label = stringArg(args, "label").trim();
+      claudeTokenAccounts = (claudeTokenAccounts ?? []).map((account) =>
+        account.id === accountId && label !== "" ? { ...account, label } : account,
+      );
+      return tokenAccounts(stringArg(args, "providerId"));
+    },
+    move_token_account: (args) => {
+      const accountId = stringArg(args, "accountId");
+      const index = typeof args.index === "number" ? args.index : -1;
+      const accounts = claudeTokenAccounts ?? [];
+      const source = accounts.findIndex((account) => account.id === accountId);
+      if (source >= 0 && index >= 0 && index < accounts.length) {
+        // isActive travels with the account, so the active selection is unchanged.
+        const next = [...accounts];
+        const [moved] = next.splice(source, 1);
+        next.splice(index, 0, moved);
+        claudeTokenAccounts = next;
+      }
+      return tokenAccounts(stringArg(args, "providerId"));
+    },
     get_codex_accounts_state: () => scenario.codexAccounts,
     codex_accounts_list: () => scenario.codexAccounts.accounts,
     codex_account_snapshots: () => scenario.codexAccounts.snapshots,
