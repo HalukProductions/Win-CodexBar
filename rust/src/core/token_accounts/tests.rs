@@ -369,3 +369,157 @@ fn test_multiple_accounts() {
     data.set_active(1);
     assert_eq!(data.active_account().unwrap().label, "Account 2");
 }
+
+/// Three synthetic accounts; the middle one is active. Returns their ids in list order.
+fn edit_fixture() -> (ProviderAccountData, Uuid, Uuid, Uuid) {
+    let mut data = ProviderAccountData::new();
+    let mut first = TokenAccount::new("First", "fixture-first");
+    first.external_identifier = Some("fixture-ext".to_string());
+    first.claude_config_directory = Some("/fixture/claude".to_string());
+    first.added_at = 1_700_000_000;
+    let second = TokenAccount::new("Second", "fixture-second");
+    let third = TokenAccount::new("Third", "fixture-third");
+    let ids = (first.id, second.id, third.id);
+    data.add_account(first);
+    data.add_account(second);
+    data.add_account(third);
+    data.set_active(1);
+    (data, ids.0, ids.1, ids.2)
+}
+
+#[test]
+fn update_account_replaces_label_and_credential_and_keeps_identity() {
+    let (mut data, first_id, _, _) = edit_fixture();
+    let before = data.accounts[0].clone();
+
+    data.update_account(first_id, Some(" Renamed "), Some(" fixture-replacement "))
+        .expect("known id updates");
+
+    let edited = &data.accounts[0];
+    assert_eq!(edited.id, first_id);
+    assert_eq!(edited.label, "Renamed");
+    assert_eq!(edited.token, "fixture-replacement");
+    assert_eq!(edited.added_at, before.added_at);
+    assert_eq!(edited.external_identifier, before.external_identifier);
+    assert_eq!(
+        edited.claude_config_directory,
+        before.claude_config_directory
+    );
+    assert_eq!(
+        data.active_index, 1,
+        "editing never moves the active selection"
+    );
+}
+
+#[test]
+fn update_account_blank_or_missing_credential_keeps_saved_token() {
+    let (mut data, first_id, _, _) = edit_fixture();
+
+    data.update_account(first_id, Some("Only label"), None)
+        .unwrap();
+    assert_eq!(data.accounts[0].token, "fixture-first");
+    assert_eq!(data.accounts[0].label, "Only label");
+
+    data.update_account(first_id, Some("Blank token"), Some(" \n "))
+        .unwrap();
+    assert_eq!(data.accounts[0].token, "fixture-first");
+    assert_eq!(data.accounts[0].label, "Blank token");
+}
+
+#[test]
+fn update_account_blank_label_keeps_saved_label() {
+    let (mut data, first_id, _, _) = edit_fixture();
+
+    data.update_account(first_id, Some("   "), Some("fixture-new"))
+        .unwrap();
+
+    assert_eq!(data.accounts[0].label, "First");
+    assert_eq!(data.accounts[0].token, "fixture-new");
+}
+
+#[test]
+fn update_account_rejects_unknown_id_without_changes() {
+    let (mut data, _, _, _) = edit_fixture();
+    let before = data.accounts.clone();
+
+    let err = data
+        .update_account(Uuid::new_v4(), Some("Ghost"), Some("fixture-ghost"))
+        .unwrap_err();
+
+    assert_eq!(err, TokenAccountEditError::NotFound);
+    assert_eq!(data.accounts.len(), before.len());
+    assert_eq!(data.accounts[0].label, before[0].label);
+    assert_eq!(data.accounts[0].token, before[0].token);
+}
+
+#[test]
+fn move_account_keeps_the_same_account_active() {
+    let (mut data, first_id, second_id, third_id) = edit_fixture();
+    assert_eq!(data.active_account().unwrap().id, second_id);
+
+    data.move_account(second_id, 0).unwrap();
+    assert_eq!(
+        data.accounts.iter().map(|a| a.id).collect::<Vec<_>>(),
+        vec![second_id, first_id, third_id]
+    );
+    assert_eq!(data.active_account().unwrap().id, second_id);
+
+    data.move_account(second_id, 2).unwrap();
+    assert_eq!(
+        data.accounts.iter().map(|a| a.id).collect::<Vec<_>>(),
+        vec![first_id, third_id, second_id]
+    );
+    assert_eq!(data.active_account().unwrap().id, second_id);
+    assert_eq!(data.active_index, 2);
+
+    data.move_account(first_id, 1).unwrap();
+    assert_eq!(data.active_account().unwrap().id, second_id);
+    assert_eq!(data.active_index, 2);
+}
+
+#[test]
+fn move_account_moves_other_accounts_past_the_active_one() {
+    let (mut data, first_id, second_id, third_id) = edit_fixture();
+
+    data.move_account(third_id, 0).unwrap();
+
+    assert_eq!(
+        data.accounts.iter().map(|a| a.id).collect::<Vec<_>>(),
+        vec![third_id, first_id, second_id]
+    );
+    assert_eq!(data.active_account().unwrap().id, second_id);
+    assert_eq!(data.active_index, 2);
+}
+
+#[test]
+fn move_account_rejects_unknown_id_and_out_of_range_destination() {
+    let (mut data, first_id, second_id, third_id) = edit_fixture();
+    let order = vec![first_id, second_id, third_id];
+
+    assert_eq!(
+        data.move_account(Uuid::new_v4(), 0),
+        Err(TokenAccountEditError::NotFound)
+    );
+    assert_eq!(
+        data.move_account(first_id, 3),
+        Err(TokenAccountEditError::OutOfRange)
+    );
+    assert_eq!(
+        data.accounts.iter().map(|a| a.id).collect::<Vec<_>>(),
+        order
+    );
+    assert_eq!(data.active_account().unwrap().id, second_id);
+}
+
+#[test]
+fn move_account_to_its_own_position_is_a_no_op() {
+    let (mut data, first_id, second_id, third_id) = edit_fixture();
+
+    data.move_account(first_id, 0).unwrap();
+
+    assert_eq!(
+        data.accounts.iter().map(|a| a.id).collect::<Vec<_>>(),
+        vec![first_id, second_id, third_id]
+    );
+    assert_eq!(data.active_index, 1);
+}

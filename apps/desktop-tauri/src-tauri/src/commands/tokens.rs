@@ -206,6 +206,78 @@ pub fn set_active_token_account(
     ))
 }
 
+/// Edit a saved token account in place. `label` replaces the saved label
+/// unless it is blank. `token` replaces the saved credential only when it is
+/// non-blank; a blank or missing value keeps the stored secret, which never
+/// leaves the shell. Account id, timestamps, metadata and the active
+/// selection are preserved.
+#[tauri::command]
+pub fn update_token_account(
+    app: tauri::AppHandle,
+    provider_id: String,
+    account_id: String,
+    label: String,
+    token: Option<String>,
+) -> Result<ProviderTokenAccountsBridge, String> {
+    let id = super::parse_provider_arg(&provider_id)?;
+    let support = TokenAccountSupport::for_provider(id)
+        .ok_or_else(|| format!("Provider {provider_id} does not support token accounts"))?;
+    let uuid = uuid::Uuid::parse_str(&account_id).map_err(|e| e.to_string())?;
+    let label = super::sanitize_optional_label(Some(label))?;
+    let token = token
+        .map(|token| token.trim().to_string())
+        .filter(|token| !token.is_empty());
+    if let Some(token) = token.as_deref() {
+        super::validate_single_line_secret(token, "Token", super::MAX_COOKIE_HEADER_LEN)?;
+    }
+    let store = TokenAccountStore::new();
+    let mut data = store.load_provider(id).map_err(|e| e.to_string())?;
+    // Only a replaced credential on the active account changes what the next
+    // fetch sends, so only that case drops pending auto-resume state.
+    let replaces_active_credential = token.is_some()
+        && data
+            .active_account()
+            .is_some_and(|account| account.id == uuid);
+    data.update_account(uuid, label.as_deref(), token.as_deref())
+        .map_err(|e| e.to_string())?;
+    store.save_provider(id, &data).map_err(|e| e.to_string())?;
+    if replaces_active_credential {
+        crate::auto_resume::clear(&app, id);
+    }
+    let active = data.clamped_active_index();
+    Ok(build_provider_token_accounts(
+        id,
+        &support,
+        data.accounts,
+        active,
+    ))
+}
+
+/// Move a saved token account to `index` in the displayed list. The active
+/// account is unchanged; it is re-resolved by id after the move.
+#[tauri::command]
+pub fn move_token_account(
+    provider_id: String,
+    account_id: String,
+    index: usize,
+) -> Result<ProviderTokenAccountsBridge, String> {
+    let id = super::parse_provider_arg(&provider_id)?;
+    let support = TokenAccountSupport::for_provider(id)
+        .ok_or_else(|| format!("Provider {provider_id} does not support token accounts"))?;
+    let uuid = uuid::Uuid::parse_str(&account_id).map_err(|e| e.to_string())?;
+    let store = TokenAccountStore::new();
+    let mut data = store.load_provider(id).map_err(|e| e.to_string())?;
+    data.move_account(uuid, index).map_err(|e| e.to_string())?;
+    store.save_provider(id, &data).map_err(|e| e.to_string())?;
+    let active = data.clamped_active_index();
+    Ok(build_provider_token_accounts(
+        id,
+        &support,
+        data.accounts,
+        active,
+    ))
+}
+
 /// Claude local cost estimates follow the active account's mapped config
 /// directory; other providers have no such mapping.
 fn mapped_cost_directory(id: ProviderId, data: &ProviderAccountData) -> Option<std::path::PathBuf> {

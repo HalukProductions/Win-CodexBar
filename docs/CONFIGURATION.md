@@ -57,6 +57,7 @@ The app keeps its files in `%APPDATA%\CodexBar` (`dirs::config_dir()` plus `Code
 - Browser cookies are read from the browser profiles when a refresh needs them. See [COOKIES.md](./COOKIES.md).
 - `token-accounts.json` falls back to `~/.codexbar/` only when Windows reports no config folder.
 - A Claude token account can store an optional `claude_config_directory` (set with **Choose folder…** under Settings > Providers > Claude > Token accounts). While that account is active, local Claude cost estimates scan only `<folder>\projects`; the default `CLAUDE_CONFIG_DIR` / `%USERPROFILE%\.claude` history, claude-swap homes and Pi history are left out. A missing folder leaves the estimate unavailable. Clearing the folder restores the combined history. Quota fetching and credentials are unaffected.
+- **Edit** on a saved token account (Settings > Providers > provider > Token accounts) changes its label and, optionally, its credential. The credential field starts empty and masked. Leave it blank to keep the saved credential; the saved secret is never sent back to the UI. **Up** and **Down** reorder the list. Editing or moving an account keeps the same account ID, timestamps and metadata, and never changes which account is active.
 - Don't commit a real `settings.json` or key file to the repo.
 
 A CLI process can use another settings file through `CODEXBAR_CONFIG`. The API key, manual cookie and token account files then sit beside that file. The desktop app ignores the variable. See [CLI.md](./CLI.md#separate-config-file-codexbar_config).

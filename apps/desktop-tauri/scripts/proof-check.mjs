@@ -23,6 +23,10 @@
 //   key                         key press (CDP Input.dispatchKeyEvent) at the focused
 //                               element: Escape, ArrowLeft, ArrowRight, Home, End
 //   select                      set a native <select> by label
+//   type                        replace a text field's value (selector + aria-label or
+//                               placeholder, text); CDP Input.insertText
+//   expectOrder                 textContent of the elements matched by selector equals
+//                               texts exactly, in document order
 //   screenshot                  PNG into --out (clip "panel" crops to the tray height)
 //   wait                        sleep N ms
 //
@@ -415,6 +419,12 @@ async function runStep(page, step, ctx) {
     for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) {
       await page.send("Input.dispatchMouseEvent", { type, ...point, button: "left", clickCount: 1 });
     }
+  } else if (step.expectOrder !== undefined) {
+    // Exact textContent list of the matched elements, in document order.
+    const { selector, texts } = step.expectOrder;
+    const listed = `[...document.querySelectorAll(${js(selector)})].map((e) => e.textContent.trim())`;
+    const ordered = await page.poll(`JSON.stringify(${listed}) === ${js(JSON.stringify(texts))}`);
+    if (!ordered) throw new Error(`order mismatch in ${selector}: ${js(await page.eval(listed))}, expected ${js(texts)}`);
   } else if (step.expectCall !== undefined) {
     const { cmd, args = {} } = step.expectCall;
     const found = await page.poll(`(window.__CODEXBAR_PROOF__?.calls() ?? []).some((call) =>
@@ -478,6 +488,21 @@ async function runStep(page, step, ctx) {
     const params = { key: step.key, code: step.key, windowsVirtualKeyCode: info, nativeVirtualKeyCode: info };
     await page.send("Input.dispatchKeyEvent", { type: "keyDown", ...params });
     await page.send("Input.dispatchKeyEvent", { type: "keyUp", ...params });
+  } else if (step.type !== undefined) {
+    // Focus a text field (matched by aria-label or placeholder within `selector`),
+    // replace its value, and insert via CDP so React sees a real input event.
+    const { selector, label, text } = step.type;
+    const focused = await page.poll(`(() => {
+      const el = [...document.querySelectorAll(${js(selector)})].find((e) =>
+        (e.getAttribute("aria-label") || e.getAttribute("placeholder") || "").trim() === ${js(label)});
+      if (!el) return false;
+      el.scrollIntoView({ block: "center" });
+      el.focus();
+      el.select();
+      return true;
+    })()`);
+    if (!focused) throw new Error(`no field to type into: ${selector} labelled ${js(label)}`);
+    await page.send("Input.insertText", { text });
   } else if (step.wait !== undefined) {
     await sleep(step.wait);
   } else {

@@ -660,10 +660,71 @@ impl ProviderAccountData {
         }
     }
 
+    /// Replace an account's label and/or credential in place. `None` and blank
+    /// values keep the saved value; identity, timestamps, metadata and the
+    /// active selection are untouched.
+    pub fn update_account(
+        &mut self,
+        id: Uuid,
+        label: Option<&str>,
+        token: Option<&str>,
+    ) -> Result<(), TokenAccountEditError> {
+        let account = self
+            .accounts
+            .iter_mut()
+            .find(|a| a.id == id)
+            .ok_or(TokenAccountEditError::NotFound)?;
+        if let Some(label) = label.map(str::trim).filter(|label| !label.is_empty()) {
+            account.label = label.to_string();
+        }
+        if let Some(token) = token.map(str::trim).filter(|token| !token.is_empty()) {
+            account.token = token.to_string();
+        }
+        Ok(())
+    }
+
+    /// Move an account so it ends up at `destination` in the list. The active
+    /// account stays the same account: the index is re-resolved by id.
+    pub fn move_account(
+        &mut self,
+        id: Uuid,
+        destination: usize,
+    ) -> Result<(), TokenAccountEditError> {
+        let source = self
+            .accounts
+            .iter()
+            .position(|a| a.id == id)
+            .ok_or(TokenAccountEditError::NotFound)?;
+        if destination >= self.accounts.len() {
+            return Err(TokenAccountEditError::OutOfRange);
+        }
+        if source == destination {
+            return Ok(());
+        }
+        let active_id = self.accounts[self.clamped_active_index()].id;
+        let account = self.accounts.remove(source);
+        self.accounts.insert(destination, account);
+        self.active_index = self
+            .accounts
+            .iter()
+            .position(|a| a.id == active_id)
+            .unwrap_or(0);
+        Ok(())
+    }
+
     /// Get account count
     pub fn count(&self) -> usize {
         self.accounts.len()
     }
+}
+
+/// Why an in-place token account edit was refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum TokenAccountEditError {
+    #[error("Token account not found")]
+    NotFound,
+    #[error("Token account position is out of range")]
+    OutOfRange,
 }
 
 /// File format for storing all provider accounts
