@@ -186,6 +186,22 @@ fn tray_pace_color_defaults_off_and_round_trips() {
 }
 
 #[test]
+fn agent_sessions_local_only_defaults_off_and_round_trips() {
+    // Off keeps the existing remote discovery behavior for every install.
+    assert!(!defaulted().agent_sessions_local_only);
+
+    let local_only = Settings {
+        agent_sessions_enabled: true,
+        agent_sessions_local_only: true,
+        ..Settings::default()
+    };
+    let (json, loaded) = round_trip(&local_only);
+    assert!(json.contains(r#""agent_sessions_local_only":true"#));
+    assert!(loaded.agent_sessions_enabled);
+    assert!(loaded.agent_sessions_local_only);
+}
+
+#[test]
 fn cost_reporting_period_defaults_to_thirty_days_and_round_trips() {
     let defaulted = defaulted();
     assert_eq!(

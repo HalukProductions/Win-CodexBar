@@ -297,6 +297,8 @@ pub(super) struct RawSettings {
     antigravity_additional_profile_homes: Vec<String>,
     agent_sessions_enabled: bool,
     #[serde(default)]
+    agent_sessions_local_only: bool,
+    #[serde(default)]
     stay_awake_enabled: bool,
     agent_session_ssh_hosts: Vec<String>,
     #[serde(default)]
@@ -472,6 +474,7 @@ impl Default for RawSettings {
             codex_custom_sessions_dirs: s.codex_custom_sessions_dirs,
             antigravity_additional_profile_homes: s.antigravity_additional_profile_homes,
             agent_sessions_enabled: s.agent_sessions_enabled,
+            agent_sessions_local_only: s.agent_sessions_local_only,
             stay_awake_enabled: s.stay_awake_enabled,
             agent_session_ssh_hosts: s.agent_session_ssh_hosts,
             hooks_enabled: s.hooks_enabled,
@@ -832,6 +835,7 @@ impl From<RawSettings> for Settings {
             codex_custom_sessions_dirs: raw.codex_custom_sessions_dirs,
             antigravity_additional_profile_homes: raw.antigravity_additional_profile_homes,
             agent_sessions_enabled: raw.agent_sessions_enabled,
+            agent_sessions_local_only: raw.agent_sessions_local_only,
             stay_awake_enabled: raw.stay_awake_enabled,
             agent_session_ssh_hosts: raw.agent_session_ssh_hosts,
             hooks_enabled: raw.hooks_enabled,
