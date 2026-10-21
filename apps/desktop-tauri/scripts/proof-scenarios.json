@@ -364,6 +364,26 @@
       ]
     },
     {
+      "name": "flyout-vercel-budget",
+      "query": "window=flyout&fixture=vercel&theme=dark",
+      "size": [310, 1032],
+      "steps": [
+        { "expectText": ["Vercel", "Personal budget", "Spend", "Limit", "Remaining", "$58.00"] },
+        { "expectNoText": "Available balance" },
+        { "screenshot": "flyout-vercel-budget", "clip": "panel" }
+      ]
+    },
+    {
+      "name": "settings-vercel-budget",
+      "query": "window=settings&tab=providers:vercel&fixture=vercel&theme=dark",
+      "size": [880, 1400],
+      "steps": [
+        { "expectText": ["Vercel personal budget", "Access token", "Vercel team", "Team ID"] },
+        { "expectNoText": "Remove" },
+        { "screenshot": "settings-vercel-budget" }
+      ]
+    },
+    {
       "name": "settings-gemini-usage-source",
       "query": "window=settings&tab=providers:gemini&fixture=default&theme=dark",
       "size": [880, 620],

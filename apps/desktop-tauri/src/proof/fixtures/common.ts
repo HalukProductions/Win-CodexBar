@@ -97,6 +97,7 @@ export const PROOF_PROVIDER_CATALOG: ProviderCatalogEntry[] = [
   { id: "zai", displayName: "z.ai", cookieDomain: null },
   { id: "mistral", displayName: "Mistral", cookieDomain: null },
   { id: "openaiapi", displayName: "OpenAI API", cookieDomain: null },
+  { id: "vercel", displayName: "Vercel", cookieDomain: null },
 ];
 
 export function catalogOrder(): string[] {

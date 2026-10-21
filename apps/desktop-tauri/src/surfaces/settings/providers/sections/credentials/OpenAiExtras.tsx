@@ -117,6 +117,7 @@ const WORKSPACE_EXTRA_IDS: Record<string, true> = {
   exa: true,
   cosmic: true,
   flora: true,
+  vercel: true,
 };
 
 function extraConfig(providerId: string, t: Props["t"]) {
@@ -211,6 +212,13 @@ function extraConfig(providerId: string, t: Props["t"]) {
         label: t("CosmicProjectIdLabel"),
         placeholder: t("CosmicProjectIdPlaceholder"),
         help: t("CosmicProjectIdHelp"),
+      };
+    case "vercel":
+      return {
+        title: t("VercelTeamTitle"),
+        label: t("VercelTeamIdLabel"),
+        placeholder: "team_...",
+        help: t("VercelTeamIdHelp"),
       };
     case "flora":
       return {

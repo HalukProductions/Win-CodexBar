@@ -1465,6 +1465,13 @@ locale_keys! {
     OpenRouterManagementKeyLabel,
     OpenRouterManagementKeyHelp,
     OpenRouterManagementKeyConfigured,
+    VercelAccessTokenTitle,
+    VercelAccessTokenLabel,
+    VercelAccessTokenHelp,
+    VercelAccessTokenConfigured,
+    VercelTeamTitle,
+    VercelTeamIdLabel,
+    VercelTeamIdHelp,
     CredsOpenAiHistoryHelp,
 
     // Tauri desktop shell — Token accounts (Phase 6e, review)

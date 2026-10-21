@@ -280,6 +280,18 @@ export function removeOpenRouterManagementApiKey(): Promise<void> {
   return invoke<void>("remove_openrouter_management_api_key");
 }
 
+export function hasVercelAccessToken(): Promise<boolean> {
+  return invoke<boolean>("has_vercel_access_token");
+}
+
+export function setVercelAccessToken(accessToken: string): Promise<void> {
+  return invoke<void>("set_vercel_access_token", { accessToken });
+}
+
+export function removeVercelAccessToken(): Promise<void> {
+  return invoke<void>("remove_vercel_access_token");
+}
+
 export function getManualCookies(): Promise<CookieInfoBridge[]> {
   return invoke<CookieInfoBridge[]>("get_manual_cookies");
 }
