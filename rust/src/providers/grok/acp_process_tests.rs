@@ -161,13 +161,19 @@ fn missing_login_error() -> ProviderError {
 fn the_liveness_probe_tells_a_running_child_from_a_stopped_one() {
     let run = FakeRun::new();
     // Stdin stays open, so the child blocks on its first read and keeps running.
-    let mut child = StdCommand::new(fake_grok())
+    let mut command = StdCommand::new(fake_grok());
+    command
         .args(run.args("hang_init"))
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("probe child starts");
+        .stderr(Stdio::null());
+    // A console-less test runner would otherwise give the child a visible console.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let mut child = command.spawn().expect("probe child starts");
     let deadline = Instant::now() + Duration::from_secs(10);
     let record = loop {
         if let Some(record) = run.record() {
