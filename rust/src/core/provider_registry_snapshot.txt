@@ -1,6 +1,6 @@
 Codex cli=codex display="Codex" cookie=Some("chatgpt.com") color=#49A3B0 deprecated=false blocking=None
   map=["codex", "openai"]
-  metadata=ProviderMetadata { id: Codex, display_name: "Codex", session_label: "Session", weekly_label: "Weekly", supports_opus: false, supports_credits: true, default_enabled: true, is_primary: true, dashboard_url: Some("https://chatgpt.com/codex/cloud/settings/analytics#usage"), status_page_url: Some("https://status.openai.com"), tertiary_label_key: None }
+  metadata=ProviderMetadata { id: Codex, display_name: "Codex", session_label: "Session", weekly_label: "Weekly", supports_opus: false, supports_credits: true, default_enabled: true, is_primary: true, dashboard_url: Some("https://chatgpt.com/settings/usage?tab=overview"), status_page_url: Some("https://status.openai.com"), tertiary_label_key: None }
   sources=[Auto, OAuth, Cli] oauth=true web=false cli=true
 Claude cli=claude display="Claude" cookie=Some("claude.ai") color=#CC7C5E deprecated=false blocking=None
   map=["anthropic", "claude"]
