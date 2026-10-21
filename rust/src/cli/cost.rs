@@ -403,7 +403,7 @@ fn render_result_text(
         } else {
             outln!(
                 out,
-                "  Tokens:   unknown ({} rows lacked usable token counts)",
+                "  Tokens:   unknown ({} rows lacked complete token counts)",
                 result.summary.unknown_token_rows
             );
         }

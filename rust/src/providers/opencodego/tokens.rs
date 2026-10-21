@@ -89,8 +89,8 @@ pub struct TokenSums {
     pub total: u64,
     rows: u32,
     unusable_rows: u32,
-    rows_with_input: u32,
-    rows_with_output: u32,
+    /// Usable rows that recorded both input and output.
+    rows_with_io: u32,
     rows_with_reasoning: u32,
 }
 
@@ -129,11 +129,8 @@ impl TokenSums {
         self.cache_read = cache_read;
         self.cache_write = cache_write;
         self.total = total;
-        if tokens.input.is_some() {
-            self.rows_with_input = self.rows_with_input.saturating_add(1);
-        }
-        if tokens.output.is_some() {
-            self.rows_with_output = self.rows_with_output.saturating_add(1);
+        if tokens.input.is_some() && tokens.output.is_some() {
+            self.rows_with_io = self.rows_with_io.saturating_add(1);
         }
         if tokens.reasoning.is_some() {
             self.rows_with_reasoning = self.rows_with_reasoning.saturating_add(1);
@@ -145,10 +142,18 @@ impl TokenSums {
         self.rows > self.unusable_rows
     }
 
-    /// Rows whose tokens were missing, malformed, negative or overflowing. Any
-    /// such row makes every token total in the bucket unknown.
+    /// Rows that contribute to no exact token total: tokens missing, malformed,
+    /// negative, or whose sums would overflow. Any such row makes every token
+    /// total in the bucket unknown.
     pub fn unusable_rows(&self) -> u32 {
         self.unusable_rows
+    }
+
+    /// Rows whose input or output count is not exact: every unusable row, plus
+    /// usable rows that omit input or output (a recorded total still counts for
+    /// `complete_total`). The window and per-model unknown counts use this.
+    pub fn unknown_token_rows(&self) -> u32 {
+        self.rows.saturating_sub(self.rows_with_io)
     }
 
     /// Total tokens, only when every row in the bucket had usable tokens.
@@ -158,11 +163,7 @@ impl TokenSums {
 
     /// Input + output tokens, only when every row recorded both classes.
     pub fn complete_input_output(&self) -> Option<u64> {
-        if self.rows > 0
-            && self.unusable_rows == 0
-            && self.rows_with_input == self.rows
-            && self.rows_with_output == self.rows
-        {
+        if self.rows > 0 && self.rows_with_io == self.rows {
             self.input.checked_add(self.output)
         } else {
             None
@@ -174,7 +175,9 @@ impl TokenSums {
         (self.rows > 0 && self.rows_with_reasoning == self.rows).then_some(self.reasoning)
     }
 
-    /// Shared cost-summary token counts. `cached_tokens` follows the local
+    /// Shared cost-summary token counts. They can be partial: input and output
+    /// add only what rows recorded, so callers must check `unknown_token_rows()`
+    /// before showing them as exact. `cached_tokens` follows the local
     /// Claude/Pi convention (cache read + cache write) because the shared
     /// summary has no separate cache-write class. `None` when no row had usable
     /// tokens or the combined cache count cannot be represented.

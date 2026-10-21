@@ -409,8 +409,8 @@ impl ModelCostSummary {
         let unknown_token_rows_by_model = self
             .by_model_tokens
             .iter()
-            .filter(|(_, sums)| sums.unusable_rows() > 0)
-            .map(|(model, sums)| (model.clone(), sums.unusable_rows()))
+            .filter(|(_, sums)| sums.unknown_token_rows() > 0)
+            .map(|(model, sums)| (model.clone(), sums.unknown_token_rows()))
             .collect();
         CostSummary {
             total_cost_usd: self.total_cost_usd,
@@ -420,7 +420,7 @@ impl ModelCostSummary {
             reasoning_tokens: totals.reasoning_tokens,
             by_model: self.by_model,
             by_model_tokens,
-            unknown_token_rows: self.tokens.unusable_rows(),
+            unknown_token_rows: self.tokens.unknown_token_rows(),
             unknown_token_rows_by_model,
             sessions_count: self.request_count,
             period_start: self.period_start,

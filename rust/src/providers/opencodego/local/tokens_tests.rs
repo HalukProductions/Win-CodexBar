@@ -243,10 +243,72 @@ fn model_summary_carries_per_model_tokens_and_marks_partial_models() {
         .unwrap();
     assert_eq!((mimo.input_tokens, mimo.reasoning_tokens), (4, None));
     assert_eq!(summary.by_model_tokens["mimo"].complete_total(), Some(9));
+    // Its total is exact, but its output class was not recorded, so the model's
+    // input/output are unknown. kimi-k2 recorded both classes on every row.
+    assert_eq!(summary.by_model_tokens["mimo"].unknown_token_rows(), 1);
+    assert_eq!(summary.by_model_tokens["kimi-k2"].unknown_token_rows(), 0);
+    assert_eq!(summary.by_model_tokens["glm-5"].unknown_token_rows(), 1);
 
     // The window total is incomplete because one model has no usable row.
     assert_eq!(summary.tokens.complete_total(), None);
     assert_eq!(summary.tokens.total, 1600 + 20 + 9);
+    // glm-5's unusable row and mimo's partial row are both unknown.
+    assert_eq!(summary.tokens.unknown_token_rows(), 2);
+}
+
+#[test]
+fn rows_missing_input_or_output_keep_their_total_but_leave_classes_unknown() {
+    let total_only = parse(r#"{"total":7}"#).unwrap();
+    let mut sums = TokenSums::default();
+    sums.add(Some(&total_only));
+    // The recorded total is exact, so it is kept.
+    assert_eq!(sums.complete_total(), Some(7));
+    assert_eq!(sums.total, 7);
+    // Input and output were not recorded: never exposed as exact zeros.
+    assert_eq!(sums.complete_input_output(), None);
+    assert_eq!(sums.unknown_token_rows(), 1);
+    assert_eq!(sums.unusable_rows(), 0);
+    assert_eq!(sums.complete_reasoning(), None);
+
+    // A row with input but no output is equally unknown for input/output.
+    let input_only = parse(r#"{"total":9,"input":4}"#).unwrap();
+    let mut sums = TokenSums::default();
+    sums.add(Some(&parse(FULL).unwrap()));
+    sums.add(Some(&input_only));
+    assert_eq!(sums.complete_input_output(), None);
+    assert_eq!(sums.unknown_token_rows(), 1);
+    assert_eq!(sums.complete_total(), Some(1609));
+}
+
+#[test]
+fn cost_summary_marks_models_with_total_only_rows_as_unknown_tokens() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("opencode.db");
+    let conn = open_db(&db, false);
+    let created = iso_ms("2026-03-06T11:00:00.000Z");
+    insert_message(&conn, "m1", created, Some(1.5), Some("kimi-k2"), Some(FULL));
+    insert_message(
+        &conn,
+        "m2",
+        created,
+        Some(1.5),
+        Some("mimo"),
+        Some(r#"{"total":9}"#),
+    );
+    drop(conn);
+
+    let rows = read_rows(&db).unwrap();
+    let summary = model_cost_summary_from_rows(&rows, now(), 30).into_cost_summary();
+    // Costs are kept for both models.
+    assert_eq!(summary.by_model["mimo"], 1.5);
+    // The window and the mimo model are unknown; kimi-k2 is exact.
+    assert!(!summary.tokens_known());
+    assert_eq!(summary.unknown_token_rows, 1);
+    assert_eq!(summary.unknown_token_rows_by_model.get("mimo"), Some(&1));
+    assert!(!summary.unknown_token_rows_by_model.contains_key("kimi-k2"));
+    // Window input sums only what rows recorded: kimi-k2's FULL row (100). The
+    // mimo row is total-only, so it adds no input.
+    assert_eq!(summary.input_tokens, 100);
 }
 
 #[test]

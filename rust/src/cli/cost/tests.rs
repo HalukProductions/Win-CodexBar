@@ -451,9 +451,11 @@ fn opencodego_text_reports_unknown_tokens_not_zero() {
         false,
         &registered_extension,
     );
-    assert!(out.contains("  Tokens:   unknown (2 rows lacked usable token counts)"));
+    assert!(out.contains("  Tokens:   unknown (2 rows lacked complete token counts)"));
     assert!(out.contains("    kimi-k2: $1.00 · 1,000 input, 400 output, 50 cached"));
-    assert!(out.contains("    glm-5: $0.50 · tokens unknown (2 rows lacked usable token counts)"));
+    assert!(
+        out.contains("    glm-5: $0.50 · tokens unknown (2 rows lacked complete token counts)")
+    );
 }
 
 #[test]

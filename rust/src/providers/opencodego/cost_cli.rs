@@ -29,7 +29,7 @@ impl CostCliExtension for OpenCodeGoCostCli {
         let unknown = unknown_rows(summary, model);
         if unknown > 0 {
             return Some(format!(
-                "tokens unknown ({unknown} rows lacked usable token counts)"
+                "tokens unknown ({unknown} rows lacked complete token counts)"
             ));
         }
         let counts = summary.by_model_tokens.get(model)?;
@@ -112,7 +112,7 @@ mod tests {
         let summary = summary_with_unknown_glm();
         assert_eq!(
             OPENCODEGO_COST_CLI.model_token_detail(&summary, "glm-5"),
-            Some("tokens unknown (2 rows lacked usable token counts)".to_string())
+            Some("tokens unknown (2 rows lacked complete token counts)".to_string())
         );
         assert_eq!(
             OPENCODEGO_COST_CLI.model_token_detail(&summary, "kimi-k2"),

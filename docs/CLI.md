@@ -146,7 +146,7 @@ Claude and Codex costs come from local session logs. Other providers may work di
 `codexbar cost --provider opencodego` reads the recorded `opencode-go` history from the local OpenCode database. It honors the selected window (`--days`, `--period`, or the saved period). Costs are the recorded `cost` values. Tokens are never used to derive a cost.
 
 - Text output shows the total, the window token totals, and each model's cost followed by that model's token counts.
-- A row whose token counts are missing, malformed, negative or overflowing has *unknown* tokens, not zero. Text shows `Tokens:   unknown (N rows lacked usable token counts)`. The affected model shows `tokens unknown (...)`. Costs are still reported.
+- A row whose token counts are missing, malformed, negative or overflowing has *unknown* tokens, not zero. A row that records a total but omits input or output keeps that exact total, but its input and output stay unknown. Text shows `Tokens:   unknown (N rows lacked complete token counts)`. The affected model shows `tokens unknown (...)`. Costs are still reported.
 - JSON: `totals` token fields and `tokens` are `null` for an unknown window. `unknownTokenRowCount` appears only when a window has such rows. `byModelTokens` maps each model to its `inputTokens`, `outputTokens`, `cachedTokens`, `reasoningTokens` and `totalTokens`, with `null` for models that have unknown rows. `spendContract` token totals are `null` for an unknown window; its per-model rows still carry the usable partial counts (see `docs/PROVIDERS.md`).
 
 ### Antigravity cost

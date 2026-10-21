@@ -1024,7 +1024,7 @@ OpenCode reads usage from `opencode.ai` cookies. Which API it uses depends on th
 
 OpenCode Go's local SQLite reader reads only its own `opencode-go` assistant records. OpenAI API-platform usage is a separate provider.
 
-For `codexbar cost --provider opencodego` (upstream #4629), token counts follow the same rule per row. A row with missing, malformed, negative or overflowing tokens is unknown, not zero, and any window or model containing one has no exact token total. The text report says `unknown` for those totals while still reporting cost. The JSON payload uses `null` for them and adds `unknownTokenRowCount` and `byModelTokens`. Per-model token counts come from usable rows only. The `spendContract` per-model rows still carry those usable partial counts; the desktop Usage & Spend view is unchanged.
+For `codexbar cost --provider opencodego` (upstream #4629), token counts follow the same rule per row. A row with missing, malformed, negative or overflowing tokens is unknown, not zero, and any window or model containing one has no exact token total. A row that records a total but omits input or output keeps that exact total, while its input and output are unknown. The text report says `unknown` for the affected totals while still reporting cost. The JSON payload uses `null` for them and adds `unknownTokenRowCount` and `byModelTokens`. Per-model token counts sum only what rows recorded. The `spendContract` per-model rows still carry those usable partial counts; the desktop Usage & Spend view is unchanged.
 
 - Token counts come from `tokens` on assistant messages and step-finish parts. A step-finish part wins over its parent message.
 - They fill the Usage & Spend token columns and per-model history. Costs are the recorded `cost` field.

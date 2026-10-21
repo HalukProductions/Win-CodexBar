@@ -153,10 +153,10 @@ pub struct CostSummary {
     pub incomplete_request_count: u32,
     /// Incomplete Claude request counts per model.
     pub incomplete_by_model: HashMap<String, u32>,
-    /// Recorded rows whose token counts were missing or unusable (OpenCode Go local
-    /// history). Any non-zero value makes the window's token fields unknown rather
-    /// than zero, because a sum that skipped such a row is not an exact total.
-    /// Zero for every other provider.
+    /// Recorded rows whose input/output token counts were missing, malformed or
+    /// unusable (OpenCode Go local history). Any non-zero value makes the window's
+    /// token fields unknown rather than zero, because a sum that skipped such a row
+    /// is not exact. Costs are unaffected. Zero for every other provider.
     pub unknown_token_rows: u32,
     /// Unknown-token row counts per model, keyed like `by_model`. Zero for every
     /// other provider.
