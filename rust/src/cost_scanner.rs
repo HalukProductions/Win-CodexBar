@@ -153,6 +153,14 @@ pub struct CostSummary {
     pub incomplete_request_count: u32,
     /// Incomplete Claude request counts per model.
     pub incomplete_by_model: HashMap<String, u32>,
+    /// Recorded rows whose token counts were missing or unusable (OpenCode Go local
+    /// history). Any non-zero value makes the window's token fields unknown rather
+    /// than zero, because a sum that skipped such a row is not an exact total.
+    /// Zero for every other provider.
+    pub unknown_token_rows: u32,
+    /// Unknown-token row counts per model, keyed like `by_model`. Zero for every
+    /// other provider.
+    pub unknown_token_rows_by_model: HashMap<String, u32>,
     /// Period start date
     pub period_start: Option<NaiveDate>,
     /// Period end date
@@ -204,6 +212,12 @@ pub fn cache_is_separate_from_input(provider: &str) -> bool {
 impl CostSummary {
     pub fn format_total(&self) -> String {
         format!("${:.2}", self.total_cost_usd)
+    }
+
+    /// False when some contributing row had no usable token counts, so the token
+    /// fields are unknown rather than exact. Costs are unaffected.
+    pub fn tokens_known(&self) -> bool {
+        self.unknown_token_rows == 0
     }
 
     /// Provider-aware window total, same rule as
@@ -646,28 +660,7 @@ impl CostScanner {
         let Some(local) = self.scan_opencodego_model_cost_summary_with_cancel(cancel) else {
             return CostSummary::default();
         };
-        let totals = local.tokens.to_model_token_counts().unwrap_or_default();
-        let by_model_tokens = local
-            .by_model_tokens
-            .iter()
-            .filter_map(|(model, sums)| {
-                sums.to_model_token_counts()
-                    .map(|counts| (model.clone(), counts))
-            })
-            .collect();
-        CostSummary {
-            total_cost_usd: local.total_cost_usd,
-            input_tokens: totals.input_tokens,
-            output_tokens: totals.output_tokens,
-            cached_tokens: totals.cached_tokens,
-            reasoning_tokens: totals.reasoning_tokens,
-            by_model: local.by_model,
-            by_model_tokens,
-            sessions_count: local.request_count,
-            period_start: local.period_start,
-            period_end: local.period_end,
-            ..CostSummary::default()
-        }
+        local.into_cost_summary()
     }
 
     /// Return the exact local input + output token total for Usage & Spend.

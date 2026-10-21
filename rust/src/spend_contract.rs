@@ -356,12 +356,19 @@ pub fn build_contract_from_period_summary(
         native_has_window_costs,
         false,
     );
+    // Rows without usable token counts make the window's token classes unknown
+    // (`None`), never a partial sum reported as the total.
+    let tokens_known = summary.tokens_known();
     let native_token_mix = SpendTokenMix {
-        input_tokens: Some(summary.input_tokens),
-        output_tokens: Some(summary.output_tokens),
-        cache_read_tokens: Some(summary.cached_tokens),
+        input_tokens: tokens_known.then_some(summary.input_tokens),
+        output_tokens: tokens_known.then_some(summary.output_tokens),
+        cache_read_tokens: tokens_known.then_some(summary.cached_tokens),
         cache_creation_tokens: None,
-        reasoning_tokens: summary.reasoning_tokens,
+        reasoning_tokens: if tokens_known {
+            summary.reasoning_tokens
+        } else {
+            None
+        },
         ..SpendTokenMix::default()
     };
 
@@ -376,11 +383,15 @@ pub fn build_contract_from_period_summary(
     let imported = imports.first();
     let replace_native =
         provider_id == "codex" && hide_native_codex_when_opencodex_present && imported.is_some();
-    let token_total = resolve_token_total(
-        summary.total_tokens_for_provider(provider_id),
-        imported,
-        replace_native,
-    );
+    let token_total = if tokens_known {
+        resolve_token_total(
+            summary.total_tokens_for_provider(provider_id),
+            imported,
+            replace_native,
+        )
+    } else {
+        None
+    };
     let resolved = resolve_spend(
         native_cost,
         native_provenance,

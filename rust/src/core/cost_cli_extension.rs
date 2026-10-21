@@ -88,6 +88,17 @@ pub(crate) trait CostCliExtension: Sync {
     fn coverage_notice(&self, _summary: &CostSummary) -> Option<&'static str> {
         None
     }
+
+    /// Text appended to one model's line in the default report's `By model`
+    /// block, such as its token counts or an unknown-token notice.
+    fn model_token_detail(&self, _summary: &CostSummary, _model: &str) -> Option<String> {
+        None
+    }
+
+    /// Extra fields merged into the provider's default JSON cost payload.
+    fn json_fields(&self, _summary: &CostSummary) -> Vec<(&'static str, serde_json::Value)> {
+        Vec::new()
+    }
 }
 
 /// Formats a count with comma thousands separators.

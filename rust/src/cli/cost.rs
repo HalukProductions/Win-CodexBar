@@ -390,14 +390,23 @@ fn render_result_text(
             );
         }
 
-        // Token breakdown
-        outln!(
-            out,
-            "  Tokens:   {} input, {} output, {} cached",
-            format_number(result.summary.input_tokens),
-            format_number(result.summary.output_tokens),
-            format_number(result.summary.cached_tokens)
-        );
+        // Token breakdown. Unknown when a row had no usable token counts; a
+        // partial sum is never shown as the total.
+        if result.summary.tokens_known() {
+            outln!(
+                out,
+                "  Tokens:   {} input, {} output, {} cached",
+                format_number(result.summary.input_tokens),
+                format_number(result.summary.output_tokens),
+                format_number(result.summary.cached_tokens)
+            );
+        } else {
+            outln!(
+                out,
+                "  Tokens:   unknown ({} rows lacked usable token counts)",
+                result.summary.unknown_token_rows
+            );
+        }
 
         // Sessions
         outln!(out, "  Sessions: {}", result.summary.sessions_count);
@@ -409,7 +418,10 @@ fn render_result_text(
             let mut models: Vec<_> = result.summary.by_model.iter().collect();
             models.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal));
             for (model, cost) in models {
-                outln!(out, "    {}: ${:.2}", model, cost);
+                match extension.and_then(|ext| ext.model_token_detail(&result.summary, model)) {
+                    Some(detail) => outln!(out, "    {}: ${:.2} · {}", model, cost, detail),
+                    None => outln!(out, "    {}: ${:.2}", model, cost),
+                }
             }
         }
 
@@ -450,6 +462,19 @@ fn render_lines(out: &mut String, lines: &[String]) {
     for line in lines {
         outln!(out, "{line}");
     }
+}
+
+/// Token object for the default JSON payload. `null` when a row had no usable
+/// token counts, so an unknown total is never reported as zero.
+fn tokens_json(summary: &crate::cost_scanner::CostSummary) -> serde_json::Value {
+    if !summary.tokens_known() {
+        return serde_json::Value::Null;
+    }
+    serde_json::json!({
+        "input": summary.input_tokens,
+        "output": summary.output_tokens,
+        "cached": summary.cached_tokens,
+    })
 }
 
 /// " · Incomplete" marker for totals that exclude preliminary Claude proxy
@@ -560,7 +585,7 @@ fn build_json_payloads(
                     "days_scanned": days,
                     "totals": cost_totals_json(&r.provider, &r.summary),
                     "cost": {"total_usd": r.summary.total_cost_usd, "currency": "USD"},
-                    "tokens": {"input": r.summary.input_tokens, "output": r.summary.output_tokens, "cached": r.summary.cached_tokens},
+                    "tokens": tokens_json(&r.summary),
                     "sessions_count": r.summary.sessions_count,
                     "historyCoverageIsEstablished": if matches!(r.provider.as_str(), "codex" | "pi") { serde_json::Value::Bool(r.summary.history_coverage_established) } else { serde_json::Value::Null },
                     "knownZero": if matches!(r.provider.as_str(), "codex" | "pi") { serde_json::Value::Bool(r.summary.known_zero) } else { serde_json::Value::Null },
@@ -584,6 +609,22 @@ fn build_json_payloads(
                         "incompleteRequestCount".to_string(),
                         serde_json::json!(r.summary.incomplete_request_count),
                     );
+                }
+                // Only emitted when a scan had rows without usable token counts.
+                if r.summary.unknown_token_rows > 0
+                    && let Some(object) = payload.as_object_mut()
+                {
+                    object.insert(
+                        "unknownTokenRowCount".to_string(),
+                        serde_json::json!(r.summary.unknown_token_rows),
+                    );
+                }
+                if let Some(object) = payload.as_object_mut()
+                    && let Some(extension) = registered_extension(&r.provider)
+                {
+                    for (key, value) in extension.json_fields(&r.summary) {
+                        object.insert(key.to_string(), value);
+                    }
                 }
                 stamp_period(&mut payload, period);
                 payload

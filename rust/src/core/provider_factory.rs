@@ -416,6 +416,9 @@ pub fn limit_reset_policy(id: ProviderId) -> ProviderLimitResetPolicy {
 pub(crate) fn cost_cli_extension_for(id: ProviderId) -> Option<&'static dyn CostCliExtension> {
     match id {
         ProviderId::Codex => Some(&crate::codex_costs::CODEX_COST_CLI),
+        ProviderId::OpenCodeGo => {
+            Some(&crate::providers::opencodego::cost_cli::OPENCODEGO_COST_CLI)
+        }
         ProviderId::Claude
         | ProviderId::TinyApi
         | ProviderId::Xapi
@@ -435,7 +438,6 @@ pub(crate) fn cost_cli_extension_for(id: ProviderId) -> Option<&'static dyn Cost
         | ProviderId::StepFun
         | ProviderId::Notion
         | ProviderId::Ollama
-        | ProviderId::OpenCodeGo
         | ProviderId::Pi
         | ProviderId::Gemini
         | ProviderId::Antigravity
@@ -609,14 +611,14 @@ mod tests {
     }
 
     #[test]
-    fn only_codex_registers_a_cost_cli_extension() {
+    fn only_codex_and_opencodego_register_a_cost_cli_extension() {
         for &id in ProviderId::all() {
             assert_eq!(
                 cost_cli_extension_for(id).is_some(),
-                id == ProviderId::Codex,
+                matches!(id, ProviderId::Codex | ProviderId::OpenCodeGo),
                 "{id}"
             );
         }
-        assert_eq!(cost_cli_extensions().count(), 1);
+        assert_eq!(cost_cli_extensions().count(), 2);
     }
 }

@@ -7,6 +7,7 @@
 //! Web is cookie scrape only; Cli is local-only.
 
 pub(crate) mod console;
+pub(crate) mod cost_cli;
 mod legacy;
 pub(crate) mod local;
 mod session_overlay;

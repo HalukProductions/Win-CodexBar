@@ -145,6 +145,12 @@ impl TokenSums {
         self.rows > self.unusable_rows
     }
 
+    /// Rows whose tokens were missing, malformed, negative or overflowing. Any
+    /// such row makes every token total in the bucket unknown.
+    pub fn unusable_rows(&self) -> u32 {
+        self.unusable_rows
+    }
+
     /// Total tokens, only when every row in the bucket had usable tokens.
     pub fn complete_total(&self) -> Option<u64> {
         (self.rows > 0 && self.unusable_rows == 0).then_some(self.total)
