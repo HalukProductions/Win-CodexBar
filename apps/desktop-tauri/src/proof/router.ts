@@ -79,6 +79,7 @@ export const INERT_ACTIONS = [
   "remove_manual_cookie",
   "remove_openrouter_management_api_key",
   "remove_token_account",
+  "remove_vercel_access_token",
   "revoke_provider_credentials",
   "save_hooks_config",
   "set_active_token_account",
@@ -93,6 +94,7 @@ export const INERT_ACTIONS = [
   "set_provider_region",
   "set_provider_usage_source",
   "set_provider_workspace_id",
+  "set_vercel_access_token",
   "trigger_provider_login",
   "unregister_global_shortcut",
   "write_usage_spend_export",
@@ -312,6 +314,7 @@ export function createProofRouter(
     get_api_keys: () => [],
     get_api_key_providers: () => [],
     has_openrouter_management_api_key: () => false,
+    has_vercel_access_token: () => false,
     get_manual_cookies: () => [],
     list_detected_browsers: (args) =>
       scenario.detectedBrowsers ?? [
@@ -337,6 +340,30 @@ export function createProofRouter(
           : account,
       );
       return tokenAccounts("claude");
+    },
+    // Mirrors the shell's rules for the fixture: a blank label keeps the
+    // saved one, and the credential is not modelled (the bridge never returns it).
+    update_token_account: (args) => {
+      const accountId = stringArg(args, "accountId");
+      const label = stringArg(args, "label").trim();
+      claudeTokenAccounts = (claudeTokenAccounts ?? []).map((account) =>
+        account.id === accountId && label !== "" ? { ...account, label } : account,
+      );
+      return tokenAccounts(stringArg(args, "providerId"));
+    },
+    move_token_account: (args) => {
+      const accountId = stringArg(args, "accountId");
+      const index = typeof args.index === "number" ? args.index : -1;
+      const accounts = claudeTokenAccounts ?? [];
+      const source = accounts.findIndex((account) => account.id === accountId);
+      if (source >= 0 && index >= 0 && index < accounts.length) {
+        // isActive travels with the account, so the active selection is unchanged.
+        const next = [...accounts];
+        const [moved] = next.splice(source, 1);
+        next.splice(index, 0, moved);
+        claudeTokenAccounts = next;
+      }
+      return tokenAccounts(stringArg(args, "providerId"));
     },
     get_codex_accounts_state: () => scenario.codexAccounts,
     codex_accounts_list: () => scenario.codexAccounts.accounts,

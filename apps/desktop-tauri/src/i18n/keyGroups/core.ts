@@ -726,6 +726,8 @@ export const CORE_LOCALE_KEYS = [
   "AgentSessionsTitle",
   "AgentSessionsEnableLabel",
   "AgentSessionsEnableHelper",
+  "AgentSessionsLocalOnlyLabel",
+  "AgentSessionsLocalOnlyHelper",
   "AgentSessionsStayAwakeLabel",
   "AgentSessionsStayAwakeHelper",
   "AgentSessionsSshHostsLabel",

@@ -24,7 +24,7 @@ const EMPTY: CodexAccountsView = {
  * `codex-accounts-updated`. `error` and `setError` are shared with the caller's
  * own actions so one alert line shows the latest failure.
  */
-export function useCodexAccountsState() {
+export function useCodexAccountsState({ enabled = true }: { enabled?: boolean } = {}) {
   const [view, setView] = useState<CodexAccountsView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -49,10 +49,16 @@ export function useCodexAccountsState() {
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (enabled) void load();
+  }, [enabled, load]);
 
-  useTauriEvent("codex-accounts-updated", () => void load(), [load]);
+  useTauriEvent(
+    "codex-accounts-updated",
+    () => {
+      if (enabled) void load();
+    },
+    [enabled, load],
+  );
 
   const setSnapshot = useCallback((id: string, snapshot: CodexAccountUsageSnapshot) => {
     setView((prev) => prev && { ...prev, snapshots: { ...prev.snapshots, [id]: snapshot } });

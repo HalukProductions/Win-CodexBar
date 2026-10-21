@@ -188,6 +188,8 @@ pub(super) struct RawSettings {
     menu_bar_icon_style: Option<String>,
     #[serde(default)]
     merged_overview_selected_providers: Vec<String>,
+    #[serde(default)]
+    merged_overview_all_accounts: bool,
     #[serde(default = "default_true")]
     quota_warning_markers_visible: bool,
     #[serde(default = "default_true")]
@@ -296,6 +298,8 @@ pub(super) struct RawSettings {
     #[serde(default)]
     antigravity_additional_profile_homes: Vec<String>,
     agent_sessions_enabled: bool,
+    #[serde(default)]
+    agent_sessions_local_only: bool,
     #[serde(default)]
     stay_awake_enabled: bool,
     agent_session_ssh_hosts: Vec<String>,
@@ -409,6 +413,7 @@ impl Default for RawSettings {
             menu_bar_shows_percent: s.menu_bar_shows_percent,
             menu_bar_icon_style: Some(s.menu_bar_icon_style.as_str().to_string()),
             merged_overview_selected_providers: s.merged_overview_selected_providers,
+            merged_overview_all_accounts: s.merged_overview_all_accounts,
             quota_warning_markers_visible: s.quota_warning_markers_visible,
             highlight_menu_cards_on_hover: s.highlight_menu_cards_on_hover,
             workday_tick_style: Some(s.workday_tick_style.as_str().to_string()),
@@ -472,6 +477,7 @@ impl Default for RawSettings {
             codex_custom_sessions_dirs: s.codex_custom_sessions_dirs,
             antigravity_additional_profile_homes: s.antigravity_additional_profile_homes,
             agent_sessions_enabled: s.agent_sessions_enabled,
+            agent_sessions_local_only: s.agent_sessions_local_only,
             stay_awake_enabled: s.stay_awake_enabled,
             agent_session_ssh_hosts: s.agent_session_ssh_hosts,
             hooks_enabled: s.hooks_enabled,
@@ -791,6 +797,7 @@ impl From<RawSettings> for Settings {
             merged_overview_selected_providers: normalize_merged_overview_selection(
                 raw.merged_overview_selected_providers,
             ),
+            merged_overview_all_accounts: raw.merged_overview_all_accounts,
             quota_warning_markers_visible: raw.quota_warning_markers_visible,
             highlight_menu_cards_on_hover: raw.highlight_menu_cards_on_hover,
             workday_tick_style: raw
@@ -832,6 +839,7 @@ impl From<RawSettings> for Settings {
             codex_custom_sessions_dirs: raw.codex_custom_sessions_dirs,
             antigravity_additional_profile_homes: raw.antigravity_additional_profile_homes,
             agent_sessions_enabled: raw.agent_sessions_enabled,
+            agent_sessions_local_only: raw.agent_sessions_local_only,
             stay_awake_enabled: raw.stay_awake_enabled,
             agent_session_ssh_hosts: raw.agent_session_ssh_hosts,
             hooks_enabled: raw.hooks_enabled,

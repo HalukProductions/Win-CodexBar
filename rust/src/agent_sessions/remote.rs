@@ -45,13 +45,19 @@ impl RemoteSessionFetcher {
     }
 
     pub(crate) async fn tailscale_hosts() -> Result<Vec<String>, String> {
+        let Some(cli) = tailscale_cli_path(std::env::var_os("PATH").as_deref()) else {
+            tracing::debug!(
+                "No standalone Tailscale CLI found on PATH; skipping Tailscale discovery."
+            );
+            return Ok(Vec::new());
+        };
         let options = CommandOptions {
             timeout: Duration::from_secs(5),
             initial_delay: Duration::ZERO,
             extra_args: vec!["status".to_string(), "--json".to_string()],
             ..CommandOptions::default()
         };
-        match CommandRunner::new().run_async("tailscale", None, &options).await {
+        match CommandRunner::new().run_async(&cli, None, &options).await {
             Err(CommandError::BinaryNotFound(_)) => Ok(Vec::new()),
             Err(_) => Err(
                 "Unable to query Tailscale peers; manual SSH hosts are still available.".to_string(),
@@ -394,6 +400,44 @@ impl Default for RemoteSessionFetcher {
             per_host_timeout: Duration::from_secs(5),
         }
     }
+}
+
+#[cfg(windows)]
+pub(crate) const TAILSCALE_CLI_FILE_NAME: &str = "tailscale.exe";
+#[cfg(not(windows))]
+pub(crate) const TAILSCALE_CLI_FILE_NAME: &str = "tailscale";
+
+/// First standalone Tailscale CLI on `path_var`, as a UTF-8 path.
+///
+/// Only the exact CLI file name qualifies. The Windows GUI client (`tailscale-ipn.exe`), `.cmd`/`.bat`
+/// launchers and symlinks are never spawned, because running the VPN app's binary in status mode can
+/// start its tunnel. Bare-name lookup through `which` is avoided for the same reason: it also honors
+/// PATHEXT, so a launcher script would be selected ahead of the CLI.
+pub(crate) fn tailscale_cli_path(path_var: Option<&std::ffi::OsStr>) -> Option<String> {
+    let path_var = path_var?;
+    std::env::split_paths(path_var)
+        .map(|dir| dir.join(TAILSCALE_CLI_FILE_NAME))
+        .find(|candidate| is_standalone_tailscale_cli(candidate))
+        .and_then(|path| path.to_str().map(str::to_owned))
+}
+
+/// A regular file (not a symlink or directory) with a native executable header: PE (`MZ`) on
+/// Windows, ELF elsewhere. Scripts and other launchers are rejected before any process starts.
+pub(crate) fn is_standalone_tailscale_cli(path: &Path) -> bool {
+    let Ok(metadata) = std::fs::symlink_metadata(path) else {
+        return false;
+    };
+    if !metadata.file_type().is_file() {
+        return false;
+    }
+    let Ok(mut file) = File::open(path) else {
+        return false;
+    };
+    let mut magic = [0u8; 4];
+    if file.read_exact(&mut magic).is_err() {
+        return false;
+    }
+    magic[..2] == *b"MZ" || magic == *b"\x7fELF"
 }
 
 /// `--json-v2` (Pi-family aware) first, legacy `--json` for older installs —

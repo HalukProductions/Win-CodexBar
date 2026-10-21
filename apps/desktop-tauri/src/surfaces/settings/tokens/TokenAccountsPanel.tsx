@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
-import type { ProviderTokenAccountsBridge } from "../../../types/bridge";
+import type {
+  ProviderTokenAccountsBridge,
+  TokenAccountBridge,
+} from "../../../types/bridge";
 import { useLocale } from "../../../hooks/useLocale";
 import {
   addTokenAccount,
   getTokenAccounts,
+  moveTokenAccount,
   removeTokenAccount,
   setActiveTokenAccount,
   setTokenAccountClaudeConfigDir,
   triggerProviderLogin,
+  updateTokenAccount,
 } from "../../../lib/tauri";
 import { ClaudeConfigDirField } from "./ClaudeConfigDirField";
 
@@ -39,6 +44,12 @@ export function TokenAccountsPanel({ providerId, compact = false }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [addLabel, setAddLabel] = useState("");
   const [addToken, setAddToken] = useState("");
+  // One inline editor at a time. The credential draft starts empty: a blank
+  // value means "keep the saved credential", and the saved secret never
+  // reaches the UI.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState("");
+  const [editToken, setEditToken] = useState("");
 
   const load = useCallback(async () => {
     if (!providerId) {
@@ -61,9 +72,60 @@ export function TokenAccountsPanel({ providerId, compact = false }: Props) {
   useEffect(() => {
     setAddLabel("");
     setAddToken("");
+    setEditingId(null);
+    setEditLabel("");
+    setEditToken("");
     setError(null);
     void load();
   }, [load]);
+
+  const startEdit = (account: TokenAccountBridge) => {
+    setEditingId(account.id);
+    setEditLabel(account.label);
+    setEditToken("");
+    setError(null);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditLabel("");
+    setEditToken("");
+  };
+
+  const handleSaveEdit = async (accountId: string) => {
+    if (!providerId || !editLabel.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      // A blank credential sends null, which keeps the saved secret.
+      const next = await updateTokenAccount(
+        providerId,
+        accountId,
+        editLabel.trim(),
+        editToken.trim() || null,
+      );
+      setData(next);
+      cancelEdit();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleMove = async (accountId: string, index: number) => {
+    if (!providerId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const next = await moveTokenAccount(providerId, accountId, index);
+      setData(next);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const handleAdd = async () => {
     if (!providerId || !addLabel.trim() || !addToken.trim()) return;
@@ -164,7 +226,7 @@ export function TokenAccountsPanel({ providerId, compact = false }: Props) {
 
       {data && data.accounts.length > 0 ? (
         <ul className="credential-list token-accounts-list">
-          {data.accounts.map((acct) => (
+          {data.accounts.map((acct, index) => (
             <li key={acct.id} className="credential-card token-accounts-card">
               <div className="credential-card__header">
                 <div className="credential-card__info">
@@ -186,6 +248,34 @@ export function TokenAccountsPanel({ providerId, compact = false }: Props) {
                   </span>
                 </div>
                 <div className="credential-card__actions">
+                  <button
+                    type="button"
+                    className="credential-btn credential-btn--secondary"
+                    disabled={busy || editingId === acct.id}
+                    onClick={() => startEdit(acct)}
+                  >
+                    {t("TokenAccountEdit")}
+                  </button>
+                  <button
+                    type="button"
+                    className="credential-btn credential-btn--secondary"
+                    aria-label={t("TokenAccountMoveUp")}
+                    title={t("TokenAccountMoveUp")}
+                    disabled={busy || index === 0}
+                    onClick={() => void handleMove(acct.id, index - 1)}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    className="credential-btn credential-btn--secondary"
+                    aria-label={t("TokenAccountMoveDown")}
+                    title={t("TokenAccountMoveDown")}
+                    disabled={busy || index === data.accounts.length - 1}
+                    onClick={() => void handleMove(acct.id, index + 1)}
+                  >
+                    ↓
+                  </button>
                   {!acct.isActive && (
                     <button
                       type="button"
@@ -206,6 +296,59 @@ export function TokenAccountsPanel({ providerId, compact = false }: Props) {
                   </button>
                 </div>
               </div>
+              {editingId === acct.id && (
+                <form
+                  className="credential-add-form token-accounts-edit"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void handleSaveEdit(acct.id);
+                  }}
+                >
+                  <input
+                    className="text-input"
+                    type="text"
+                    aria-label={t("TokenAccountLabelPlaceholder")}
+                    placeholder={t("TokenAccountLabelPlaceholder")}
+                    value={editLabel}
+                    onChange={(e) => setEditLabel(e.target.value)}
+                    disabled={busy}
+                  />
+                  <input
+                    className="text-input"
+                    type="password"
+                    autoComplete="off"
+                    aria-label={t("TokenAccountTokenPlaceholder")}
+                    aria-describedby={`token-edit-hint-${acct.id}`}
+                    placeholder={placeholder}
+                    value={editToken}
+                    onChange={(e) => setEditToken(e.target.value)}
+                    disabled={busy}
+                  />
+                  <p
+                    id={`token-edit-hint-${acct.id}`}
+                    className="credential-card__meta"
+                  >
+                    {t("TokenAccountEditKeepCredentialHint")}
+                  </p>
+                  <div className="credential-card__actions">
+                    <button
+                      type="submit"
+                      className="credential-btn credential-btn--primary"
+                      disabled={busy || !editLabel.trim()}
+                    >
+                      {t("TokenAccountEditSave")}
+                    </button>
+                    <button
+                      type="button"
+                      className="credential-btn credential-btn--secondary"
+                      disabled={busy}
+                      onClick={cancelEdit}
+                    >
+                      {t("TokenAccountEditCancel")}
+                    </button>
+                  </div>
+                </form>
+              )}
               {providerId === "claude" && (
                 <ClaudeConfigDirField
                   account={acct}

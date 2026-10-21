@@ -27,6 +27,8 @@ import {
 export const PROOF_SCENARIO_NAMES = [
   "default",
   "two-codex-accounts",
+  "overview-all-accounts",
+  "overview-all-accounts-private",
   "errors",
   "empty",
   "openai-live-spend",
@@ -40,6 +42,7 @@ export const PROOF_SCENARIO_NAMES = [
   "kpi-long-titles",
   "claudeplatform",
   "cookie-no-browsers",
+  "vercel",
 ] as const;
 
 export type ProofScenarioName = (typeof PROOF_SCENARIO_NAMES)[number];
@@ -214,6 +217,53 @@ function claudePlatformSnapshot(now: Date): ProviderUsageSnapshot {
   );
 }
 
+/**
+ * Opt-in personal AI Gateway budget (synthetic): spend, limit and remaining
+ * rows under a "Personal budget" section, with the team as the organization.
+ */
+function vercelSnapshot(now: Date): ProviderUsageSnapshot {
+  return providerSnapshot(
+    {
+      providerId: "vercel",
+      displayName: "Vercel",
+      primary: rateWindow(now, 42, MONTH_MINUTES, 17 * DAY_MINUTES),
+      primaryLabel: "Personal budget",
+      updatedAt: isoBefore(now, 2),
+    },
+    {
+      secondary: null,
+      accountOrganization: "Example Team",
+      sourceLabel: "api",
+      displayDetails: [
+        {
+          id: "vercel-budget-spend",
+          sectionTitle: "Personal budget",
+          title: "Spend",
+          value: "$42.00",
+          secondaryValue: null,
+          progress: null,
+        },
+        {
+          id: "vercel-budget-limit",
+          sectionTitle: "Personal budget",
+          title: "Limit",
+          value: "$100.00",
+          secondaryValue: null,
+          progress: null,
+        },
+        {
+          id: "vercel-budget-remaining",
+          sectionTitle: "Personal budget",
+          title: "Remaining",
+          value: "$58.00",
+          secondaryValue: null,
+          progress: null,
+        },
+      ],
+    },
+  );
+}
+
 function codexAccount(
   now: Date,
   id: string,
@@ -359,6 +409,20 @@ function twoCodexAccountsScenario(now: Date): ProofScenario {
     },
     claudeAccounts: claudeAccounts(now),
     localSpend: [codexSpend(), claudeSpend()],
+  };
+}
+
+/** Overview with "Show all accounts in Overview" on: Codex expands to one row per cached account. */
+function overviewAllAccountsScenario(now: Date, hidePersonalInfo: boolean): ProofScenario {
+  const scenario = twoCodexAccountsScenario(now);
+  return {
+    ...scenario,
+    name: hidePersonalInfo ? "overview-all-accounts-private" : "overview-all-accounts",
+    settings: baseSettings({
+      enabledProviders: ["codex", "claude"],
+      mergedOverviewAllAccounts: true,
+      hidePersonalInfo,
+    }),
   };
 }
 
@@ -777,6 +841,19 @@ function claudePlatformScenario(now: Date): ProofScenario {
   };
 }
 
+/** Synthetic personal-budget card and settings pane for the opt-in Vercel budget. */
+function vercelScenario(now: Date): ProofScenario {
+  return {
+    name: "vercel",
+    settings: baseSettings({ enabledProviders: ["vercel"] }),
+    catalog: PROOF_PROVIDER_CATALOG,
+    providers: [vercelSnapshot(now)],
+    codexAccounts: emptyCodexAccounts(),
+    claudeAccounts: [],
+    localSpend: [],
+  };
+}
+
 /**
  * Default data on a machine with no importable browser, so the cookie section
  * shows its empty-state hint beside the paste box.
@@ -792,6 +869,8 @@ function cookieNoBrowsersScenario(now: Date): ProofScenario {
 const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   default: defaultScenario,
   "two-codex-accounts": twoCodexAccountsScenario,
+  "overview-all-accounts": (now) => overviewAllAccountsScenario(now, false),
+  "overview-all-accounts-private": (now) => overviewAllAccountsScenario(now, true),
   errors: errorsScenario,
   empty: emptyScenario,
   "openai-live-spend": openAiLiveSpendScenario,
@@ -805,6 +884,7 @@ const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   "kpi-long-titles": kpiLongTitlesScenario,
   claudeplatform: claudePlatformScenario,
   "cookie-no-browsers": cookieNoBrowsersScenario,
+  vercel: vercelScenario,
 };
 
 export function isProofScenarioName(value: string): value is ProofScenarioName {

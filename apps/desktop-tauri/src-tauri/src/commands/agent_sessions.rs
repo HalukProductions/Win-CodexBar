@@ -7,12 +7,14 @@ use codexbar::settings::Settings;
 #[tauri::command]
 pub async fn list_agent_sessions() -> AgentSessionDiscoveryResult {
     let settings = Settings::load();
-    let mode = if settings.agent_sessions_enabled {
+    let mode = if !settings.agent_sessions_enabled {
+        AgentSessionDiscoveryMode::Disabled
+    } else if settings.agent_sessions_local_only {
+        AgentSessionDiscoveryMode::LocalOnly
+    } else {
         AgentSessionDiscoveryMode::Enabled {
             ssh_hosts: settings.agent_session_ssh_hosts,
         }
-    } else {
-        AgentSessionDiscoveryMode::Disabled
     };
     AgentSessionDiscovery::default().scan(mode).await
 }

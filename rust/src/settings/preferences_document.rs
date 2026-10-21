@@ -100,6 +100,7 @@ const ALLOWED_PREFERENCES: &[(&str, Validator)] = &[
         "merged_overview_selected_providers",
         merged_overview_selection,
     ),
+    ("merged_overview_all_accounts", typed::<bool>),
     ("quota_warning_markers_visible", typed::<bool>),
     ("workday_tick_style", |v| {
         one_of(v, &["hidden", "subtle", "high_contrast"])
@@ -165,6 +166,7 @@ pub const EXCLUDED_KEYS: &[&str] = &[
     "hooks_enabled",
     "global_shortcut",
     "agent_sessions_enabled",
+    "agent_sessions_local_only",
     "disable_keychain_access",
     "claude_allow_reading_claude_code_credentials",
     "codex_external_oauth_sources_allowed",
