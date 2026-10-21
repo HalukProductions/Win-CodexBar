@@ -302,6 +302,7 @@ pub fn revoke_provider_credentials(
             .save(&token_accounts)
             .map_err(|e| e.to_string())?;
     }
+    forget_provider_accounts(&app, id);
 
     Ok(())
 }
