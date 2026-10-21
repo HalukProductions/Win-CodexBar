@@ -5,6 +5,7 @@
 //! gRPC-web endpoint. Browser cookies use the gRPC-web endpoint only.
 
 pub mod accounts;
+mod acp;
 mod billing;
 mod credits_proxy;
 pub mod local_sessions;
@@ -36,6 +37,8 @@ const REMAINING_RESETS_ENDPOINT: &str =
 const CLI_SETTINGS_ENDPOINT: &str = "https://cli-chat-proxy.grok.com/v1/settings";
 const RESET_CREDITS_TIMEOUT: Duration = Duration::from_secs(2);
 const RESET_CREDITS_JOIN_GRACE: Duration = Duration::from_millis(250);
+const GROK_CLI_PROGRAM: &str = "grok";
+const GROK_CLI_ACP_ARGS: [&str; 2] = ["agent", "stdio"];
 
 /// Reset-window pace (upstream `GrokProviderDescriptor.pace`, v0.70.0): weekly
 /// windows inside their length, see [`reset_window_pace_matches`].
@@ -48,6 +51,33 @@ pub struct GrokProvider {
     client: Client,
     billing_endpoint: String,
     credits_proxy_endpoint: String,
+    cli_billing: CliBillingRunner,
+}
+
+/// Where the ACP billing fallback gets its answer. `Installed` runs the Grok
+/// CLI; tests substitute a fake to pin the fallback ordering.
+#[derive(Clone)]
+enum CliBillingRunner {
+    Installed,
+    #[cfg(test)]
+    Fake(std::sync::Arc<dyn Fn() -> Result<BearerBilling, ProviderError> + Send + Sync>),
+}
+
+impl CliBillingRunner {
+    async fn fetch(&self) -> Result<BearerBilling, ProviderError> {
+        match self {
+            Self::Installed => {
+                acp::fetch_billing(
+                    GROK_CLI_PROGRAM,
+                    &GROK_CLI_ACP_ARGS,
+                    acp::AcpTimeouts::default(),
+                )
+                .await
+            }
+            #[cfg(test)]
+            Self::Fake(run) => run(),
+        }
+    }
 }
 
 impl GrokProvider {
@@ -59,6 +89,7 @@ impl GrokProvider {
                 .unwrap_or_else(|_| Client::new()),
             billing_endpoint: BILLING_ENDPOINT.to_string(),
             credits_proxy_endpoint: CREDITS_PROXY_ENDPOINT.to_string(),
+            cli_billing: CliBillingRunner::Installed,
         }
     }
 
@@ -85,6 +116,15 @@ impl GrokProvider {
     #[cfg(test)]
     fn with_credits_proxy_endpoint_for_tests(mut self, endpoint: String) -> Self {
         self.credits_proxy_endpoint = endpoint;
+        self
+    }
+
+    #[cfg(test)]
+    fn with_cli_billing_for_tests(
+        mut self,
+        run: impl Fn() -> Result<BearerBilling, ProviderError> + Send + Sync + 'static,
+    ) -> Self {
+        self.cli_billing = CliBillingRunner::Fake(std::sync::Arc::new(run));
         self
     }
 
@@ -124,7 +164,7 @@ impl GrokProvider {
         };
         let credentials = GrokCredentials::parse_for_kind(text, kind)?;
         let result = self
-            .fetch_with_auth(&credentials, kind, &FetchContext::default())
+            .fetch_with_auth(&credentials, kind, &saved_account_usage_context())
             .await?;
         Ok(account_usage_from_result(&result))
     }
@@ -149,7 +189,10 @@ impl GrokProvider {
             billing,
             subscription_tier,
             prepaid_balance_usd,
-        } = match self.fetch_bearer_billing(credentials).await {
+        } = match self
+            .fetch_bearer_or_cli_billing(credentials, kind, ctx)
+            .await
+        {
             Ok(bearer) => bearer,
             Err(error) => {
                 reset_lookup.abort();
@@ -184,6 +227,38 @@ impl GrokProvider {
             Some(credits) => result.with_inventory_item(credits),
             None => result,
         })
+    }
+
+    /// Current billing for a credential. The bearer path (credits proxy, then
+    /// grok.com gRPC-web) runs first. Only when it fails, for the ambient Grok
+    /// CLI login, is the installed CLI asked over ACP (upstream #4595). An
+    /// isolated fetch never reaches the ambient login, so it gets the bearer
+    /// error unchanged.
+    async fn fetch_bearer_or_cli_billing(
+        &self,
+        credentials: &GrokCredentials,
+        kind: GrokAuthKind,
+        ctx: &FetchContext,
+    ) -> Result<BearerBilling, ProviderError> {
+        let error = match self.fetch_bearer_billing(credentials).await {
+            Ok(bearer) => return Ok(bearer),
+            Err(error) => error,
+        };
+        if kind != GrokAuthKind::Cli || ctx.token_account_isolated {
+            return Err(error);
+        }
+        match self.cli_billing.fetch().await {
+            Ok(bearer) => {
+                tracing::debug!("Grok billing answered by the CLI ACP fallback");
+                Ok(bearer)
+            }
+            Err(acp_error) => {
+                // The original error stays the answer, so auto mode still
+                // moves to its next step exactly as before.
+                tracing::debug!("Grok CLI ACP billing fallback failed: {acp_error}");
+                Err(error)
+            }
+        }
     }
 
     async fn fetch_cli_subscription_tier(&self, credentials: &GrokCredentials) -> Option<String> {
@@ -693,6 +768,16 @@ fn grok_steps_for_context(
     steps
 }
 
+/// A saved account row is one principal. Its auth text may not be the account
+/// switched into `~/.grok`, so the fetch is marked isolated: it must never
+/// reach the ambient CLI login, including over ACP.
+fn saved_account_usage_context() -> FetchContext {
+    FetchContext {
+        token_account_isolated: true,
+        ..FetchContext::default()
+    }
+}
+
 fn isolated_account_missing_credential() -> ProviderError {
     ProviderError::Other(
         "This Grok account has no saved token or cookie. Add one in Settings.".to_string(),
@@ -996,3 +1081,7 @@ mod credits_proxy_tests;
 #[cfg(test)]
 #[path = "product_usage_tests.rs"]
 mod product_usage_tests;
+
+#[cfg(test)]
+#[path = "cli_fallback_tests.rs"]
+mod cli_fallback_tests;
