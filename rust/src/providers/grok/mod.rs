@@ -261,6 +261,31 @@ impl GrokProvider {
         }
     }
 
+    /// The ambient Grok CLI login is missing or expired, so no credential can
+    /// be sent. The installed CLI may still hold its own valid session, so it
+    /// is asked over ACP as a fallback. Isolated fetches never reach the
+    /// ambient login. When ACP also fails, the original login error is
+    /// returned, not an ACP error.
+    async fn fetch_cli_acp_without_login(
+        &self,
+        login_error: ProviderError,
+        ctx: &FetchContext,
+    ) -> Result<ProviderFetchResult, ProviderError> {
+        if ctx.token_account_isolated || !is_missing_or_expired_login(&login_error) {
+            return Err(login_error);
+        }
+        match self.cli_billing.fetch().await {
+            Ok(bearer) => {
+                tracing::debug!("Grok billing answered by the CLI ACP fallback without a login");
+                Ok(result_from_acp_billing(bearer))
+            }
+            Err(acp_error) => {
+                tracing::debug!("Grok CLI ACP billing fallback failed: {acp_error}");
+                Err(login_error)
+            }
+        }
+    }
+
     async fn fetch_cli_subscription_tier(&self, credentials: &GrokCredentials) -> Option<String> {
         let response = self
             .client
@@ -414,7 +439,29 @@ impl GrokProvider {
         kind: GrokAuthKind,
         ctx: &FetchContext,
     ) -> Option<Result<ProviderFetchResult, ProviderError>> {
-        let credentials = Self::load_credentials(kind).await.ok()?;
+        let loaded = Self::load_credentials(kind).await;
+        self.try_ambient_loaded(kind, loaded, ctx).await
+    }
+
+    /// Auto-mode step for an ambient login that has already been loaded (or
+    /// failed to load). A missing or expired Cli login may still be answered by
+    /// the CLI over ACP; if that fails, the step yields `None` as before.
+    async fn try_ambient_loaded(
+        &self,
+        kind: GrokAuthKind,
+        loaded: Result<GrokCredentials, ProviderError>,
+        ctx: &FetchContext,
+    ) -> Option<Result<ProviderFetchResult, ProviderError>> {
+        let credentials = match loaded {
+            Ok(credentials) => credentials,
+            Err(error) if kind == GrokAuthKind::Cli => {
+                return match self.fetch_cli_acp_without_login(error, ctx).await {
+                    Ok(result) => Some(Ok(result)),
+                    Err(_) => None,
+                };
+            }
+            Err(_) => return None,
+        };
         match self.fetch_with_auth(&credentials, kind, ctx).await {
             Ok(result) => Some(Ok(result)),
             Err(ProviderError::AuthRequired) => None,
@@ -681,11 +728,13 @@ impl Provider for GrokProvider {
             SourceMode::Cli | SourceMode::OAuth if ctx.token_account_isolated => {
                 self.fetch_isolated_account(ctx).await
             }
-            SourceMode::Cli => {
-                let credentials = Self::load_credentials(GrokAuthKind::Cli).await?;
-                self.fetch_with_auth(&credentials, GrokAuthKind::Cli, ctx)
-                    .await
-            }
+            SourceMode::Cli => match Self::load_credentials(GrokAuthKind::Cli).await {
+                Ok(credentials) => {
+                    self.fetch_with_auth(&credentials, GrokAuthKind::Cli, ctx)
+                        .await
+                }
+                Err(error) => self.fetch_cli_acp_without_login(error, ctx).await,
+            },
             SourceMode::OAuth => {
                 // Prefer the switched ~/.grok/auth.json over a leftover token
                 // account so Weekly/notifications follow Grok account Switch.
@@ -1041,6 +1090,31 @@ fn result_from_billing(
             ProviderFetchResult::new(usage, source_label),
             |result, detail| result.with_display_detail(Some(detail)),
         )
+}
+
+/// Result for a CLI login-less ACP answer. The CLI answered from its own
+/// login, so no account identity is known and no reset-credit lookup runs
+/// (that lookup needs the token CodexBar does not have).
+fn result_from_acp_billing(bearer: BearerBilling) -> ProviderFetchResult {
+    let BearerBilling {
+        billing,
+        subscription_tier,
+        prepaid_balance_usd,
+    } = bearer;
+    attach_prepaid_balance(
+        result_from_billing(billing, "grok-cli", None, None, subscription_tier),
+        prepaid_balance_usd,
+    )
+}
+
+/// A Cli login that is absent (no auth file or no Cli entry) or expired.
+/// Parse errors are a malformed file, not a missing login, so they do not
+/// qualify for the ACP fallback.
+fn is_missing_or_expired_login(err: &ProviderError) -> bool {
+    matches!(
+        err,
+        ProviderError::AuthRequired | ProviderError::NotInstalled(_)
+    )
 }
 
 /// Whether a cookie-path error should invalidate the cached browser session.

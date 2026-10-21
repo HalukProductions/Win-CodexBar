@@ -221,3 +221,172 @@ async fn saved_account_row_failure_never_reaches_the_ambient_cli() {
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     assert!(matches!(error, ProviderError::Other(_)), "{error}");
 }
+
+fn missing_login() -> ProviderError {
+    ProviderError::NotInstalled("Grok auth.json not found. Run `grok login`.".to_string())
+}
+
+fn expired_login() -> ProviderError {
+    ProviderError::AuthRequired
+}
+
+#[test]
+fn expired_cli_login_in_auth_json_is_auth_required() {
+    // The real expired-login error must qualify for the ACP fallback.
+    let text = r#"{"https://accounts.x.ai/sign-in": {"key": "cli-token", "auth_mode": "session", "expires_at": "2000-01-01T00:00:00Z"}}"#;
+    let error = GrokCredentials::parse_for_kind(text, GrokAuthKind::Cli).unwrap_err();
+
+    assert!(matches!(error, ProviderError::AuthRequired), "{error}");
+    assert!(is_missing_or_expired_login(&error));
+}
+
+#[tokio::test]
+async fn missing_cli_login_is_answered_by_the_cli() {
+    let (calls, run) = counting_cli(|| Ok(cli_answer()));
+    let provider = GrokProvider::new().with_cli_billing_for_tests(run);
+
+    let result = provider
+        .fetch_cli_acp_without_login(missing_login(), &FetchContext::default())
+        .await
+        .unwrap();
+
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(result.usage.primary.used_percent, 64.0);
+    assert_eq!(result.source_label, "grok-cli");
+    assert_eq!(result.usage.account_email, None);
+    assert_eq!(
+        result.usage.login_method.as_deref(),
+        Some("SuperGrok Heavy")
+    );
+}
+
+#[tokio::test]
+async fn expired_cli_login_is_answered_by_the_cli() {
+    let (calls, run) = counting_cli(|| Ok(cli_answer()));
+    let provider = GrokProvider::new().with_cli_billing_for_tests(run);
+
+    let result = provider
+        .fetch_cli_acp_without_login(expired_login(), &FetchContext::default())
+        .await
+        .unwrap();
+
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(result.usage.primary.used_percent, 64.0);
+}
+
+#[tokio::test]
+async fn auto_mode_uses_the_cli_when_the_login_is_missing_or_expired() {
+    let (calls, run) = counting_cli(|| Ok(cli_answer()));
+    let provider = GrokProvider::new().with_cli_billing_for_tests(run);
+
+    let missing = provider
+        .try_ambient_loaded(
+            GrokAuthKind::Cli,
+            Err(missing_login()),
+            &FetchContext::default(),
+        )
+        .await
+        .expect("auto step answers")
+        .unwrap();
+    let expired = provider
+        .try_ambient_loaded(
+            GrokAuthKind::Cli,
+            Err(expired_login()),
+            &FetchContext::default(),
+        )
+        .await
+        .expect("auto step answers")
+        .unwrap();
+
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+    assert_eq!(missing.usage.primary.used_percent, 64.0);
+    assert_eq!(expired.usage.primary.used_percent, 64.0);
+}
+
+#[tokio::test]
+async fn failing_cli_acp_keeps_the_original_missing_login_error() {
+    // The CLI's own auth error must not replace the friendly login error.
+    let (calls, run) = counting_cli(|| Err(ProviderError::AuthRequired));
+    let provider = GrokProvider::new().with_cli_billing_for_tests(run);
+
+    let error = provider
+        .fetch_cli_acp_without_login(missing_login(), &FetchContext::default())
+        .await
+        .unwrap_err();
+
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert!(
+        matches!(&error, ProviderError::NotInstalled(message) if message.contains("grok login")),
+        "{error}"
+    );
+}
+
+#[tokio::test]
+async fn failing_cli_acp_in_auto_mode_moves_to_the_next_step() {
+    let (calls, run) = counting_cli(|| Err(ProviderError::AuthRequired));
+    let provider = GrokProvider::new().with_cli_billing_for_tests(run);
+
+    let step = provider
+        .try_ambient_loaded(
+            GrokAuthKind::Cli,
+            Err(missing_login()),
+            &FetchContext::default(),
+        )
+        .await;
+
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert!(step.is_none());
+}
+
+#[tokio::test]
+async fn isolated_token_account_never_reaches_the_cli_without_a_login() {
+    let (calls, run) = counting_cli(|| Ok(cli_answer()));
+    let provider = GrokProvider::new().with_cli_billing_for_tests(run);
+    let ctx = FetchContext {
+        token_account_isolated: true,
+        ..FetchContext::default()
+    };
+
+    let error = provider
+        .fetch_cli_acp_without_login(missing_login(), &ctx)
+        .await
+        .unwrap_err();
+
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert!(matches!(error, ProviderError::NotInstalled(_)), "{error}");
+}
+
+#[tokio::test]
+async fn malformed_cli_login_never_reaches_the_cli() {
+    // A parse failure is a broken file, not a missing or expired login.
+    let (calls, run) = counting_cli(|| Ok(cli_answer()));
+    let provider = GrokProvider::new().with_cli_billing_for_tests(run);
+
+    let error = provider
+        .fetch_cli_acp_without_login(
+            ProviderError::Parse("bad json".to_string()),
+            &FetchContext::default(),
+        )
+        .await
+        .unwrap_err();
+
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert!(matches!(error, ProviderError::Parse(_)), "{error}");
+}
+
+#[tokio::test]
+async fn oauth_login_missing_never_reaches_the_cli() {
+    let (calls, run) = counting_cli(|| Ok(cli_answer()));
+    let provider = GrokProvider::new().with_cli_billing_for_tests(run);
+
+    let step = provider
+        .try_ambient_loaded(
+            GrokAuthKind::OAuth,
+            Err(missing_login()),
+            &FetchContext::default(),
+        )
+        .await;
+
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert!(step.is_none());
+}

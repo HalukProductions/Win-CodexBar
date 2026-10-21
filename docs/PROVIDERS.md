@@ -838,8 +838,12 @@ sources in order and stops at the first one that answers:
 3. Grok CLI ACP billing, a fallback that runs only when 1 and 2 both fail.
 
 The ACP fallback (upstream #4595) runs only for the ambient Grok CLI login. It
-never runs for an isolated token account, a saved account row, or an OAuth
-principal, so it can never read a different account's usage:
+also runs when that login is missing (no `~/.grok/auth.json` or no Cli entry) or
+expired, since the installed CLI may hold its own valid session. In that case
+there is no CodexBar token, so the answer has no account identity and no
+reset-credit lookup. If ACP also fails, the original login error is shown, not
+an ACP error. It never runs for an isolated token account, a saved account row,
+or an OAuth principal, so it can never read a different account's usage:
 
 - The installed `grok agent stdio` is started with no console window and its
   stderr discarded. Requests are newline-delimited JSON-RPC 2.0 on stdin and

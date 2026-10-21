@@ -5,8 +5,9 @@
 //! answers from its own login, so no token from CodexBar is sent.
 //!
 //! This is a fallback only. `mod.rs` calls it after the bearer billing path has
-//! failed, and only for the ambient Grok CLI login. Isolated token accounts and
-//! saved account rows never reach it.
+//! failed, or when the ambient Grok CLI login is missing or expired, and only
+//! for the ambient Grok CLI login. Isolated token accounts and saved account
+//! rows never reach it.
 
 use std::io;
 use std::process::Stdio;
