@@ -881,6 +881,17 @@ The Settings pane id is `usageSpend`. The pane and the Overview read one shared 
 - A missing spend source stays unknown. It never shows as `$0`.
 - Totals are never converted across currencies.
 
+### Claude local cost history
+
+Claude local cost reads Claude transcript `.jsonl` files and prices assistant responses.
+
+- The default history, with `CLAUDE_CONFIG_DIR` unset or blank and no mapped token account, also reads Claude Desktop on Windows: `%APPDATA%\Claude` and the Microsoft Store package stores. It takes the project stores and Cowork (local agent mode) `audit.jsonl` files.
+- Cowork rows use the CLI transcript parser. A response present in both is counted once. `result` rows, which hold session totals, are never counted.
+- A mapped token account or a set `CLAUDE_CONFIG_DIR` leaves Claude Desktop out. Only the default history includes it.
+- Desktop discovery stops at 16,384 directory entries or 5 seconds. If it stops early, the Claude scan counts an unreadable root, so cost stays unavailable rather than showing a partial total.
+- Symbolic links are not followed during Desktop discovery.
+- Windows keeps no on-disk Claude cost cache. Each scan rereads the transcripts in the window.
+
 ### AWS Bedrock monitoring
 
 AWS Bedrock uses signed Cost Explorer requests and, optionally, CloudWatch activity. It is disabled by default.
