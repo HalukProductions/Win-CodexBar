@@ -29,4 +29,5 @@ export const CURRENCY_CATALOG = [
   { code: "IDR", symbol: "Rp", fallbackRate: 17836 },
   { code: "VND", symbol: "₫", fallbackRate: 25962 },
   { code: "UAH", symbol: "₴", fallbackRate: 44.86 },
+  { code: "ILS", symbol: "₪", fallbackRate: 3.109 },
 ] as const;
