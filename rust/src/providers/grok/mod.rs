@@ -659,7 +659,7 @@ impl GrokProvider {
     }
 
     fn detect_cli_version() -> Option<String> {
-        let mut command = std::process::Command::new("grok");
+        let mut command = std::process::Command::new(accounts::login::executable().ok()?);
         command.arg("--version");
         hide_windows_console(&mut command);
         let output = command.output().ok()?;
