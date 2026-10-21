@@ -222,15 +222,25 @@ mod tests {
 
     #[test]
     fn completed_child_is_collected_without_locking_twice() {
+        // Generous bounds: a cold cmd.exe start on a loaded CI runner can take
+        // several seconds. The wait returns as soon as the child exits, so the
+        // deadline only matters when something is actually wedged.
+        const CHILD_WAIT: Duration = Duration::from_secs(30);
+        const RECEIVE_BOUND: Duration = Duration::from_secs(60);
+
         let (sender, receiver) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             #[cfg(windows)]
-            let child = Command::new("cmd.exe")
-                .args(["/d", "/c", "echo login-complete"])
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-                .unwrap();
+            let child = {
+                use std::os::windows::process::CommandExt;
+                Command::new("cmd.exe")
+                    .args(["/d", "/c", "echo login-complete"])
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
+                    .spawn()
+                    .unwrap()
+            };
             #[cfg(not(windows))]
             let child = Command::new("sh")
                 .args(["-c", "echo login-complete"])
@@ -240,12 +250,10 @@ mod tests {
                 .unwrap();
             let handle = ManagedLoginProcess::default();
             handle.bind(child);
-            sender
-                .send(wait_for_child(&handle, Duration::from_secs(2)))
-                .unwrap();
+            sender.send(wait_for_child(&handle, CHILD_WAIT)).unwrap();
         });
         let output = receiver
-            .recv_timeout(Duration::from_secs(5))
+            .recv_timeout(RECEIVE_BOUND)
             .expect("completed login must not deadlock")
             .expect("child output");
         assert!(output.status.success());
