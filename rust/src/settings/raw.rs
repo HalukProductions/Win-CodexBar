@@ -188,6 +188,8 @@ pub(super) struct RawSettings {
     menu_bar_icon_style: Option<String>,
     #[serde(default)]
     merged_overview_selected_providers: Vec<String>,
+    #[serde(default)]
+    merged_overview_all_accounts: bool,
     #[serde(default = "default_true")]
     quota_warning_markers_visible: bool,
     #[serde(default = "default_true")]
@@ -409,6 +411,7 @@ impl Default for RawSettings {
             menu_bar_shows_percent: s.menu_bar_shows_percent,
             menu_bar_icon_style: Some(s.menu_bar_icon_style.as_str().to_string()),
             merged_overview_selected_providers: s.merged_overview_selected_providers,
+            merged_overview_all_accounts: s.merged_overview_all_accounts,
             quota_warning_markers_visible: s.quota_warning_markers_visible,
             highlight_menu_cards_on_hover: s.highlight_menu_cards_on_hover,
             workday_tick_style: Some(s.workday_tick_style.as_str().to_string()),
@@ -791,6 +794,7 @@ impl From<RawSettings> for Settings {
             merged_overview_selected_providers: normalize_merged_overview_selection(
                 raw.merged_overview_selected_providers,
             ),
+            merged_overview_all_accounts: raw.merged_overview_all_accounts,
             quota_warning_markers_visible: raw.quota_warning_markers_visible,
             highlight_menu_cards_on_hover: raw.highlight_menu_cards_on_hover,
             workday_tick_style: raw

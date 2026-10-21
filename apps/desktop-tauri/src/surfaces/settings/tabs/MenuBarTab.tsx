@@ -219,6 +219,14 @@ export default function MenuBarTab({
             {t("OverviewProvidersConfigure")}
           </button>
         </Field>
+        <Field label={t("OverviewAllAccountsLabel")} description={t("OverviewAllAccountsHelper")}>
+          <Toggle
+            variant="switch"
+            checked={settings.mergedOverviewAllAccounts ?? false}
+            disabled={saving}
+            onChange={(v) => set({ mergedOverviewAllAccounts: v })}
+          />
+        </Field>
       </SettingsGroup>
 
       {configuringOverview && (

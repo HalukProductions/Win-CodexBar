@@ -14,6 +14,7 @@ export function makeSettings(overrides: Partial<SettingsSnapshot> = {}): Setting
     statusChecksEnabled: true,
     menuBarIconStyle: "bars",
     mergedOverviewSelectedProviders: [],
+    mergedOverviewAllAccounts: false,
     quotaWarningMarkersVisible: true,
     workdayTickStyle: "subtle",
     menuBarColorByProvider: false,

@@ -253,6 +253,8 @@ export interface SettingsSnapshot {
   menuBarIconStyle: MenuBarIconStyle;
   /** Overview cards, at most 6; empty means the first 6 enabled providers. */
   mergedOverviewSelectedProviders: string[];
+  /** Overview shows one row per cached account for selected multi-account providers. */
+  mergedOverviewAllAccounts: boolean;
   quotaWarningMarkersVisible: boolean;
   /** Pointer hover highlights the tray panel Refresh row. Absent on older shells: on. */
   highlightMenuCardsOnHover?: boolean;
@@ -428,6 +430,7 @@ export interface SettingsUpdate {
   menuBarShowsPercent?: boolean;
   menuBarIconStyle?: MenuBarIconStyle;
   mergedOverviewSelectedProviders?: string[];
+  mergedOverviewAllAccounts?: boolean;
   quotaWarningMarkersVisible?: boolean;
   highlightMenuCardsOnHover?: boolean;
   workdayTickStyle?: WorkdayTickStyle;

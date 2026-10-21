@@ -40,6 +40,7 @@ pub struct SettingsUpdate {
     pub menu_bar_shows_percent: Option<bool>,
     pub menu_bar_icon_style: Option<codexbar::settings::MenuBarIconStyle>,
     pub merged_overview_selected_providers: Option<Vec<String>>,
+    pub merged_overview_all_accounts: Option<bool>,
     pub quota_warning_markers_visible: Option<bool>,
     pub highlight_menu_cards_on_hover: Option<bool>,
     pub workday_tick_style: Option<codexbar::settings::WorkdayTickStyle>,
@@ -412,6 +413,9 @@ impl SettingsUpdate {
         }
         if let Some(ids) = self.merged_overview_selected_providers.clone() {
             settings.set_merged_overview_selected_providers(ids);
+        }
+        if let Some(v) = self.merged_overview_all_accounts {
+            settings.merged_overview_all_accounts = v;
         }
         if let Some(v) = self.quota_warning_markers_visible {
             settings.quota_warning_markers_visible = v;

@@ -98,6 +98,7 @@ describe("Language type", () => {
       menuBarShowsPercent: true,
       menuBarIconStyle: "percent",
       mergedOverviewSelectedProviders: [],
+      mergedOverviewAllAccounts: false,
       quotaWarningMarkersVisible: true,
       workdayTickStyle: "subtle",
       menuBarColorPace: false,

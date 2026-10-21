@@ -1543,6 +1543,23 @@ fn highlight_menu_cards_on_hover_defaults_on_and_round_trips() {
 }
 
 #[test]
+fn merged_overview_all_accounts_defaults_off_and_round_trips() {
+    assert!(!Settings::default().merged_overview_all_accounts);
+    let legacy: Settings =
+        serde_json::from_str(r#"{ "enabled_providers": [] }"#).expect("legacy file");
+    assert!(!legacy.merged_overview_all_accounts);
+
+    let on = Settings {
+        merged_overview_all_accounts: true,
+        ..Settings::default()
+    };
+    let json = serde_json::to_string(&on).expect("serialize overview accounts");
+    assert!(json.contains(r#""merged_overview_all_accounts":true"#));
+    let loaded: Settings = serde_json::from_str(&json).expect("deserialize overview accounts");
+    assert!(loaded.merged_overview_all_accounts);
+}
+
+#[test]
 fn workday_tick_style_defaults_subtle_and_round_trips() {
     assert_eq!(
         Settings::default().workday_tick_style,

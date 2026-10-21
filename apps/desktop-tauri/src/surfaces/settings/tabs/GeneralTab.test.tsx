@@ -72,6 +72,7 @@ const settings: SettingsSnapshot = {
   menuBarShowsPercent: true,
   menuBarIconStyle: "percent",
   mergedOverviewSelectedProviders: [],
+  mergedOverviewAllAccounts: false,
   quotaWarningMarkersVisible: true,
   workdayTickStyle: "subtle",
   menuBarColorPace: false,

@@ -100,6 +100,7 @@ const ALLOWED_PREFERENCES: &[(&str, Validator)] = &[
         "merged_overview_selected_providers",
         merged_overview_selection,
     ),
+    ("merged_overview_all_accounts", typed::<bool>),
     ("quota_warning_markers_visible", typed::<bool>),
     ("workday_tick_style", |v| {
         one_of(v, &["hidden", "subtle", "high_contrast"])
