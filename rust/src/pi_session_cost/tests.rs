@@ -4,7 +4,7 @@ use tempfile::tempdir;
 
 fn parse_pi_assistant_entry(value: &Value, target: PiMappedProvider) -> Option<PiEntry> {
     let entry = parse_pi_assistant_entry_any(value)?;
-    (entry.provider == target).then_some(entry)
+    (entry.provider == Some(target)).then_some(entry)
 }
 
 #[test]
@@ -130,14 +130,125 @@ fn standalone_parser_keeps_the_mapped_provider_for_mixed_history() {
         parse_pi_assistant_entry_any(&codex)
             .expect("Codex row should parse")
             .provider,
-        PiMappedProvider::Codex
+        Some(PiMappedProvider::Codex)
     );
     assert_eq!(
         parse_pi_assistant_entry_any(&claude)
             .expect("Claude row should parse")
             .provider,
-        PiMappedProvider::Claude
+        Some(PiMappedProvider::Claude)
     );
+}
+
+#[test]
+fn unsupported_backend_keeps_tokens_as_unpriced_standalone_history() {
+    let raw = serde_json::json!({
+        "id": "bedrock-1",
+        "role": "assistant",
+        "provider": "amazon-bedrock",
+        "model": "anthropic.claude-sonnet",
+        "timestamp": "2026-07-20T12:00:00Z",
+        "usage": { "input": 11, "output": 3, "cacheRead": 2 }
+    });
+    let entry = parse_pi_assistant_entry_any(&raw).expect("unsupported backend row should parse");
+    assert_eq!(entry.provider, None);
+    assert_eq!(entry.model, "amazon-bedrock/anthropic.claude-sonnet");
+    assert!(!entry.pricing_known);
+    assert_eq!(entry.cost, 0.0);
+
+    let mut summary = CostSummary::default();
+    apply_entry(&mut summary, &entry);
+    assert_eq!(summary.input_tokens, 11);
+    assert_eq!(summary.output_tokens, 3);
+    assert_eq!(summary.cached_tokens, 2);
+    assert!(
+        summary
+            .unknown_models
+            .contains("amazon-bedrock/anthropic.claude-sonnet")
+    );
+    assert!(summary.model_pricing_completeness.is_partial());
+}
+
+#[test]
+fn native_scans_skip_unsupported_backends_without_losing_completeness() {
+    let dir = tempdir().unwrap();
+    let sessions = dir.path().join("agent").join("sessions");
+    std::fs::create_dir_all(&sessions).unwrap();
+    let codex = r#"{"id":"codex-1","role":"assistant","provider":"openai-codex","model":"gpt-5","timestamp":"2026-07-20T12:00:00Z","usage":{"input":50,"output":5}}"#;
+    let dated = r#"{"id":"bedrock-1","role":"assistant","provider":"amazon-bedrock","model":"claude","timestamp":"2026-07-20T13:00:00Z","usage":{"input":70,"output":7}}"#;
+    let undated = r#"{"id":"bedrock-2","role":"assistant","provider":"amazon-bedrock","model":"claude","usage":{"input":9,"output":1}}"#;
+    std::fs::write(
+        sessions.join("mixed.jsonl"),
+        format!("{codex}\n{dated}\n{undated}\n"),
+    )
+    .unwrap();
+    let cutoff = DateTime::parse_from_rfc3339("2026-07-01T00:00:00Z")
+        .unwrap()
+        .with_timezone(&Utc);
+
+    let mut native = CostSummary::default();
+    let evidence = scan_roots_into(
+        &mut native,
+        cutoff,
+        None,
+        &mut HashSet::new(),
+        vec![sessions.clone()],
+        Some(PiMappedProvider::Codex),
+    );
+    assert!(evidence.complete);
+    assert_eq!(native.input_tokens, 50);
+    assert!(native.unknown_models.is_empty());
+
+    // The undated unsupported row keeps standalone history incomplete, but its
+    // tokens are still retained.
+    let mut standalone = CostSummary::default();
+    let evidence = scan_roots_into(
+        &mut standalone,
+        cutoff,
+        None,
+        &mut HashSet::new(),
+        vec![sessions],
+        None,
+    );
+    assert!(!evidence.complete);
+    assert_eq!(standalone.input_tokens, 50 + 70 + 9);
+    assert_eq!(
+        standalone.total_tokens_for_provider("pi"),
+        50 + 5 + 70 + 7 + 9 + 1
+    );
+}
+
+#[test]
+fn malformed_unsupported_backend_row_marks_only_standalone_history_incomplete() {
+    let dir = tempdir().unwrap();
+    let sessions = dir.path().join("agent").join("sessions");
+    std::fs::create_dir_all(&sessions).unwrap();
+    let codex = r#"{"id":"codex-1","role":"assistant","provider":"openai-codex","model":"gpt-5","timestamp":"2026-07-20T12:00:00Z","usage":{"input":50,"output":5}}"#;
+    let malformed = r#"{"id":"bedrock-bad","role":"assistant","provider":"amazon-bedrock","model":"claude","timestamp":"2026-07-20T13:00:00Z","usage":{"input":"many"}}"#;
+    std::fs::write(
+        sessions.join("mixed.jsonl"),
+        format!("{codex}\n{malformed}\n"),
+    )
+    .unwrap();
+    let cutoff = DateTime::parse_from_rfc3339("2026-07-01T00:00:00Z")
+        .unwrap()
+        .with_timezone(&Utc);
+
+    let mut native = CostSummary::default();
+    let evidence = scan_roots_into(
+        &mut native,
+        cutoff,
+        None,
+        &mut HashSet::new(),
+        vec![sessions.clone()],
+        Some(PiMappedProvider::Codex),
+    );
+    assert!(evidence.complete);
+    assert_eq!(native.input_tokens, 50);
+
+    let scan = scan_pi_daily_from_roots(cutoff, None, vec![sessions]);
+    assert!(!scan.history_coverage_established);
+    assert_eq!(scan.tokens.values().sum::<u64>(), 55);
 }
 
 #[test]

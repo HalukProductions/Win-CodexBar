@@ -253,6 +253,42 @@ fn maps_scoped_weekly_limits_even_when_inactive() {
 }
 
 #[test]
+fn malformed_and_boolean_limit_entries_keep_model_scoped_siblings() {
+    // Upstream #4614: a field of the wrong type reads as missing, a JSON Boolean is
+    // never a percentage, and a non-object entry is skipped.
+    let usage: super::UsageResponse = serde_json::from_str(
+        r#"{
+                "limits": [
+                    7,
+                    {"kind": "weekly_scoped", "group": "weekly", "percent": false,
+                     "scope": {"model": {"id": "bool-percent", "display_name": "Bool"}}},
+                    {"kind": "weekly_scoped", "group": "weekly", "percent": 9,
+                     "scope": {"model": {"id": ["not", "a", "string"], "display_name": "Odd"}}},
+                    {"kind": "weekly_scoped", "group": "weekly", "percent": 21,
+                     "resets_at": "2026-07-16T10:00:00Z",
+                     "scope": {"model": {"id": "fable", "display_name": "Fable"}}}
+                ]
+            }"#,
+    )
+    .unwrap();
+
+    let windows = super::super::scoped_weekly::scoped_weekly_windows(&usage.limits);
+    let ids: Vec<&str> = windows.iter().map(|window| window.id.as_str()).collect();
+    assert_eq!(
+        ids,
+        vec!["claude-weekly-scoped-odd", "claude-weekly-scoped-fable"]
+    );
+    assert_eq!(windows[1].window.used_percent, 21.0);
+}
+
+#[test]
+fn non_array_limits_value_reads_as_no_limits() {
+    let usage: super::UsageResponse =
+        serde_json::from_str(r#"{"limits": {"kind": "weekly_scoped"}}"#).unwrap();
+    assert!(usage.limits.is_empty());
+}
+
+#[test]
 fn parses_oauth_apps_window_and_embedded_extra_usage() {
     let usage: super::UsageResponse = serde_json::from_str(
         r#"{

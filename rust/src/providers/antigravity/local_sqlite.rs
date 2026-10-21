@@ -20,14 +20,14 @@ use crate::spend_contract::{LocalHistoryCoverage, LocalTokenHistorySummary};
 const MAX_DATABASES: usize = 500;
 const MAX_DIRECTORY_ENTRIES: usize = 10_000;
 const MAX_ROWS_PER_DATABASE: usize = 10_000;
-const MAX_ROWS: usize = 50_000;
+const MAX_ROWS: usize = 100_000;
 const MAX_BLOB_BYTES: usize = 16 * 1024 * 1024;
 const MAX_DATABASE_BYTES: usize = 64 * 1024 * 1024;
-const MAX_TOTAL_BYTES: usize = 128 * 1024 * 1024;
+const MAX_TOTAL_BYTES: usize = 512 * 1024 * 1024;
 const MAX_SCHEMA_ENTRIES: usize = 128;
 const MAX_SCHEMA_COLUMNS: usize = 64;
 const MAX_SCHEMA_BYTES: usize = 64 * 1024;
-const MAX_SCAN_DURATION: StdDuration = StdDuration::from_secs(5);
+const MAX_SCAN_DURATION: StdDuration = StdDuration::from_secs(30);
 
 #[derive(Debug)]
 pub(super) enum SQLiteScan {

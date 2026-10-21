@@ -72,6 +72,20 @@ Which providers `usage` fetches without `-p`:
 
 An explicit `-p` never reads the enabled list. `--account` needs exactly one provider, even when the enabled list has several.
 
+### Claude and claude-swap in `usage`
+
+When the claude-swap integration is enabled (Settings > Providers > Claude) and `usage --provider claude` runs in Auto, the answer comes from the active claude-swap slot, the one the adapter marks active (upstream 0.79 #4631). Other browser or CLI logins on the machine don't supply the answer. This holds only when all of these are true:
+
+- The integration is on and an executable path is set.
+- `--source` is `auto` (or omitted), and the configured Claude usage source is also `auto`.
+- No `--account` and no `--all-accounts`.
+
+The output is one row for the active slot with `source` `claude-swap` (or `tcr`) and the slot's `account` object, including `usageFetchedAt` when the adapter reported a live measurement. Text shows the same slot's `Measured <time>` line. A live measurement is used when the row's status is `ok` or `unavailable`. Any other status uses the row's last-good usage and shows its capture time and the status diagnostic. The inactive slots are never used.
+
+If the adapter fails, or the active slot has no usable usage, `usage` runs the ordinary Claude sources. The source label then gets a fallback suffix such as `web (claude-swap fallback)`, and the identity is the one from that fallback source. Another swap slot is never substituted. Explicit `--source`, `--account` or `--all-accounts` and a configured non-auto source skip this route entirely.
+
+Windows difference: the active-slot row uses the claude-swap account shape that `--all-accounts` already emits (`account`, `error`, `historicalUsage`), not the ordinary `usage` snapshot, so there is no top-level `usage` key for that row. Error rows from a failed fallback fetch do not carry the suffix.
+
 ### App usage cache fallback
 
 When **Settings > Advanced > Share usage with the CLI** is on, the desktop app keeps `%APPDATA%\CodexBar\cli-usage-cache.json` up to date (see [CONFIGURATION.md](./CONFIGURATION.md#advanced)). `usage` shows that copy instead of an error row only when all of these hold (upstream v0.77 #4554):

@@ -242,6 +242,16 @@ pub trait Provider: Send + Sync {
         false
     }
 
+    /// Whether a present manual cookie keeps the configured usage source
+    /// instead of forcing `SourceMode::Web`.
+    ///
+    /// When true, the shell passes the selected source (if the provider offers
+    /// it) with the manual cookie, so the cookie only scopes the web session
+    /// that source may use. Otherwise a manual cookie routes to Web.
+    fn manual_cookie_keeps_usage_source(&self) -> bool {
+        false
+    }
+
     /// How the shell should treat a failed refresh when a prior good snapshot exists.
     fn last_good_failure_policy(&self, _error: &str) -> LastGoodFailurePolicy {
         LastGoodFailurePolicy::Replace

@@ -180,6 +180,11 @@ pub fn build_fetch_context(
                     // cookies must not force Web, or Weekly/notifications keep
                     // showing the previous browser account.
                     mode
+                } else if cookie_header.is_some()
+                    && provider.manual_cookie_keeps_usage_source()
+                    && provider.available_sources().contains(&usage_source)
+                {
+                    usage_source
                 } else if cookie_header.is_some() {
                     SourceMode::Web
                 } else if fails_closed_without_cookie {

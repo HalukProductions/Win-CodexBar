@@ -408,3 +408,131 @@ fn plan_lanes_without_a_cycle_start_have_no_length() {
     let result = api().build_result_with_team_budget(parse_summary(json), None, None);
     assert_eq!(result.primary.window_minutes, None);
 }
+
+const UNIFIED_NOW: &str = "2026-10-20T00:00:00Z";
+const UNIFIED_MONTHLY: &str = r#"{"availability":"available","monthlyUsage":{
+    "usedCents":725,"limitCents":1000,"creditsUsedCents":125,
+    "periodStart":"2026-10-01T00:00:00.000Z","resetsAt":"2026-11-01T00:00:00.000Z"}}"#;
+
+fn unified_now() -> DateTime<Utc> {
+    parse_iso_date(UNIFIED_NOW).expect("fixture time")
+}
+
+fn monthly_status(json: &str) -> Option<UnifiedUsageStatus> {
+    serde_json::from_str(json).ok()
+}
+
+#[test]
+fn unified_personal_billing_requires_unified_membership_and_user_limit() {
+    let is_unified = |json: &str| parse_summary(json).uses_unified_personal_billing();
+    assert!(is_unified(
+        r#"{"membershipType":"unified_ultra","limitType":"user"}"#
+    ));
+    assert!(is_unified(
+        r#"{"membershipType":"Unified_Ultra","limitType":"User"}"#
+    ));
+    assert!(!is_unified(
+        r#"{"membershipType":"unified_ultra","limitType":"team"}"#
+    ));
+    assert!(!is_unified(
+        r#"{"membershipType":"pro","limitType":"user"}"#
+    ));
+    assert!(!is_unified(r#"{"membershipType":"unified_ultra"}"#));
+}
+
+#[test]
+fn valid_monthly_usage_supplies_spend_cap_period_and_reset() {
+    let status = monthly_status(UNIFIED_MONTHLY).expect("fixture should parse");
+    let cost = unified_monthly_cost(&status, unified_now()).expect("valid monthly usage");
+    assert!((cost.used - 7.25).abs() < 1e-9);
+    assert_eq!(cost.limit, Some(10.0));
+    assert_eq!(cost.period, "On-demand (monthly)");
+    assert_eq!(cost.resets_at, parse_iso_date("2026-11-01T00:00:00Z"));
+}
+
+#[test]
+fn valid_zero_monthly_spend_stays_zero() {
+    let zero = UNIFIED_MONTHLY.replace("725", "0");
+    let status = monthly_status(&zero).expect("fixture should parse");
+    let cost = unified_monthly_cost(&status, unified_now()).expect("valid zero spend");
+    assert_eq!(cost.used, 0.0);
+    assert_eq!(cost.limit, Some(10.0));
+}
+
+#[test]
+fn unavailable_malformed_or_out_of_period_monthly_usage_yields_no_cost() {
+    let cases = [
+        "{}".to_string(),
+        r#"{"availability":"identity_unlinked"}"#.to_string(),
+        "not json".to_string(),
+        UNIFIED_MONTHLY.replace("\"availability\":\"available\",", ""),
+        UNIFIED_MONTHLY.replace("\"limitCents\":1000,", ""),
+        UNIFIED_MONTHLY.replace("\"limitCents\":1000", "\"limitCents\":null"),
+        UNIFIED_MONTHLY.replace("725", "-1"),
+        UNIFIED_MONTHLY.replace("725", "null"),
+        UNIFIED_MONTHLY.replace("2026-11-01T00:00:00.000Z", "bad-date"),
+        UNIFIED_MONTHLY.replace("2026-10-01T00:00:00.000Z", "2026-10-21T00:00:00.000Z"),
+        UNIFIED_MONTHLY.replace("2026-11-01T00:00:00.000Z", "2026-10-19T00:00:00.000Z"),
+    ];
+    for json in cases {
+        let cost =
+            monthly_status(&json).and_then(|status| unified_monthly_cost(&status, unified_now()));
+        assert!(cost.is_none(), "expected no monthly cost for {json}");
+    }
+}
+
+#[test]
+fn unified_summary_spend_is_kept_when_monthly_usage_is_not_valid() {
+    let summary = parse_summary(
+        r#"{"membershipType":"unified_ultra","limitType":"user",
+            "billingCycleEnd":"2026-10-25T00:00:00Z",
+            "individualUsage":{"plan":{"used":0,"limit":2000},"onDemand":{"used":250,"limit":1000}}}"#,
+    );
+    let result = api().build_result_with_team_budget(summary, None, None);
+    let cost = result.cost.expect("summary on-demand cost");
+    assert!((cost.used - 2.5).abs() < 1e-9);
+    assert_eq!(cost.limit, Some(10.0));
+    assert_eq!(cost.resets_at, parse_iso_date("2026-10-25T00:00:00Z"));
+}
+
+#[tokio::test]
+async fn unified_personal_usage_reads_monthly_spend_and_failure_keeps_summary_spend() {
+    let now = Utc::now();
+    let period_start = (now - chrono::Duration::days(1)).to_rfc3339();
+    let resets_at = (now + chrono::Duration::days(10)).to_rfc3339();
+    let monthly_body = format!(
+        r#"{{"availability":"available","monthlyUsage":{{"usedCents":725,"limitCents":1000,"periodStart":"{period_start}","resetsAt":"{resets_at}"}}}}"#
+    );
+    let summary_body = r#"{"membershipType":"unified_ultra","limitType":"user",
+        "billingCycleEnd":"2026-11-01T00:00:00Z",
+        "individualUsage":{"plan":{"used":0,"limit":2000},"onDemand":{"used":250,"limit":1000}}}"#;
+
+    for (status, expected_used) in [(200, 7.25), (500, 2.5)] {
+        let mut server = mockito::Server::new_async().await;
+        let _summary = server
+            .mock("GET", "/api/usage-summary")
+            .with_status(200)
+            .with_body(summary_body)
+            .create_async()
+            .await;
+        let monthly = server
+            .mock("GET", "/api/dashboard/v2/usage-status")
+            .match_query(mockito::Matcher::UrlEncoded("scope".into(), "user".into()))
+            .match_header("cookie", "auth=fixture")
+            .with_status(status)
+            .with_body(&monthly_body)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let result = CursorApi::with_base_url(&server.url())
+            .fetch_usage_with_cookie_header("auth=fixture")
+            .await
+            .expect("usage-summary should succeed");
+        monthly.assert_async().await;
+
+        let cost = result.cost.expect("on-demand cost");
+        assert!((cost.used - expected_used).abs() < 1e-9, "status {status}");
+        assert_eq!(cost.limit, Some(10.0));
+    }
+}

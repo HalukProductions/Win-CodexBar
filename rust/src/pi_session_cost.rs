@@ -259,7 +259,10 @@ fn scan_roots_into(
 
 struct PiEntry {
     timestamp: Option<DateTime<Utc>>,
-    provider: PiMappedProvider,
+    /// `None` for a backend without native pricing. Such a row is standalone
+    /// Pi history only: native Codex/Claude scans skip it.
+    provider: Option<PiMappedProvider>,
+    /// The model, or `backend/model` for a backend without native pricing.
     model: String,
     input: u64,
     output: u64,
@@ -368,11 +371,20 @@ fn for_each_pi_entry(
                 .map(str::to_string);
         }
         let Some(entry) = parse_pi_assistant_entry_any(&value) else {
-            if looks_like_usage_candidate(&value) {
+            // Malformed rows from unsupported backends affect only standalone
+            // history, so a native scan keeps its completeness.
+            let unsupported_backend = assistant_backend_text(&value)
+                .is_some_and(|backend| map_provider(backend).is_none());
+            if looks_like_usage_candidate(&value) && !(target.is_some() && unsupported_backend) {
                 complete = false;
             }
             continue;
         };
+        // Unsupported backends affect only standalone history, so a native scan
+        // skips them without losing its completeness.
+        if target.is_some() && entry.provider.is_none() {
+            continue;
+        }
         if entry.timestamp.is_none() {
             complete = false;
         }
@@ -381,7 +393,7 @@ fn for_each_pi_entry(
         {
             continue;
         }
-        if target.is_some_and(|target| entry.provider != target) {
+        if target.is_some_and(|target| entry.provider != Some(target)) {
             continue;
         }
         let entry_id = entry_dedup_key(&value, path, ordinal, session_id.as_deref());
@@ -467,6 +479,19 @@ fn map_provider(raw: &str) -> Option<PiMappedProvider> {
     None
 }
 
+/// The trimmed backend name of an assistant row, or `None` when it is absent or blank.
+fn assistant_backend_text(value: &Value) -> Option<&str> {
+    let message = value.get("message").unwrap_or(value);
+    message
+        .get("provider")
+        .or_else(|| value.get("provider"))
+        .or_else(|| message.get("api"))
+        .or_else(|| value.get("api"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+}
+
 fn parse_pi_assistant_entry_any(value: &Value) -> Option<PiEntry> {
     // Accept either flat or nested { message: {...} } pi-compatible rows.
     let message = value.get("message").unwrap_or(value);
@@ -486,13 +511,9 @@ fn parse_pi_assistant_entry_any(value: &Value) -> Option<PiEntry> {
         }
     }
 
-    let provider_raw = message
-        .get("provider")
-        .or_else(|| value.get("provider"))
-        .or_else(|| message.get("api"))
-        .or_else(|| value.get("api"))
-        .and_then(|v| v.as_str())?;
-    let mapped = map_provider(provider_raw)?;
+    let backend = assistant_backend_text(value)?;
+    // A backend without native pricing keeps its usage as standalone history.
+    let mapped = map_provider(backend);
     let model = message
         .get("model")
         .or_else(|| message.get("modelId"))
@@ -546,9 +567,11 @@ fn parse_pi_assistant_entry_any(value: &Value) -> Option<PiEntry> {
 
     let timestamp = entry_timestamp(value);
     let (cost, pricing_known) = match mapped {
+        // Unpriced backends never borrow another provider's rates.
+        None => (0.0, false),
         // Upstream prices each row at its timestamp, so usage from before a
         // model's repricing keeps the rates it was billed at.
-        PiMappedProvider::Codex => match timestamp.map_or_else(
+        Some(PiMappedProvider::Codex) => match timestamp.map_or_else(
             || {
                 CostUsagePricing::codex_cost_usd_with_cache_write(
                     &model,
@@ -573,7 +596,7 @@ fn parse_pi_assistant_entry_any(value: &Value) -> Option<PiEntry> {
             Some(cost) => (cost, true),
             None => (0.0, false),
         },
-        PiMappedProvider::Claude => {
+        Some(PiMappedProvider::Claude) => {
             // Token counts come from API usage records and fit within i32;
             // the canonical Claude pricing table takes i32 per-token counts.
             #[allow(
@@ -611,9 +634,13 @@ fn parse_pi_assistant_entry_any(value: &Value) -> Option<PiEntry> {
         }
     };
 
+    let (provider, model) = match mapped {
+        Some(provider) => (Some(provider), model),
+        None => (None, format!("{backend}/{model}")),
+    };
     Some(PiEntry {
         timestamp,
-        provider: mapped,
+        provider,
         model,
         input,
         output,

@@ -47,6 +47,7 @@ fn sample_swap_account() -> ClaudeSwapAccount {
         action: Some(crate::providers::claude::claude_swap::ClaudeSwapAccountAction::Switch),
         is_disabled: false,
         spend: None,
+        usage_fetched_at: None,
         historical_usage: None,
         session_equivalent_forecast: None,
     }
@@ -290,6 +291,21 @@ fn explicit_provider_never_reads_enabled_providers() {
         ProviderSelection::from_arg(None).unwrap(),
         ProviderSelection::Single(ProviderId::Claude)
     );
+}
+
+#[test]
+fn provider_flag_accepts_every_catalog_id_from_config_providers() {
+    // `config providers --format json` reports each provider by its CLI name,
+    // and `--provider` must select that same provider (upstream #4643).
+    for id in ProviderId::all() {
+        assert_eq!(
+            ProviderSelection::from_arg(Some(id.cli_name())).unwrap(),
+            ProviderSelection::Single(*id),
+            "--provider {} should select {}",
+            id.cli_name(),
+            id.display_name()
+        );
+    }
 }
 
 #[test]

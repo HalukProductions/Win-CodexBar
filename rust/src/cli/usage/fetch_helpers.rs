@@ -13,8 +13,14 @@ use crate::core::{
 use crate::settings::{ApiKeys, Settings};
 use crate::status::{ProviderStatus as StatusInfo, fetch_provider_status};
 
-pub async fn fetch_provider_text_output(provider_id: ProviderId, command: &UsageCommand) -> String {
-    match fetch_provider_result(provider_id, command).await {
+/// `source_label_suffix` is appended to the source label of the usage that
+/// answers (for example ` (claude-swap fallback)`); pass `""` for none.
+pub async fn fetch_provider_text_output(
+    provider_id: ProviderId,
+    command: &UsageCommand,
+    source_label_suffix: &str,
+) -> String {
+    match fetch_provider_result(provider_id, command, source_label_suffix).await {
         Ok((result, status)) => {
             if command.brief {
                 render_brief_text(provider_id, &result)
@@ -29,7 +35,10 @@ pub async fn fetch_provider_text_output(provider_id: ProviderId, command: &Usage
             }
         }
         Err(e) => match app_cache_fallback(provider_id, command, &e).await {
-            Some(fallback) => render_app_cache_text(provider_id, command, &fallback),
+            Some(mut fallback) => {
+                fallback.result.source_label.push_str(source_label_suffix);
+                render_app_cache_text(provider_id, command, &fallback)
+            }
             None => render_text_error(provider_id, &e.to_string(), command.use_color),
         },
     }
@@ -38,8 +47,9 @@ pub async fn fetch_provider_text_output(provider_id: ProviderId, command: &Usage
 pub async fn fetch_provider_json_output(
     provider_id: ProviderId,
     command: &UsageCommand,
+    source_label_suffix: &str,
 ) -> serde_json::Value {
-    match fetch_provider_result(provider_id, command).await {
+    match fetch_provider_result(provider_id, command, source_label_suffix).await {
         Ok((result, status)) => render_json_result(
             provider_id,
             result,
@@ -47,7 +57,10 @@ pub async fn fetch_provider_json_output(
             command.weekly_work_days,
         ),
         Err(e) => match app_cache_fallback(provider_id, command, &e).await {
-            Some(fallback) => render_app_cache_json(provider_id, command, fallback),
+            Some(mut fallback) => {
+                fallback.result.source_label.push_str(source_label_suffix);
+                render_app_cache_json(provider_id, command, fallback)
+            }
             None => crate::cli::error_kind::usage_error_row(provider_id, &e),
         },
     }
@@ -142,6 +155,7 @@ fn app_cache_note(age_seconds: i64) -> String {
 pub async fn fetch_provider_result(
     provider_id: ProviderId,
     command: &UsageCommand,
+    source_label_suffix: &str,
 ) -> anyhow::Result<(ProviderFetchResult, Option<StatusInfo>)> {
     let provider = instantiate_provider(provider_id);
     let status_future = command
@@ -153,7 +167,8 @@ pub async fn fetch_provider_result(
     if !account_projected && ctx.api_key.is_none() {
         ctx.api_key = resolve_cli_api_key(provider_id, command.account.as_deref())?;
     }
-    let result = provider.fetch_usage(&ctx).await?;
+    let mut result = provider.fetch_usage(&ctx).await?;
+    result.source_label.push_str(source_label_suffix);
     let status = if let Some(fut) = status_future {
         fut.await
     } else {

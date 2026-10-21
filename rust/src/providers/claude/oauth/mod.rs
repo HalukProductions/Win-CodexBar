@@ -136,7 +136,8 @@ pub struct OAuthUsageResponse {
     #[serde(default)]
     cedar_ember: Option<serde_json::Value>,
 
-    #[serde(default)]
+    /// Read entry by entry (upstream #4614): one malformed limit keeps its siblings.
+    #[serde(default, deserialize_with = "super::scoped_weekly::deserialize_limits")]
     limits: Vec<super::scoped_weekly::ScopedWeeklyLimit>,
 }
 

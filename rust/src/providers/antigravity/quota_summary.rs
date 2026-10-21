@@ -8,6 +8,8 @@ use crate::core::{NamedRateWindow, ProviderError, RateWindow, UsageSnapshot};
 const WINDOW_ID_PREFIX: &str = "antigravity-quota-summary-";
 const SESSION_MINUTES: u32 = 300;
 const WEEKLY_MINUTES: u32 = 7 * 24 * 60;
+/// Normalized cadence names that mean a five-hour session bucket.
+const SESSION_ALIASES: [&str; 5] = ["session", "5h", "5-hour", "five hour", "five-hour"];
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -131,7 +133,8 @@ pub(super) fn parse_cli_usage_report(data: &[u8]) -> Result<UsageSnapshot, Provi
 }
 
 fn build_usage_snapshot(groups: Vec<QuotaSummaryGroup>) -> Result<UsageSnapshot, ProviderError> {
-    let (primary_windows, extra_windows, has_gemini_group) = split_quota_windows(groups);
+    let (primary_windows, extra_windows, has_gemini_group, ordinary_gemini_ids) =
+        split_quota_windows(groups);
     let all_windows: Vec<NamedRateWindow> = primary_windows
         .iter()
         .chain(extra_windows.iter())
@@ -149,8 +152,10 @@ fn build_usage_snapshot(groups: Vec<QuotaSummaryGroup>) -> Result<UsageSnapshot,
     } else {
         &all_windows
     };
-    let primary_selected = most_constrained_named(cadence_windows, SESSION_MINUTES);
-    let secondary_selected = most_constrained_named(cadence_windows, WEEKLY_MINUTES);
+    let primary_selected =
+        most_constrained_named(cadence_windows, SESSION_MINUTES, &ordinary_gemini_ids);
+    let secondary_selected =
+        most_constrained_named(cadence_windows, WEEKLY_MINUTES, &ordinary_gemini_ids);
 
     let mut selected_ids = Vec::new();
     let mut snapshot = if let Some(primary) = primary_selected {
@@ -185,9 +190,16 @@ fn build_usage_snapshot(groups: Vec<QuotaSummaryGroup>) -> Result<UsageSnapshot,
     Ok(snapshot)
 }
 
+/// Returns the primary windows, the extra windows, whether a Gemini group
+/// exists, and the IDs of ordinary Gemini buckets among the primary windows.
 fn split_quota_windows(
     groups: Vec<QuotaSummaryGroup>,
-) -> (Vec<NamedRateWindow>, Vec<NamedRateWindow>, bool) {
+) -> (
+    Vec<NamedRateWindow>,
+    Vec<NamedRateWindow>,
+    bool,
+    HashSet<String>,
+) {
     let mut indexed_groups = groups.into_iter().enumerate().collect::<Vec<_>>();
     let has_gemini_group = indexed_groups
         .iter()
@@ -197,6 +209,7 @@ fn split_quota_windows(
     let mut primary_windows = Vec::new();
     let mut extra_windows = Vec::new();
     let mut used_window_ids = HashSet::new();
+    let mut ordinary_gemini_ids = HashSet::new();
     let mut group_scope_counts = HashMap::<String, usize>::new();
 
     for (pos, (_, group)) in indexed_groups.into_iter().enumerate() {
@@ -208,7 +221,12 @@ fn split_quota_windows(
             format!("{base_scope}-{}", *occurrence)
         };
         *occurrence += 1;
-        let windows = group_quota_windows(&group, &scoped_group, &mut used_window_ids);
+        let windows = group_quota_windows(
+            &group,
+            &scoped_group,
+            &mut used_window_ids,
+            &mut ordinary_gemini_ids,
+        );
         if pos == 0 {
             primary_windows = windows;
         } else {
@@ -216,13 +234,19 @@ fn split_quota_windows(
         }
     }
 
-    (primary_windows, extra_windows, has_gemini_group)
+    (
+        primary_windows,
+        extra_windows,
+        has_gemini_group,
+        ordinary_gemini_ids,
+    )
 }
 
 fn group_quota_windows(
     group: &QuotaSummaryGroup,
     group_scope: &str,
     used_window_ids: &mut HashSet<String>,
+    ordinary_gemini_ids: &mut HashSet<String>,
 ) -> Vec<NamedRateWindow> {
     let group_title = group_title(group);
     let mut buckets = group.buckets.iter().enumerate().collect::<Vec<_>>();
@@ -255,6 +279,9 @@ fn group_quota_windows(
         );
         let base_id = format!("{WINDOW_ID_PREFIX}{group_scope}-{bucket_id}");
         let id = unique_window_id(base_id, group_scope, used_window_ids);
+        if group_rank(group) == 0 && is_ordinary_gemini_bucket(bucket_id) {
+            ordinary_gemini_ids.insert(id.clone());
+        }
         windows.push(NamedRateWindow::new(id, title, window).with_usage_known(usage_known));
     }
     windows
@@ -279,17 +306,40 @@ fn unique_window_id(
     }
 }
 
-fn most_constrained_named(windows: &[NamedRateWindow], minutes: u32) -> Option<&NamedRateWindow> {
-    windows
-        .iter()
-        .filter(|row| row.usage_known && row.window.window_minutes == Some(minutes))
-        .max_by(|left, right| {
-            left.window
-                .used_percent
-                .partial_cmp(&right.window.used_percent)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| right.id.cmp(&left.id))
-        })
+/// The most constrained known window of one cadence. Ordinary Gemini buckets
+/// represent Gemini; a model-specific bucket of that cadence is used only when
+/// no ordinary bucket of that cadence is known (absent, unknown or disabled).
+fn most_constrained_named<'a>(
+    windows: &'a [NamedRateWindow],
+    minutes: u32,
+    ordinary_ids: &HashSet<String>,
+) -> Option<&'a NamedRateWindow> {
+    let most_constrained = |ordinary_only: bool| {
+        windows
+            .iter()
+            .filter(|row| row.usage_known && row.window.window_minutes == Some(minutes))
+            .filter(|row| !ordinary_only || ordinary_ids.contains(&row.id))
+            .max_by(|left, right| {
+                left.window
+                    .used_percent
+                    .partial_cmp(&right.window.used_percent)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| right.id.cmp(&left.id))
+            })
+    };
+    most_constrained(true).or_else(|| most_constrained(false))
+}
+
+/// Stable ordinary Gemini bucket IDs: `gemini-weekly` and `gemini-` plus a
+/// session alias. IDs are compared lowercased with `_` as `-`, so display
+/// labels never decide which bucket represents Gemini.
+fn is_ordinary_gemini_bucket(bucket_id: &str) -> bool {
+    let lowered = bucket_id.trim().to_ascii_lowercase().replace('_', "-");
+    let id = lowered.strip_suffix(" limit").unwrap_or(&lowered);
+    id == "gemini-weekly"
+        || SESSION_ALIASES
+            .iter()
+            .any(|alias| id == format!("gemini-{alias}"))
 }
 
 /// The group's trimmed name and its rank: 0 for Gemini, 1 for Claude/GPT,
@@ -343,7 +393,6 @@ fn bucket_kind(bucket: &QuotaSummaryBucket) -> BucketKind {
             candidates.push(stripped.to_string());
         }
     }
-    const SESSION_ALIASES: [&str; 5] = ["session", "5h", "5-hour", "five hour", "five-hour"];
     if candidates.iter().any(|candidate| {
         SESSION_ALIASES
             .iter()
@@ -538,6 +587,57 @@ mod tests {
         assert_eq!(snapshot.extra_rate_windows.len(), 2);
         assert!(!snapshot.extra_rate_windows[0].usage_known);
         assert!(!snapshot.extra_rate_windows[1].usage_known);
+    }
+
+    #[test]
+    fn ordinary_gemini_buckets_represent_gemini_over_exhausted_model_allowances() {
+        let data = br#"{"groups":[{"displayName":"Gemini Models","buckets":[
+            {"bucketId":"gemini-2.5-pro-5h","displayName":"5h","remainingFraction":0.0},
+            {"bucketId":"gemini-2.5-pro-weekly","displayName":"Weekly","remainingFraction":0.0},
+            {"bucketId":"gemini-5h","displayName":"5h","remainingFraction":0.96},
+            {"bucketId":"gemini-weekly","displayName":"Weekly","remainingFraction":0.9}
+          ]}]}"#;
+        let snapshot = parse_usage_snapshot(data).unwrap();
+        assert!((snapshot.primary.used_percent - 4.0).abs() < 0.001);
+        assert_eq!(snapshot.primary_label.as_deref(), Some("Gemini 5h"));
+        let weekly = snapshot.secondary.unwrap();
+        assert!((weekly.used_percent - 10.0).abs() < 0.001);
+        assert_eq!(snapshot.secondary_label.as_deref(), Some("Gemini Weekly"));
+        // Model-specific rows stay visible with their own usage and reset data.
+        assert_eq!(snapshot.extra_rate_windows.len(), 2);
+        assert!(
+            snapshot
+                .extra_rate_windows
+                .iter()
+                .any(|row| (row.window.used_percent - 100.0).abs() < 0.001)
+        );
+    }
+
+    #[test]
+    fn model_specific_gemini_represents_when_ordinary_bucket_is_disabled_or_unknown() {
+        let disabled = br#"{"groups":[{"displayName":"Gemini Models","buckets":[
+            {"bucketId":"gemini-5h","displayName":"5h","disabled":true,"remainingFraction":0.96},
+            {"bucketId":"gemini-2.5-pro-5h","displayName":"5h","remainingFraction":0.4}
+          ]}]}"#;
+        let snapshot = parse_usage_snapshot(disabled).unwrap();
+        assert!((snapshot.primary.used_percent - 60.0).abs() < 0.001);
+
+        let unknown = br#"{"groups":[{"displayName":"Gemini Models","buckets":[
+            {"bucketId":"gemini-5h","displayName":"5h"},
+            {"bucketId":"gemini-2.5-pro-5h","displayName":"5h","remainingFraction":0.4}
+          ]}]}"#;
+        let snapshot = parse_usage_snapshot(unknown).unwrap();
+        assert!((snapshot.primary.used_percent - 60.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn ordinary_gemini_ids_match_after_normalizing_case_underscores_and_limit_suffix() {
+        assert!(is_ordinary_gemini_bucket("gemini-5h"));
+        assert!(is_ordinary_gemini_bucket("Gemini_Session"));
+        assert!(is_ordinary_gemini_bucket("GEMINI-WEEKLY limit"));
+        assert!(!is_ordinary_gemini_bucket("gemini-2.5-pro-5h"));
+        assert!(!is_ordinary_gemini_bucket("3p-weekly"));
+        assert!(!is_ordinary_gemini_bucket("gemini-weekly-extra"));
     }
 
     #[test]

@@ -45,6 +45,8 @@ These three fields cross to the frontend only when a provider sets them. The CLI
 
 `Provider::automatic_metric_absent_core_window_prefix()` names extra windows that stand in when a snapshot has no core quota lane (an informational primary and no secondary, model or tertiary lane). Automatic, and Session or Weekly when their lane is missing, then show the most constrained matching window instead of the placeholder. Claude returns `claude-weekly-scoped-`, so an account with only model-scoped weekly limits shows its scoped quota (upstream #4126). Its Daily Routines window and its spend cap never stand in.
 
+Claude reads `limits[]` entry by entry for both OAuth and Web (upstream #4614). A malformed entry or a field of the wrong type does not hide its valid model-scoped siblings, a non-object entry is skipped, and a JSON Boolean is never a percentage.
+
 Automatic ranks its candidate windows by depletion risk (`usage_metric.rs`, upstream #4491): an exhausted window first, then a window whose current pace runs out before its reset (the soonest first), then the highest used percentage. Equal ranks keep the earlier lane. The forecast needs authoritative pace (estimates never forecast), a window with its own length and reset, and at least 3% expected use, so a fresh window doesn't win on a noisy rate. The highest-usage tray icon ranks each provider's selected metric the same way; the forecast counts only when that provider's metric is Automatic. `Provider::automatic_metric_follows_lane_order()` opts out of the ranking for ordered tiers: the first exhausted core lane wins, otherwise the first reported lane. Gemini (Pro before Flash) and Kiro (plan credits before bonus credits) return `true`.
 
 `ProviderFetchResult::with_estimated_quota()` marks quota percentages that a provider computed locally instead of reading from the provider (upstream #4423). The bridge sends `quotaEstimated: true` only for such snapshots, and the tray then puts a `~` before the percentage in the percent icon, the tooltip and the provider status label. OpenCode Go sets it when its local SQLite estimate is shown; a console usage overlay clears it.
@@ -908,6 +910,14 @@ or an OAuth principal, so it can never read a different account's usage:
   answer for a team login into an identity-only row with an unsupported-team
   usage message. On Windows that case shows the original error.
 
+## Antigravity Gemini quota summary
+
+The Antigravity quota summary picks one Gemini row for the primary and secondary windows (upstream #4659).
+
+- The ordinary Gemini buckets win: `gemini-5h` (or a session alias such as `gemini-session`) and `gemini-weekly`. Their IDs are matched after lowercasing, with `_` read as `-` and a trailing ` limit` ignored. Display labels never decide this.
+- A model-specific Gemini allowance, such as `gemini-2.5-pro-5h`, represents Gemini only when the ordinary bucket of that cadence is absent, unknown or disabled.
+- Every bucket stays visible as an extra window with its own usage and reset.
+
 ## Window lengths that match the Mac
 
 These providers set window lengths so their rows get the same pace as in the Mac app, and the tray tint can score them. Where the stored length differs from the Mac's, the row says so:
@@ -1010,6 +1020,7 @@ OpenCode reads usage from `opencode.ai` cookies. Which API it uses depends on th
 - A cookie with only a legacy session (`auth` or `__Host-auth`) keeps the legacy `_server` path and its monthly pay-as-you-go billing fallback.
 - When both cookies are present and the Console call fails, the legacy path is tried. If the legacy path also fails, the Console error is reported, unless the Console error was a 401.
 - OpenCode reuses the OpenCode Go Console client (`providers/opencodego/console.rs`). The monthly Go meter appears only on OpenCode Go.
+- For OpenCode Go, a manual cookie keeps the configured usage source (Auto, Web or Local) instead of forcing Web (upstream #4616). The cookie scopes only the web session. The source label shows the source that actually supplied the result, such as `web` or `local estimate`.
 
 OpenCode Go's local SQLite reader reads only its own `opencode-go` assistant records. OpenAI API-platform usage is a separate provider.
 
@@ -1025,6 +1036,14 @@ Codex local cost prices **Priority (Fast)** turns at the Fast rate.
 - A missing or unreadable database keeps Standard pricing. Turn evidence never crosses `CODEX_HOME` scopes.
 - Models without a Fast rate stay Standard.
 - Older cost caches rebuild once. Codex cache schema v4 records each row's turn id.
+
+### Cursor unified personal spend
+
+Cursor accounts on a unified membership with a user-level limit (`membershipType` starts with `unified_` and `limitType` is `user`) read monthly additional spend from `GET /api/dashboard/v2/usage-status?scope=user`, using the same session cookie.
+
+- A valid, available response supplies the spend, the cap (cents converted to USD) and the reset time. Separate credit consumption is not added to the spend.
+- The read has a five-second budget. If it fails, or the response is unavailable, malformed, or outside its period, the usage-summary values stay in place.
+- A valid zero stays zero. Team budgets, legacy plans and the Grok Bot allowance keep their existing paths.
 
 ## API key notes
 
