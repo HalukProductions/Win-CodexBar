@@ -306,6 +306,28 @@ describe("Settings sidebar", () => {
     ]);
   });
 
+  it("disables restore default order while the order already matches the built-in order", () => {
+    const defaultOrder = providers.map((p) => p.id);
+    render(<Settings state={makeState({ providerDefaultOrder: defaultOrder })} />);
+    fireEvent.click(optionsButton());
+    expect(screen.getByRole("menuitem", { name: "ProviderSidebarRestoreDefaultOrder" })).toBeDisabled();
+    fireEvent.click(optionsButton());
+    fireEvent.keyDown(row("codex"), { key: "ArrowDown", altKey: true });
+    fireEvent.click(optionsButton());
+    expect(screen.getByRole("menuitem", { name: "ProviderSidebarRestoreDefaultOrder" })).toBeEnabled();
+  });
+
+  it("keeps restore default order available while sorting is on, even at the built-in order", () => {
+    const defaultOrder = providers.map((p) => p.id);
+    render(
+      <Settings
+        state={makeState({ providerDefaultOrder: defaultOrder, providersSortedAlphabetically: true })}
+      />,
+    );
+    fireEvent.click(optionsButton());
+    expect(screen.getByRole("menuitem", { name: "ProviderSidebarRestoreDefaultOrder" })).toBeEnabled();
+  });
+
   it("turns sorting back on when restoring the default order fails", async () => {
     mocks.restoreDefaultProviderOrder.mockRejectedValue(new Error("save failed"));
     render(<Settings state={makeState({ providersSortedAlphabetically: true })} />);

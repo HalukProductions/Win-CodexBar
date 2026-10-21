@@ -101,9 +101,9 @@ fn invalid_apply_stops_the_running_server_and_keeps_the_saved_config() {
         let path = temp_config_path();
         let controller = HttpServerController::new(Some(path.clone()));
         let port = free_port();
-        let mut lan = enabled(port);
-        lan.host = "0.0.0.0".to_string();
-        lan.allow_plain_http = true;
+        // The running server stays on loopback: binding 0.0.0.0 here makes
+        // Windows Defender Firewall prompt for every freshly built test exe.
+        let lan = enabled(port);
         let snapshot = controller.apply(lan.clone()).await;
         assert!(
             matches!(snapshot.status, HttpServerStatus::Running { .. }),
@@ -115,8 +115,10 @@ fn invalid_apply_stops_the_running_server_and_keeps_the_saved_config() {
             Some("HTTP/1.1 200 OK")
         );
 
-        // The same config without plain-HTTP consent is invalid.
+        // A LAN address without plain-HTTP consent is invalid, and is rejected
+        // before anything binds.
         let mut invalid = lan.clone();
+        invalid.host = "0.0.0.0".to_string();
         invalid.allow_plain_http = false;
         let snapshot = controller.apply(invalid).await;
         assert_eq!(

@@ -20,6 +20,7 @@ const CLIENT_ID: &str = concat!("123456789012-synthetic-test", ".apps.googleuser
 
 struct RecordedRequest {
     method: String,
+    url: String,
     bearer: Option<String>,
     user_agent: Option<String>,
     json: Option<Value>,
@@ -63,6 +64,7 @@ impl FakeTransport {
             .find(|request| request.method == method)
             .map(|request| RecordedRequest {
                 method: request.method.clone(),
+                url: request.url.clone(),
                 bearer: request.bearer.clone(),
                 user_agent: request.user_agent.clone(),
                 json: request.json.clone(),
@@ -86,6 +88,7 @@ impl RemoteTransport for FakeTransport {
         };
         self.requests.lock().unwrap().push(RecordedRequest {
             method: method.clone(),
+            url: request.url.clone(),
             bearer: request.bearer,
             user_agent: request.user_agent,
             json,
@@ -372,6 +375,50 @@ async fn quota_requests_carry_bearer_and_hub_user_agent() {
     assert_eq!(
         request.json.unwrap()["metadata"]["ideType"],
         json!("ANTIGRAVITY")
+    );
+}
+
+#[tokio::test]
+async fn quota_summary_reads_the_daily_host_and_other_calls_stay_on_stable_host() {
+    let transport = FakeTransport::default()
+        .respond("loadCodeAssist", 200, free_tier())
+        .respond("retrieveUserQuotaSummary", 200, weekly_only_summary());
+    let fetcher = injected(transport, valid_credentials());
+    fetcher.fetch().await.unwrap();
+    let summary = fetcher
+        .transport
+        .request("retrieveUserQuotaSummary")
+        .unwrap();
+    assert_eq!(
+        summary.url,
+        "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
+    );
+    let code_assist = fetcher.transport.request("loadCodeAssist").unwrap();
+    assert_eq!(
+        code_assist.url,
+        "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist"
+    );
+}
+
+#[tokio::test]
+async fn summary_fallback_models_request_stays_on_stable_host() {
+    let transport = FakeTransport::default()
+        .respond("loadCodeAssist", 200, free_tier())
+        .respond("fetchAvailableModels", 200, model(0.5));
+    let fetcher = injected(transport, valid_credentials());
+    fetcher.fetch().await.unwrap();
+    let summary = fetcher
+        .transport
+        .request("retrieveUserQuotaSummary")
+        .unwrap();
+    assert_eq!(
+        summary.url,
+        "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
+    );
+    let models = fetcher.transport.request("fetchAvailableModels").unwrap();
+    assert_eq!(
+        models.url,
+        "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels"
     );
 }
 

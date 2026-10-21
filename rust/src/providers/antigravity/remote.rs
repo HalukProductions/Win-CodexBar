@@ -38,6 +38,9 @@ const MISSING_CLIENT_MESSAGE: &str = "Could not discover a matching Antigravity 
 const LIMITS_NOT_AVAILABLE: &str = "Limits not available";
 
 pub(super) const BASE_URL: &str = "https://cloudcode-pa.googleapis.com";
+/// Current quota lives on the daily host; the OAuth quota summary is read there
+/// while every other Cloud Code call keeps `BASE_URL` (upstream #4632).
+const DAILY_BASE_URL: &str = "https://daily-cloudcode-pa.googleapis.com";
 pub(super) const TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const SUMMARY_TIMEOUT_CAP: Duration = Duration::from_secs(2);
@@ -576,7 +579,7 @@ impl<T: RemoteTransport> RemoteFetcher<T> {
 
         match self
             .post_cloud_code(
-                "retrieveUserQuotaSummary",
+                format!("{DAILY_BASE_URL}/v1internal:retrieveUserQuotaSummary"),
                 &access_token,
                 project_id.as_deref(),
                 self.timeout.min(SUMMARY_TIMEOUT_CAP),
@@ -648,7 +651,7 @@ impl<T: RemoteTransport> RemoteFetcher<T> {
 
     async fn post_cloud_code(
         &self,
-        method: &str,
+        endpoint: String,
         access_token: &str,
         project_id: Option<&str>,
         timeout: Duration,
@@ -657,13 +660,7 @@ impl<T: RemoteTransport> RemoteFetcher<T> {
             Some(project) => json!({ "project": project }),
             None => json!({}),
         };
-        self.post(
-            format!("{BASE_URL}/v1internal:{method}"),
-            access_token,
-            body,
-            timeout,
-        )
-        .await
+        self.post(endpoint, access_token, body, timeout).await
     }
 
     async fn load_code_assist(
@@ -732,7 +729,7 @@ impl<T: RemoteTransport> RemoteFetcher<T> {
     ) -> Result<Vec<RemoteModelQuota>, RemoteError> {
         let response = self
             .post_cloud_code(
-                "fetchAvailableModels",
+                format!("{BASE_URL}/v1internal:fetchAvailableModels"),
                 access_token,
                 project_id,
                 self.timeout,
@@ -778,7 +775,12 @@ impl<T: RemoteTransport> RemoteFetcher<T> {
         project_id: Option<&str>,
     ) -> Result<Option<Vec<RemoteModelQuota>>, RemoteError> {
         let response = self
-            .post_cloud_code("retrieveUserQuota", access_token, project_id, self.timeout)
+            .post_cloud_code(
+                format!("{BASE_URL}/v1internal:retrieveUserQuota"),
+                access_token,
+                project_id,
+                self.timeout,
+            )
             .await
             .and_then(|bytes| decode::<RetrieveUserQuotaResponse>(&bytes));
         match response {

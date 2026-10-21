@@ -174,6 +174,12 @@ export function SettingsSidebar({
   const [undo, setUndo] = useState<ProviderOrderUndo | null>(null);
   const [filterMenu, setFilterMenu] = useState<{ x: number; y: number } | null>(null);
   const undoable = canUndoProviderOrder(undo, ordered.map((p) => p.id));
+  // Restore only has something to do when sorting is on or the order differs from the built-in one.
+  // Without a default order from the shell (older shells), it stays available.
+  const orderIsDefault =
+    settings.providerDefaultOrder !== undefined &&
+    sameIds(ordered.map((p) => p.id), settings.providerDefaultOrder);
+  const canRestoreOrder = sorted || !orderIsDefault;
 
   const rows: ProviderSidebarRow[] = useMemo(() => {
     const snapshotMap = new Map(snapshots.map((s) => [s.providerId, s]));
@@ -352,7 +358,7 @@ export function SettingsSidebar({
             },
             {
               label: t("ProviderSidebarRestoreDefaultOrder"),
-              disabled: saving,
+              disabled: saving || !canRestoreOrder,
               separatorBefore: true,
               run: restoreOrder,
             },
