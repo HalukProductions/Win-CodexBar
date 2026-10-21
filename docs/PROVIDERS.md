@@ -887,9 +887,13 @@ reset-credit lookup. If ACP also fails, the original login error is shown, not
 an ACP error. It never runs for an isolated token account, a saved account row,
 or an OAuth principal, so it can never read a different account's usage:
 
-- The installed `grok agent stdio` is started with no console window and its
-  stderr discarded. Requests are newline-delimited JSON-RPC 2.0 on stdin and
-  stdout.
+- The installed `grok agent stdio` is found the same way as the login flow: the
+  native `~/.grok/bin/grok.exe` first, then `PATH`. It is started with no console
+  window and its stderr discarded. Requests are newline-delimited JSON-RPC 2.0 on
+  stdin and stdout.
+- While waiting for a reply, the client skips non-JSON lines, notifications, and
+  any message with a `method`, even when its `id` matches. Those are requests
+  from the server, not replies.
 - `initialize` is sent first with `protocolVersion` `"1"` and filesystem and
   terminal capabilities off, with a 4-second budget. Then `_x.ai/billing` is
   sent with empty params, with a 3-second budget. The method name is written

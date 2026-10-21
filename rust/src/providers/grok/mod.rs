@@ -37,7 +37,6 @@ const REMAINING_RESETS_ENDPOINT: &str =
 const CLI_SETTINGS_ENDPOINT: &str = "https://cli-chat-proxy.grok.com/v1/settings";
 const RESET_CREDITS_TIMEOUT: Duration = Duration::from_secs(2);
 const RESET_CREDITS_JOIN_GRACE: Duration = Duration::from_millis(250);
-const GROK_CLI_PROGRAM: &str = "grok";
 const GROK_CLI_ACP_ARGS: [&str; 2] = ["agent", "stdio"];
 
 /// Reset-window pace (upstream `GrokProviderDescriptor.pace`, v0.70.0): weekly
@@ -67,12 +66,12 @@ impl CliBillingRunner {
     async fn fetch(&self) -> Result<BearerBilling, ProviderError> {
         match self {
             Self::Installed => {
-                acp::fetch_billing(
-                    GROK_CLI_PROGRAM,
-                    &GROK_CLI_ACP_ARGS,
-                    acp::AcpTimeouts::default(),
-                )
-                .await
+                // The native installer puts grok under ~/.grok/bin, which is
+                // often not on PATH. The login flow's resolver checks that
+                // location first, so the ACP fallback uses the same answer.
+                let program = accounts::login::executable()
+                    .map_err(|_| ProviderError::NotInstalled(acp::CLI_NOT_FOUND.to_string()))?;
+                acp::fetch_billing(&program, &GROK_CLI_ACP_ARGS, acp::AcpTimeouts::default()).await
             }
             #[cfg(test)]
             Self::Fake(run) => run(),

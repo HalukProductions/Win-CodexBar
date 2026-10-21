@@ -1,7 +1,7 @@
 //! Saved Grok CLI logins. Only auth.json identity and tokens move; sessions,
 //! skills, and the rest of ~/.grok stay in the ambient home.
 
-mod login;
+pub(super) mod login;
 mod orca;
 mod orca_runtime;
 mod refresh;
