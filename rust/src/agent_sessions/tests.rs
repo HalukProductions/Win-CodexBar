@@ -674,10 +674,10 @@ bad line
                     let barrier = Arc::clone(&barrier);
                     async move {
                         if host == "broken" {
-                            return AgentSessionHostResult::failed(host, "unreachable");
+                            return Some(AgentSessionHostResult::failed(host, "unreachable"));
                         }
                         barrier.wait().await;
-                        AgentSessionHostResult::success(host, Vec::new())
+                        Some(AgentSessionHostResult::success(host, Vec::new()))
                     }
                 },
             ),
@@ -711,34 +711,122 @@ bad line
         assert_eq!(result, AgentSessionDiscoveryResult::Disabled);
     }
 
+    type SpawnResponse = Result<CommandResult, CommandError>;
+
+    /// Records every process the remote path asks to start, and answers from `respond`.
+    struct RecordingSpawner {
+        spawns: std::sync::Mutex<Vec<(String, Vec<String>)>>,
+        respond: Box<dyn Fn(&str) -> SpawnResponse + Send + Sync>,
+    }
+
+    impl RecordingSpawner {
+        fn new(respond: impl Fn(&str) -> SpawnResponse + Send + Sync + 'static) -> Arc<Self> {
+            Arc::new(Self {
+                spawns: std::sync::Mutex::new(Vec::new()),
+                respond: Box::new(respond),
+            })
+        }
+
+        fn binaries(&self) -> Vec<String> {
+            self.spawns
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|(binary, _)| binary.clone())
+                .collect()
+        }
+
+        /// Host argument of every recorded `ssh` spawn (the word after `--`).
+        fn ssh_hosts(&self) -> Vec<String> {
+            self.spawns
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(binary, _)| binary == "ssh")
+                .filter_map(|(_, args)| {
+                    let index = args.iter().position(|arg| arg == "--")?;
+                    args.get(index + 1).cloned()
+                })
+                .collect()
+        }
+    }
+
+    impl super::remote::RemoteProcessSpawner for RecordingSpawner {
+        fn spawn(
+            &self,
+            binary: &str,
+            options: &CommandOptions,
+        ) -> Result<CommandResult, CommandError> {
+            self.spawns
+                .lock()
+                .unwrap()
+                .push((binary.to_string(), options.extra_args.clone()));
+            (self.respond)(binary)
+        }
+    }
+
+    fn ok_output(text: &str) -> Result<CommandResult, CommandError> {
+        Ok(CommandResult {
+            text: text.to_string(),
+            stderr: String::new(),
+            timed_out: false,
+            exit_code: Some(0),
+        })
+    }
+
+    const TAILSCALE_STATUS_WITH_AUTO_PEER: &str = r#"{
+        "Self": {"DNSName": "this-pc.tailnet.ts.net."},
+        "Peer": {"one": {"DNSName": "auto.example.invalid.", "Online": true}}
+    }"#;
+
+    /// A temp dir holding a standalone Tailscale CLI, plus a `PATH` that finds only it.
+    fn tailscale_on_path() -> (tempfile::TempDir, std::ffi::OsString) {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join(super::remote::TAILSCALE_CLI_FILE_NAME),
+            b"MZ\x90\x00",
+        )
+        .unwrap();
+        let path = std::env::join_paths([dir.path()]).unwrap();
+        (dir, path)
+    }
+
+    fn remote_context(
+        gate: super::remote::RemoteDiscoveryGate,
+        spawner: Arc<RecordingSpawner>,
+        path_var: Option<std::ffi::OsString>,
+    ) -> super::remote::RemoteContext {
+        super::remote::RemoteContext {
+            gate,
+            spawner,
+            path_var,
+        }
+    }
+
+    fn gate_from(open: &Arc<std::sync::atomic::AtomicBool>) -> super::remote::RemoteDiscoveryGate {
+        let open = Arc::clone(open);
+        super::remote::RemoteDiscoveryGate::new(move || open.load(std::sync::atomic::Ordering::SeqCst))
+    }
+
+    fn open_gate(value: bool) -> Arc<std::sync::atomic::AtomicBool> {
+        Arc::new(std::sync::atomic::AtomicBool::new(value))
+    }
+
     #[tokio::test]
     async fn local_only_discovery_never_probes_tailscale_or_fetches_ssh() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
+        let (_dir, path) = tailscale_on_path();
+        let spawner = RecordingSpawner::new(|_| ok_output(TAILSCALE_STATUS_WITH_AUTO_PEER));
+        let ctx = remote_context(
+            super::remote::RemoteDiscoveryGate::new(|| true),
+            spawner.clone(),
+            Some(path),
+        );
 
-        let probes = Arc::new(AtomicUsize::new(0));
-        let fetches = Arc::new(AtomicUsize::new(0));
         let result = AgentSessionDiscovery::default()
-            .scan_with(
-                AgentSessionDiscoveryMode::LocalOnly,
-                || {
-                    let probes = Arc::clone(&probes);
-                    async move {
-                        probes.fetch_add(1, Ordering::SeqCst);
-                        Ok(vec!["peer.example.invalid".to_string()])
-                    }
-                },
-                |_hosts| {
-                    let fetches = Arc::clone(&fetches);
-                    async move {
-                        fetches.fetch_add(1, Ordering::SeqCst);
-                        Vec::new()
-                    }
-                },
-            )
+            .scan_guarded(AgentSessionDiscoveryMode::LocalOnly, &ctx)
             .await;
 
-        assert_eq!(probes.load(Ordering::SeqCst), 0);
-        assert_eq!(fetches.load(Ordering::SeqCst), 0);
+        assert!(spawner.binaries().is_empty(), "no remote process may start");
         let AgentSessionDiscoveryResult::Hosts(hosts) = result else {
             panic!("local-only discovery should return the local host result");
         };
@@ -746,30 +834,159 @@ bad line
         assert!(
             hosts
                 .iter()
-                .all(|host| host.host != "peer.example.invalid" && host.host != "tailscale")
+                .all(|host| host.host != "auto.example.invalid" && host.host != "tailscale")
         );
     }
 
     #[tokio::test]
-    async fn enabled_discovery_merges_manual_and_tailscale_hosts_through_the_seams() {
-        let fetched = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
-        let fetched_for_closure = Arc::clone(&fetched);
-        let _ = AgentSessionDiscovery::default()
-            .scan_with(
+    async fn enabled_discovery_merges_manual_and_tailscale_hosts_through_the_spawner() {
+        let (_dir, path) = tailscale_on_path();
+        let spawner = RecordingSpawner::new(|binary| {
+            if binary == "ssh" {
+                ok_output("[]")
+            } else {
+                ok_output(TAILSCALE_STATUS_WITH_AUTO_PEER)
+            }
+        });
+        let ctx = remote_context(
+            super::remote::RemoteDiscoveryGate::new(|| true),
+            spawner.clone(),
+            Some(path),
+        );
+
+        let result = AgentSessionDiscovery::default()
+            .scan_guarded(
                 AgentSessionDiscoveryMode::Enabled {
                     ssh_hosts: vec!["manual.example.invalid".to_string()],
                 },
-                || async { Ok(vec!["auto.example.invalid".to_string()]) },
-                |hosts| {
-                    *fetched_for_closure.lock().unwrap() = hosts;
-                    async { Vec::new() }
-                },
+                &ctx,
             )
             .await;
 
-        let hosts = fetched.lock().unwrap().clone();
-        assert!(hosts.iter().any(|host| host == "manual.example.invalid"));
-        assert!(hosts.iter().any(|host| host == "auto.example.invalid"));
+        let mut ssh_hosts = spawner.ssh_hosts();
+        ssh_hosts.sort();
+        assert_eq!(
+            ssh_hosts,
+            vec![
+                "auto.example.invalid".to_string(),
+                "manual.example.invalid".to_string()
+            ]
+        );
+        let AgentSessionDiscoveryResult::Hosts(hosts) = result else {
+            panic!("enabled discovery should return host results");
+        };
+        assert_eq!(hosts.len(), 3, "local plus both remote hosts");
+    }
+
+    #[tokio::test]
+    async fn enabled_mode_read_before_local_only_was_turned_on_spawns_nothing() {
+        // The command read `Enabled` before the setting was written; by spawn time the gate is closed.
+        let (_dir, path) = tailscale_on_path();
+        let spawner = RecordingSpawner::new(|_| ok_output(TAILSCALE_STATUS_WITH_AUTO_PEER));
+        let ctx = remote_context(
+            super::remote::RemoteDiscoveryGate::new(|| false),
+            spawner.clone(),
+            Some(path),
+        );
+
+        let result = AgentSessionDiscovery::default()
+            .scan_guarded(
+                AgentSessionDiscoveryMode::Enabled {
+                    ssh_hosts: vec!["manual.example.invalid".to_string()],
+                },
+                &ctx,
+            )
+            .await;
+
+        assert!(spawner.binaries().is_empty(), "no ssh or tailscale spawn");
+        let AgentSessionDiscoveryResult::Hosts(hosts) = result else {
+            panic!("expected local-only host results");
+        };
+        assert_eq!(hosts.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn turning_local_only_on_mid_discovery_stops_later_spawns() {
+        use std::sync::atomic::Ordering;
+
+        // Enabled at start. Tailscale runs; the user turns Local-only on during that probe.
+        let open = open_gate(true);
+        let (_dir, path) = tailscale_on_path();
+        let flip = Arc::clone(&open);
+        let spawner = RecordingSpawner::new(move |binary| {
+            if binary.ends_with(super::remote::TAILSCALE_CLI_FILE_NAME) {
+                flip.store(false, Ordering::SeqCst);
+            }
+            ok_output(TAILSCALE_STATUS_WITH_AUTO_PEER)
+        });
+        let ctx = remote_context(gate_from(&open), spawner.clone(), Some(path));
+
+        let result = AgentSessionDiscovery::default()
+            .scan_guarded(
+                AgentSessionDiscoveryMode::Enabled {
+                    ssh_hosts: vec!["manual.example.invalid".to_string()],
+                },
+                &ctx,
+            )
+            .await;
+
+        let binaries = spawner.binaries();
+        assert_eq!(binaries.len(), 1, "only the Tailscale probe ran: {binaries:?}");
+        assert!(binaries[0].ends_with(super::remote::TAILSCALE_CLI_FILE_NAME));
+        assert!(spawner.ssh_hosts().is_empty(), "no ssh after the toggle");
+        let AgentSessionDiscoveryResult::Hosts(hosts) = result else {
+            panic!("expected local-only host results");
+        };
+        assert_eq!(hosts.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn ssh_results_gathered_before_local_only_turns_on_are_discarded() {
+        use std::sync::atomic::Ordering;
+
+        // The ssh child has already run and answered when the toggle lands. Its row must not appear.
+        let open = open_gate(true);
+        let flip = Arc::clone(&open);
+        let spawner = RecordingSpawner::new(move |_| {
+            flip.store(false, Ordering::SeqCst);
+            ok_output("[]")
+        });
+        let ctx = remote_context(gate_from(&open), spawner.clone(), None);
+
+        let result = AgentSessionDiscovery::default()
+            .scan_guarded(
+                AgentSessionDiscoveryMode::Enabled {
+                    ssh_hosts: vec!["manual.example.invalid".to_string()],
+                },
+                &ctx,
+            )
+            .await;
+
+        assert_eq!(spawner.ssh_hosts(), vec!["manual.example.invalid".to_string()]);
+        let AgentSessionDiscoveryResult::Hosts(hosts) = result else {
+            panic!("expected local-only host results");
+        };
+        assert_eq!(hosts.len(), 1, "remote rows dropped once local-only is on");
+    }
+
+    #[tokio::test]
+    async fn spawn_remote_starts_nothing_while_the_gate_is_closed() {
+        use std::sync::atomic::Ordering;
+
+        let open = open_gate(false);
+        let spawner = RecordingSpawner::new(|_| ok_output("[]"));
+        let ctx = remote_context(gate_from(&open), spawner.clone(), None);
+
+        let closed = super::remote::spawn_remote(&ctx, "ssh".to_string(), CommandOptions::default())
+            .await;
+        assert!(closed.is_none());
+        assert!(spawner.binaries().is_empty());
+
+        open.store(true, Ordering::SeqCst);
+        let opened = super::remote::spawn_remote(&ctx, "ssh".to_string(), CommandOptions::default())
+            .await;
+        assert!(matches!(opened, Some(Ok(_))));
+        assert_eq!(spawner.binaries(), vec!["ssh".to_string()]);
     }
 
     #[test]
