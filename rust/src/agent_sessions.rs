@@ -350,7 +350,8 @@ mod parsers;
 pub mod pi_family;
 mod remote;
 pub use focus::{focus_session, request_session_attention};
-use remote::{HiddenProcessSpawner, RemoteContext, RemoteDiscoveryGate};
+pub(crate) use remote::RemoteDiscoveryGate;
+use remote::{HiddenProcessSpawner, RemoteContext};
 
 struct CodexRollout {
     path: PathBuf,
@@ -889,9 +890,22 @@ impl AgentSessionDiscovery {
         Self { local, remote }
     }
 
+    /// Desktop discovery. Remote work follows the Agent sessions settings, re-read per spawn.
     pub async fn scan(&self, mode: AgentSessionDiscoveryMode) -> AgentSessionDiscoveryResult {
+        self.scan_with_gate(mode, RemoteDiscoveryGate::from_settings())
+            .await
+    }
+
+    /// Discovery with an explicit remote gate. The CLI passes
+    /// `RemoteDiscoveryGate::explicit_request()` because its `--ssh-host` and Tailscale
+    /// discovery are direct requests that do not depend on desktop settings.
+    pub(crate) async fn scan_with_gate(
+        &self,
+        mode: AgentSessionDiscoveryMode,
+        gate: RemoteDiscoveryGate,
+    ) -> AgentSessionDiscoveryResult {
         let ctx = RemoteContext {
-            gate: RemoteDiscoveryGate::from_settings(),
+            gate,
             spawner: Arc::new(HiddenProcessSpawner),
             path_var: std::env::var_os("PATH"),
         };

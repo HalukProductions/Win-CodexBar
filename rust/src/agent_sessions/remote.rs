@@ -21,6 +21,12 @@ impl RemoteDiscoveryGate {
         Self::new(Settings::agent_sessions_remote_allowed_now)
     }
 
+    /// For remote discovery the user asked for directly, such as `codexbar sessions
+    /// --ssh-host`. Desktop "Agent sessions" and "Local sessions only" do not apply.
+    pub(crate) fn explicit_request() -> Self {
+        Self::new(|| true)
+    }
+
     pub(crate) fn new(allowed: impl Fn() -> bool + Send + Sync + 'static) -> Self {
         Self {
             allowed: Arc::new(allowed),

@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::settings::Settings;
     use chrono::TimeZone;
     use std::fs;
     use std::io;
@@ -987,6 +988,92 @@ bad line
             .await;
         assert!(matches!(opened, Some(Ok(_))));
         assert_eq!(spawner.binaries(), vec!["ssh".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn cli_explicit_request_runs_remote_discovery_with_desktop_setting_off() {
+        // `codexbar sessions --ssh-host` uses the explicit gate. Desktop settings are
+        // off or missing here, and the requested host and Tailscale peer still run.
+        let (_dir, path) = tailscale_on_path();
+        let spawner = RecordingSpawner::new(|binary| {
+            if binary == "ssh" {
+                ok_output("[]")
+            } else {
+                ok_output(TAILSCALE_STATUS_WITH_AUTO_PEER)
+            }
+        });
+        let ctx = remote_context(
+            super::remote::RemoteDiscoveryGate::explicit_request(),
+            spawner.clone(),
+            Some(path),
+        );
+        assert!(!Settings::default().agent_sessions_remote_allowed());
+
+        let result = AgentSessionDiscovery::default()
+            .scan_guarded(
+                AgentSessionDiscoveryMode::Enabled {
+                    ssh_hosts: vec!["manual.example.invalid".to_string()],
+                },
+                &ctx,
+            )
+            .await;
+
+        let binaries = spawner.binaries();
+        assert_eq!(
+            binaries.len(),
+            3,
+            "one Tailscale probe plus one ssh per host: {binaries:?}"
+        );
+        assert_eq!(
+            binaries
+                .iter()
+                .filter(|binary| binary.ends_with(super::remote::TAILSCALE_CLI_FILE_NAME))
+                .count(),
+            1
+        );
+        let mut ssh_hosts = spawner.ssh_hosts();
+        ssh_hosts.sort();
+        assert_eq!(
+            ssh_hosts,
+            vec![
+                "auto.example.invalid".to_string(),
+                "manual.example.invalid".to_string()
+            ]
+        );
+        let AgentSessionDiscoveryResult::Hosts(hosts) = result else {
+            panic!("CLI discovery should return host results");
+        };
+        assert_eq!(hosts.len(), 3, "local plus both remote hosts");
+    }
+
+    #[tokio::test]
+    async fn desktop_discovery_stays_blocked_while_the_setting_is_off_or_missing() {
+        // Desktop gate: `Settings::default()` is what a missing or unreadable settings.json
+        // resolves to, and it has Agent sessions off.
+        let (_dir, path) = tailscale_on_path();
+        let spawner = RecordingSpawner::new(|_| ok_output(TAILSCALE_STATUS_WITH_AUTO_PEER));
+        let ctx = remote_context(
+            super::remote::RemoteDiscoveryGate::new(|| {
+                Settings::default().agent_sessions_remote_allowed()
+            }),
+            spawner.clone(),
+            Some(path),
+        );
+
+        let result = AgentSessionDiscovery::default()
+            .scan_guarded(
+                AgentSessionDiscoveryMode::Enabled {
+                    ssh_hosts: vec!["manual.example.invalid".to_string()],
+                },
+                &ctx,
+            )
+            .await;
+
+        assert!(spawner.binaries().is_empty(), "no ssh or tailscale spawn");
+        let AgentSessionDiscoveryResult::Hosts(hosts) = result else {
+            panic!("expected local-only host results");
+        };
+        assert_eq!(hosts.len(), 1);
     }
 
     #[test]
