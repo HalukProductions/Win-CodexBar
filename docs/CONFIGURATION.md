@@ -44,6 +44,7 @@ The app keeps its files in `%APPDATA%\CodexBar` (`dirs::config_dir()` plus `Code
 | `grok-accounts\accounts.json` | `%APPDATA%\CodexBar` | Yes | Saved Grok logins |
 | `codex-accounts\accounts.json` | `%APPDATA%\CodexBar` | Yes | Codex accounts |
 | `codex-accounts\snapshots.json` | `%APPDATA%\CodexBar` | No | Codex account usage snapshots |
+| `provider-account-usage-v1.json` | `%APPDATA%\CodexBar` | Yes | Last successful usage per Claude token account: rate windows and update time only, no credentials or identity |
 | `history\quota-burndown-v1.json` | `%APPDATA%\CodexBar` | Yes | Quota history |
 | `claude\quota-reset-observations-v1.json`, `codex\quota-reset-observations-v1.json` | `%APPDATA%\CodexBar` | Yes | Observed reset times |
 | `hooks.json` | `%APPDATA%\CodexBar` | No | Hook rules |
@@ -197,7 +198,7 @@ These controls set the tray icon.
 - **Color Pace Indicator** tints a single-provider icon green when usage is behind pace and red when it is ahead. Stacked icons keep the usage color. [ARCHITECTURE.md](./ARCHITECTURE.md#tray-icon) explains how the window is picked.
 - Icon style, **Show every provider** and **Show most-used provider** are disabled while the icon is stacked.
 - The Overview can hold up to 6 providers.
-- **Show all accounts in Overview** expands Codex into one row per cached Codex account, using only usage already cached on this machine; it never starts a fetch. Rows count against the 6-provider limit as one provider. Claude and token accounts stay as one card each. Local-log charts and conversations are not shown on account rows. With Hide personal information on, rows read `Account 1`, `Account 2` and so on.
+- **Show all accounts in Overview** expands Codex into one row per cached Codex account, and Claude into one row per saved Claude token account when two or more are saved. Rows use only usage already cached on this machine and never start a fetch. Rows do not take provider slots in the 6-provider limit. A token account's usage is cached when its refresh succeeds while it is the active account, and the cache lives in `provider-account-usage-v1.json`. A saved account that has never been the active one shows `No usage data` until it is. Removing a token account, or clearing a provider's credentials, drops its cached usage. Token edits do not emit an event, so the Claude rows pick up renamed or new accounts on the next refresh. claude-swap accounts and managed Claude logins stay one card each. Local-log charts and conversations are not shown on account rows. With Hide personal information on, rows read `Account 1`, `Account 2` and so on; Claude rows number accounts by their sorted id, as the Claude accounts list does.
 - In `settings.json`, `tray_icon_mode` is lowercase: `single`, `perprovider` or `stacked`.
 
 ### Menu
