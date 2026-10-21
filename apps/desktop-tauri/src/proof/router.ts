@@ -327,6 +327,14 @@ export function createProofRouter(
     get_token_account_providers: () =>
       claudeTokenAccounts ? [tokenAccountSupport("claude")] : [],
     get_token_accounts: (args) => tokenAccounts(stringArg(args, "providerId")),
+    // Cache-only read: serves the scenario's per-account usage for Claude token rows.
+    get_provider_account_usage: (args) => {
+      const providerId = stringArg(args, "providerId");
+      return {
+        providerId,
+        accounts: providerId === "claude" ? (scenario.claudeTokenAccountUsage ?? {}) : {},
+      };
+    },
     set_token_account_claude_config_dir: (args) => {
       const accountId = stringArg(args, "accountId");
       const directory = typeof args.directory === "string" ? args.directory : null;

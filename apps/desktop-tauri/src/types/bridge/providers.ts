@@ -176,6 +176,26 @@ export interface ProviderTokenAccountsBridge {
   activeIndex: number;
 }
 
+/** One rate window of a saved token account's last successful fetch. */
+export interface AccountUsageWindowBridge {
+  usedPercent: number;
+  windowMinutes?: number | null;
+  resetsAt?: string | null;
+}
+
+/** A saved token account's last successful usage. Holds no identity, plan or error. */
+export interface AccountUsageEntryBridge {
+  primary: AccountUsageWindowBridge | null;
+  secondary: AccountUsageWindowBridge | null;
+  updatedAt: string;
+}
+
+/** Cached per-account usage for one provider, keyed by token account id. Cache-only. */
+export interface ProviderAccountUsageBridge {
+  providerId: string;
+  accounts: Record<string, AccountUsageEntryBridge>;
+}
+
 // ── Phase 4 — credential detection ───────────────────────────────────
 
 export interface GeminiCliStatus {

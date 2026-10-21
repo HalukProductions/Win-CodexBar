@@ -130,7 +130,7 @@
       "query": "window=main&fixture=overview-all-accounts",
       "size": [310, 1032],
       "steps": [
-        { "expectText": ["work@example.com", "personal@example.com", "Claude"] },
+        { "expectText": ["work@example.com", "personal@example.com", "Claude", "Work", "Personal", "No usage data"] },
         { "screenshot": "tray-overview-all-accounts", "clip": "panel" }
       ]
     },
@@ -139,7 +139,7 @@
       "query": "window=main&fixture=overview-all-accounts-private",
       "size": [310, 1032],
       "steps": [
-        { "expectText": ["Account 1", "Account 2"] },
+        { "expectText": ["Account 1", "Account 2", "No usage data"] },
         { "expectNoText": ["work@example.com", "personal@example.com"] },
         { "screenshot": "tray-overview-all-accounts-private", "clip": "panel" }
       ]

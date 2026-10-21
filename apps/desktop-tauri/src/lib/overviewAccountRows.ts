@@ -1,5 +1,8 @@
 import { buildCodexAccountSurfaceLabels } from "../components/codexAccountDisplay";
+import { buildAccountOrdinals } from "../components/claudeAccountDisplay";
 import type {
+  AccountUsageEntryBridge,
+  AccountUsageWindowBridge,
   CodexAccount,
   CodexAccountUsageSnapshot,
   CodexUsageWindow,
@@ -16,6 +19,15 @@ export interface CodexOverviewAccounts {
   snapshots: Readonly<Record<string, CodexAccountUsageSnapshot>>;
   displayNames?: Readonly<Record<string, string>>;
   accountOrdinals: Readonly<Record<string, number>>;
+}
+
+/**
+ * Saved Claude token accounts and their last successful usage. Both come from
+ * cache-only reads (`get_token_accounts`, `get_provider_account_usage`).
+ */
+export interface ClaudeTokenOverviewAccounts {
+  accounts: readonly { id: string; label: string }[];
+  usage: Readonly<Record<string, AccountUsageEntryBridge>>;
 }
 
 export interface OverviewEntry {
@@ -35,29 +47,49 @@ export interface OverviewRowOptions {
 }
 
 const CODEX_PROVIDER_ID = "codex";
+const CLAUDE_PROVIDER_ID = "claude";
 
 /**
  * Expand each Overview provider into one row per cached account. Only the
  * already-selected providers are passed in, so rows never take a provider slot.
  *
- * Codex is the only provider with per-account usage cached on Windows; the other
- * multi-account sources (claude-swap, saved token accounts) are not cached per
- * account and stay as one card. A provider with at most one cached account keeps
- * its single card. Each row is built from that account's own snapshot and never
- * borrows the active account's quota, plan or email.
+ * Codex expands over its managed accounts; Claude expands over its saved token
+ * accounts. claude-swap and managed Claude accounts are not expanded here: they
+ * stay one card. A provider with at most one account keeps its single card. Each
+ * row is built from that account's own data and never borrows the active
+ * account's quota, plan, email or cost.
  */
 export function expandOverviewAccountRows(
   providers: readonly ProviderUsageSnapshot[],
   codex: CodexOverviewAccounts | null,
   options: OverviewRowOptions,
+  claudeTokens: ClaudeTokenOverviewAccounts | null = null,
 ): OverviewEntry[] {
   const plain = (provider: ProviderUsageSnapshot): OverviewEntry => ({
     key: provider.providerId,
     provider,
     accountId: null,
   });
-  if (!codex || codex.accounts.length <= 1) return providers.map(plain);
+  return providers.flatMap((provider): OverviewEntry[] => {
+    if (provider.providerId === CODEX_PROVIDER_ID && codex && codex.accounts.length > 1) {
+      return codexAccountRows(provider, codex, options);
+    }
+    if (
+      provider.providerId === CLAUDE_PROVIDER_ID &&
+      claudeTokens &&
+      claudeTokens.accounts.length > 1
+    ) {
+      return claudeTokenAccountRows(provider, claudeTokens, options);
+    }
+    return [plain(provider)];
+  });
+}
 
+function codexAccountRows(
+  provider: ProviderUsageSnapshot,
+  codex: CodexOverviewAccounts,
+  options: OverviewRowOptions,
+): OverviewEntry[] {
   const labels = buildCodexAccountSurfaceLabels(
     codex.accounts,
     codex.displayNames ?? {},
@@ -65,23 +97,46 @@ export function expandOverviewAccountRows(
     options.hidePersonalInfo,
     options.accountWord,
   );
-  return providers.flatMap((provider): OverviewEntry[] => {
-    if (provider.providerId !== CODEX_PROVIDER_ID) return [plain(provider)];
-    return codex.accounts.map((account) => ({
+  return codex.accounts.map((account) => ({
+    key: `${provider.providerId}/account/${account.id}`,
+    provider: codexAccountOverviewSnapshot(
+      provider,
+      codex.snapshots[account.id] ?? null,
+      labels[account.id] ?? "",
+      options.unavailableText,
+    ),
+    accountId: account.id,
+  }));
+}
+
+function claudeTokenAccountRows(
+  provider: ProviderUsageSnapshot,
+  claude: ClaudeTokenOverviewAccounts,
+  options: OverviewRowOptions,
+): OverviewEntry[] {
+  const ordinals = buildAccountOrdinals(claude.accounts);
+  return claude.accounts.map((account) => {
+    const ordinal = ordinals[account.id];
+    const label = options.hidePersonalInfo
+      ? ordinal === undefined
+        ? "••••"
+        : `${options.accountWord} ${ordinal}`
+      : account.label;
+    return {
       key: `${provider.providerId}/account/${account.id}`,
-      provider: codexAccountOverviewSnapshot(
+      provider: claudeTokenAccountOverviewSnapshot(
         provider,
-        codex.snapshots[account.id] ?? null,
-        labels[account.id] ?? "",
+        claude.usage[account.id] ?? null,
+        label,
         options.unavailableText,
       ),
       accountId: account.id,
-    }));
+    };
   });
 }
 
 /**
- * Build one account's card model. Only display identity (provider id, name,
+ * Build one Codex account's card model. Only display identity (provider id, name,
  * source) comes from the provider card; plan, email, windows and cost come from
  * this account's own usage record.
  */
@@ -119,14 +174,72 @@ function codexAccountOverviewSnapshot(
   };
 }
 
+/**
+ * Build one Claude token account's card model from its cached last-fetched usage.
+ * The cache holds windows and an update time only, so plan, cost and subscription
+ * stay empty. A missing entry renders as "No usage data" with an empty update time
+ * ("Not fetched yet"); it never shows the active account's time.
+ */
+function claudeTokenAccountOverviewSnapshot(
+  base: ProviderUsageSnapshot,
+  entry: AccountUsageEntryBridge | null,
+  label: string,
+  unavailableText: string,
+): ProviderUsageSnapshot {
+  const primaryWindow = claudeRateWindow(entry?.primary);
+  const secondaryWindow = claudeRateWindow(entry?.secondary);
+  const hasUsage = primaryWindow !== null || secondaryWindow !== null;
+  const primary = primaryWindow ?? emptyRateWindow();
+  return {
+    providerId: base.providerId,
+    displayName: base.displayName,
+    primary,
+    selectedMetric: primary,
+    secondary: secondaryWindow,
+    modelSpecific: null,
+    tertiary: null,
+    extraRateWindows: [],
+    cost: null,
+    subscription: null,
+    planName: null,
+    accountEmail: label.trim() || null,
+    sourceLabel: base.sourceLabel,
+    updatedAt: entry?.updatedAt ?? "",
+    error: hasUsage ? null : unavailableText,
+    errorState: hasUsage ? "ready" : "unknown",
+    pace: null,
+    accountOrganization: null,
+    trayStatusLabel: null,
+  };
+}
+
 function codexRateWindow(window: CodexUsageWindow | null | undefined): RateWindowSnapshot | null {
   if (!window) return null;
-  const usedPercent = Math.min(100, Math.max(0, window.usedPercent));
+  return rateWindow(
+    window.usedPercent,
+    window.limitWindowSeconds > 0 ? Math.round(window.limitWindowSeconds / 60) : null,
+    window.resetAt,
+  );
+}
+
+function claudeRateWindow(
+  window: AccountUsageWindowBridge | null | undefined,
+): RateWindowSnapshot | null {
+  if (!window) return null;
+  return rateWindow(window.usedPercent, window.windowMinutes ?? null, window.resetsAt ?? null);
+}
+
+function rateWindow(
+  rawUsedPercent: number,
+  windowMinutes: number | null,
+  resetsAt: string | null,
+): RateWindowSnapshot {
+  const usedPercent = Math.min(100, Math.max(0, rawUsedPercent));
   return {
     usedPercent,
     remainingPercent: 100 - usedPercent,
-    windowMinutes: window.limitWindowSeconds > 0 ? Math.round(window.limitWindowSeconds / 60) : null,
-    resetsAt: window.resetAt,
+    windowMinutes,
+    resetsAt,
     resetDescription: null,
     isExhausted: usedPercent >= 100,
     reservePercent: null,
