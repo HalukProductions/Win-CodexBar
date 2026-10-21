@@ -79,6 +79,7 @@ export const INERT_ACTIONS = [
   "remove_manual_cookie",
   "remove_openrouter_management_api_key",
   "remove_token_account",
+  "remove_vercel_access_token",
   "revoke_provider_credentials",
   "save_hooks_config",
   "set_active_token_account",
@@ -93,6 +94,7 @@ export const INERT_ACTIONS = [
   "set_provider_region",
   "set_provider_usage_source",
   "set_provider_workspace_id",
+  "set_vercel_access_token",
   "trigger_provider_login",
   "unregister_global_shortcut",
   "write_usage_spend_export",
@@ -312,6 +314,7 @@ export function createProofRouter(
     get_api_keys: () => [],
     get_api_key_providers: () => [],
     has_openrouter_management_api_key: () => false,
+    has_vercel_access_token: () => false,
     get_manual_cookies: () => [],
     list_detected_browsers: (args) =>
       scenario.detectedBrowsers ?? [

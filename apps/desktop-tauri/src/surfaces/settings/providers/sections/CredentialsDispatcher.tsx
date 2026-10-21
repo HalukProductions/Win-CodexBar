@@ -5,6 +5,7 @@ import { JetBrainsCreds } from "./credentials/JetBrainsCreds";
 import { KiroCreds } from "./credentials/KiroCreds";
 import { hasWorkspaceExtra, OpenAiExtras } from "./credentials/OpenAiExtras";
 import { OpenRouterManagementCreds } from "./credentials/OpenRouterManagementCreds";
+import { VercelAccessTokenCreds } from "./credentials/VercelAccessTokenCreds";
 
 interface Props {
   providerId: string;
@@ -28,6 +29,13 @@ export function CredentialsDispatcher({ providerId, t }: Props) {
       return <KiroCreds t={t} />;
     case "openrouter":
       return <OpenRouterManagementCreds t={t} />;
+    case "vercel":
+      return (
+        <>
+          <VercelAccessTokenCreds t={t} />
+          <OpenAiExtras providerId={providerId} t={t} />
+        </>
+      );
     default:
       return hasWorkspaceExtra(providerId) ? (
         <OpenAiExtras providerId={providerId} t={t} />

@@ -40,6 +40,7 @@ export const PROOF_SCENARIO_NAMES = [
   "kpi-long-titles",
   "claudeplatform",
   "cookie-no-browsers",
+  "vercel",
 ] as const;
 
 export type ProofScenarioName = (typeof PROOF_SCENARIO_NAMES)[number];
@@ -210,6 +211,53 @@ function claudePlatformSnapshot(now: Date): ProviderUsageSnapshot {
       secondaryLabel: "Purchased credit",
       accountOrganization: "Example Studio",
       sourceLabel: "web",
+    },
+  );
+}
+
+/**
+ * Opt-in personal AI Gateway budget (synthetic): spend, limit and remaining
+ * rows under a "Personal budget" section, with the team as the organization.
+ */
+function vercelSnapshot(now: Date): ProviderUsageSnapshot {
+  return providerSnapshot(
+    {
+      providerId: "vercel",
+      displayName: "Vercel",
+      primary: rateWindow(now, 42, MONTH_MINUTES, 17 * DAY_MINUTES),
+      primaryLabel: "Personal budget",
+      updatedAt: isoBefore(now, 2),
+    },
+    {
+      secondary: null,
+      accountOrganization: "Example Team",
+      sourceLabel: "api",
+      displayDetails: [
+        {
+          id: "vercel-budget-spend",
+          sectionTitle: "Personal budget",
+          title: "Spend",
+          value: "$42.00",
+          secondaryValue: null,
+          progress: null,
+        },
+        {
+          id: "vercel-budget-limit",
+          sectionTitle: "Personal budget",
+          title: "Limit",
+          value: "$100.00",
+          secondaryValue: null,
+          progress: null,
+        },
+        {
+          id: "vercel-budget-remaining",
+          sectionTitle: "Personal budget",
+          title: "Remaining",
+          value: "$58.00",
+          secondaryValue: null,
+          progress: null,
+        },
+      ],
     },
   );
 }
@@ -777,6 +825,19 @@ function claudePlatformScenario(now: Date): ProofScenario {
   };
 }
 
+/** Synthetic personal-budget card and settings pane for the opt-in Vercel budget. */
+function vercelScenario(now: Date): ProofScenario {
+  return {
+    name: "vercel",
+    settings: baseSettings({ enabledProviders: ["vercel"] }),
+    catalog: PROOF_PROVIDER_CATALOG,
+    providers: [vercelSnapshot(now)],
+    codexAccounts: emptyCodexAccounts(),
+    claudeAccounts: [],
+    localSpend: [],
+  };
+}
+
 /**
  * Default data on a machine with no importable browser, so the cookie section
  * shows its empty-state hint beside the paste box.
@@ -805,6 +866,7 @@ const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   "kpi-long-titles": kpiLongTitlesScenario,
   claudeplatform: claudePlatformScenario,
   "cookie-no-browsers": cookieNoBrowsersScenario,
+  vercel: vercelScenario,
 };
 
 export function isProofScenarioName(value: string): value is ProofScenarioName {

@@ -43,6 +43,13 @@ export const SHELL_LOCALE_KEYS = [
   "OpenRouterManagementKeyLabel",
   "OpenRouterManagementKeyHelp",
   "OpenRouterManagementKeyConfigured",
+  "VercelAccessTokenTitle",
+  "VercelAccessTokenLabel",
+  "VercelAccessTokenHelp",
+  "VercelAccessTokenConfigured",
+  "VercelTeamTitle",
+  "VercelTeamIdLabel",
+  "VercelTeamIdHelp",
   "CredsOpenAiHistoryHelp",
   // Phase 6e — Token accounts (review)
   "TokenAccountActive",
