@@ -47,6 +47,7 @@ fn sample_swap_account() -> ClaudeSwapAccount {
         action: Some(crate::providers::claude::claude_swap::ClaudeSwapAccountAction::Switch),
         is_disabled: false,
         spend: None,
+        usage_fetched_at: None,
         historical_usage: None,
         session_equivalent_forecast: None,
     }

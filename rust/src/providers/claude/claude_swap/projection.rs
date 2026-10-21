@@ -46,6 +46,9 @@ pub struct ClaudeSwapAccount {
     pub seven_day: Option<ClaudeSwapUsageWindowDto>,
     pub scoped: Vec<ClaudeSwapScopedWindowDto>,
     pub spend: Option<ClaudeSwapSpendWindowDto>,
+    /// When the live measurement above was fetched (claude-swap's per-account
+    /// cache can be minutes old). `None` when the row reported no live usage.
+    pub usage_fetched_at: Option<chrono::DateTime<chrono::Utc>>,
     pub historical_usage: Option<ClaudeSwapHistoricalUsageDto>,
     /// Filled by [`super::attach_session_forecasts`]; projection alone never
     /// has the account's history.
@@ -309,6 +312,7 @@ pub fn project_accounts(
                 seven_day: to_window(&row.usage.seven_day),
                 scoped: row.usage.scoped.iter().map(to_scoped_window).collect(),
                 spend: to_spend(&row.usage.spend),
+                usage_fetched_at: row.usage_fetched_at,
                 historical_usage: to_historical_usage(&row.historical_usage),
                 session_equivalent_forecast: None,
             }
