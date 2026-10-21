@@ -15,6 +15,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::agent_sessions::claude_desktop::{
+    ClaudeDesktopCostRoots, ClaudeDesktopProjectsLocator, cost_scan_budget,
+};
 #[cfg(test)]
 use crate::codex_costs::tests::scan_codex_file_cost;
 use crate::codex_costs::{
@@ -335,6 +338,7 @@ pub struct CostScanner {
     /// ambient `CODEX_HOME` database is used, unless sessions dirs are injected.
     codex_trace_database_override: Option<PathBuf>,
     claude_account_directory: ClaudeAccountDirectory,
+    claude_desktop_app_data: ClaudeDesktopAppData,
 }
 
 /// Where a Claude scan learns the config directory mapped to the active token
@@ -358,6 +362,29 @@ impl Default for ClaudeAccountDirectory {
     }
 }
 
+/// Where a Claude scan finds Claude Desktop application data, which holds
+/// Cowork audit transcripts and Desktop project stores (upstream 0.77.1 #3209).
+#[derive(Debug, Clone)]
+enum ClaudeDesktopAppData {
+    /// The per-user Claude Desktop folders: classic `%APPDATA%\Claude` and the
+    /// Microsoft Store package stores.
+    Discover,
+    /// Explicit application-data roots. Unit tests use this so the developer's
+    /// real Desktop folders never reach a fixture.
+    Fixed(Vec<PathBuf>),
+}
+
+impl Default for ClaudeDesktopAppData {
+    fn default() -> Self {
+        // Unit tests never read the developer's real Claude Desktop folders.
+        if cfg!(test) {
+            Self::Fixed(Vec::new())
+        } else {
+            Self::Discover
+        }
+    }
+}
+
 impl CostScanner {
     /// Create a new scanner for the last N days (default 60s cache debounce).
     pub fn new(days: u32) -> Self {
@@ -374,6 +401,7 @@ impl CostScanner {
             sessions_dirs_override: None,
             codex_trace_database_override: None,
             claude_account_directory: ClaudeAccountDirectory::default(),
+            claude_desktop_app_data: ClaudeDesktopAppData::default(),
         }
     }
 
@@ -410,6 +438,14 @@ impl CostScanner {
     /// active Claude token account; None keeps the combined history.
     pub fn with_claude_account_config_dir(mut self, dir: Option<PathBuf>) -> Self {
         self.claude_account_directory = ClaudeAccountDirectory::Fixed(dir);
+        self
+    }
+
+    /// Discover Claude Desktop cost roots below these application-data
+    /// directories instead of the per-user Desktop folders.
+    #[cfg(test)]
+    pub(crate) fn with_claude_desktop_app_data(mut self, roots: Vec<PathBuf>) -> Self {
+        self.claude_desktop_app_data = ClaudeDesktopAppData::Fixed(roots);
         self
     }
 
@@ -648,6 +684,10 @@ impl CostScanner {
     /// Existing Claude transcript roots: the profile root plus claude-swap
     /// session homes, de-duplicated by resolved path, or only the projects
     /// directory of the config directory mapped to the active token account.
+    ///
+    /// Claude Desktop roots (Cowork audit files and Desktop project stores) are
+    /// part of the default history only. A mapped token account and a set
+    /// `CLAUDE_CONFIG_DIR` both leave them out, as upstream's `costProjectsRoots`.
     fn claude_projects_roots(&self) -> claude_roots::ClaudeProjectsRoots {
         let account_dir = match &self.claude_account_directory {
             ClaudeAccountDirectory::ActiveTokenAccount => {
@@ -658,10 +698,27 @@ impl CostScanner {
         if let Some(dir) = account_dir {
             return claude_roots::claude_account_projects_roots(&dir);
         }
-        claude_roots::claude_projects_roots(
-            std::env::var("CLAUDE_CONFIG_DIR").ok().as_deref(),
+        let config_dir = std::env::var("CLAUDE_CONFIG_DIR").ok();
+        let mut roots = claude_roots::claude_projects_roots(
+            config_dir.as_deref(),
             crate::pi_session_cost::scan_home().as_deref(),
-        )
+        );
+        if claude_roots::config_dir_is_unset(config_dir.as_deref()) {
+            let desktop = self.claude_desktop_cost_roots();
+            roots.add_desktop_roots(desktop.paths, desktop.complete);
+        }
+        roots
+    }
+
+    /// Claude Desktop cost roots from the configured application-data source.
+    fn claude_desktop_cost_roots(&self) -> ClaudeDesktopCostRoots {
+        let mut budget = cost_scan_budget();
+        match &self.claude_desktop_app_data {
+            ClaudeDesktopAppData::Discover => ClaudeDesktopProjectsLocator::cost_roots(&mut budget),
+            ClaudeDesktopAppData::Fixed(roots) => {
+                ClaudeDesktopProjectsLocator::cost_roots_under(roots, &mut budget)
+            }
+        }
     }
 
     /// Stream every in-window Claude usage record, de-duplicated across all
@@ -729,8 +786,33 @@ impl CostScanner {
         F: FnMut(&Path),
     {
         roots.iter().fold(0u32, |failures, root| {
-            failures.saturating_add(self.walk_claude_files(root, cutoff, cancel, on_file))
+            failures.saturating_add(self.walk_claude_root(root, cutoff, cancel, on_file))
         })
+    }
+
+    /// Walk one root. A directory is walked for transcripts. A file root is
+    /// read directly when it is a `.jsonl` transcript, as Cowork audit files
+    /// are. Any other file cannot be a transcript root and counts as unreadable.
+    fn walk_claude_root<F>(
+        &self,
+        root: &Path,
+        cutoff: &DateTime<Utc>,
+        cancel: Option<&AtomicBool>,
+        on_file: &mut F,
+    ) -> u32
+    where
+        F: FnMut(&Path),
+    {
+        match fs::metadata(root) {
+            Ok(metadata) if metadata.is_file() => {
+                if root.extension().is_some_and(|e| e == "jsonl") {
+                    visit_transcript(root, &metadata, cutoff, on_file)
+                } else {
+                    1
+                }
+            }
+            _ => self.walk_claude_files(root, cutoff, cancel, on_file),
+        }
     }
 
     fn walk_claude_files<F>(
@@ -770,20 +852,36 @@ impl CostScanner {
                         .saturating_add(self.walk_claude_files(&path, cutoff, cancel, on_file));
                 }
                 Ok(metadata) if path.extension().is_some_and(|e| e == "jsonl") => {
-                    match metadata.modified() {
-                        Ok(modified) => {
-                            let modified_dt: DateTime<Utc> = modified.into();
-                            if modified_dt >= *cutoff {
-                                on_file(&path);
-                            }
-                        }
-                        Err(_) => read_failures = read_failures.saturating_add(1),
-                    }
+                    read_failures = read_failures
+                        .saturating_add(visit_transcript(&path, &metadata, cutoff, on_file));
                 }
                 Ok(_) => {}
                 Err(_) => read_failures = read_failures.saturating_add(1),
             }
         }
         read_failures
+    }
+}
+
+/// Hands a transcript to `on_file` when it was modified inside the window.
+/// Returns 1 when its modification time cannot be read.
+fn visit_transcript<F>(
+    path: &Path,
+    metadata: &fs::Metadata,
+    cutoff: &DateTime<Utc>,
+    on_file: &mut F,
+) -> u32
+where
+    F: FnMut(&Path),
+{
+    match metadata.modified() {
+        Ok(modified) => {
+            let modified_dt: DateTime<Utc> = modified.into();
+            if modified_dt >= *cutoff {
+                on_file(path);
+            }
+            0
+        }
+        Err(_) => 1,
     }
 }

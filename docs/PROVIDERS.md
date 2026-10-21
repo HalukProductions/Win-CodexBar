@@ -826,6 +826,46 @@ Origin: https://app.cosmicjs.com
 - 401, 403, and 429 report their status; response bodies are never echoed in
   errors.
 
+### Vercel AI Gateway
+
+By default the card shows the team's AI Gateway balance and lifetime spend. It
+reads `GET https://ai-gateway.vercel.sh/v1/credits` with `AI_GATEWAY_API_KEY`
+(or the key saved in Settings) and reports no quota percentage.
+
+The personal budget is opt-in and off until you add a Vercel access token. In
+Settings → Providers → Vercel, enter the **Access token** and the **Team ID**, or
+set `VERCEL_ACCESS_TOKEN` and `VERCEL_TEAM_ID`. The token is stored with the
+provider's secret settings, like the OpenRouter management key, is redacted from
+config dumps and is never logged. The Team ID is stored in the provider's
+workspace slot and is validated before any request. Clearing the token returns
+the card to team credits.
+
+With a token, the provider makes these read-only requests to `api.vercel.com`:
+
+```text
+GET https://api.vercel.com/v2/user
+GET https://api.vercel.com/ai-gateway/budgets/list?teamId=<team>&scopeType=user&limit=200&cursor=<next>
+Authorization: Bearer <access token>
+```
+
+- The budget list is followed by its cursor for at most 20 pages. A repeated
+  cursor or a page limit reached before the list ends fails the refresh.
+- A budget applies to the token's user when its scope ID is the user's ID or
+  the `usr_`-prefixed form. A custom budget wins over an inherited default. Two
+  budgets that both apply are ambiguous and fail the refresh.
+- With no applicable budget, the card shows "No personal budget configured",
+  not zero spend.
+- The primary window shows spend as a share of the limit. Rows under
+  **Personal budget** show Spend, Limit and Remaining (never below zero).
+- Daily, weekly and monthly budgets reset at UTC boundaries: midnight UTC each
+  day, Monday 00:00 UTC each week, and the first day of the month at 00:00 UTC.
+  A `none` budget is cumulative and has no reset.
+
+The access token is sent only to `api.vercel.com`. The AI Gateway key is sent
+only to `ai-gateway.vercel.sh`. 401 asks you to check the token; 403, 429 and 5xx
+report their status. A token without a Team ID fails with a message that asks
+for one. Response bodies are never echoed in errors.
+
 ## Antigravity Gemini quota summary
 
 The Antigravity quota summary picks one Gemini row for the primary and secondary windows (upstream #4659).
@@ -890,6 +930,17 @@ The Settings pane id is `usageSpend`. The pane and the Overview read one shared 
 - Grok local sessions add tokens only. The scan covers exactly the requested number of local calendar days, including today.
 - A missing spend source stays unknown. It never shows as `$0`.
 - Totals are never converted across currencies.
+
+### Claude local cost history
+
+Claude local cost reads Claude transcript `.jsonl` files and prices assistant responses.
+
+- The default history, with `CLAUDE_CONFIG_DIR` unset or blank and no mapped token account, also reads Claude Desktop on Windows: `%APPDATA%\Claude` and the Microsoft Store package stores. It takes the project stores and Cowork (local agent mode) `audit.jsonl` files.
+- Cowork rows use the CLI transcript parser. A response present in both is counted once. `result` rows, which hold session totals, are never counted.
+- A mapped token account or a set `CLAUDE_CONFIG_DIR` leaves Claude Desktop out. Only the default history includes it.
+- Desktop discovery stops at 16,384 directory entries or 5 seconds. If it stops early, the Claude scan counts an unreadable root, so cost stays unavailable rather than showing a partial total.
+- Symbolic links are not followed during Desktop discovery.
+- Windows keeps no on-disk Claude cost cache. Each scan rereads the transcripts in the window.
 
 ### AWS Bedrock monitoring
 

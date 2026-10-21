@@ -26,6 +26,9 @@ mod claude_account;
 #[path = "tests/claude_today.rs"]
 mod claude_today;
 
+#[cfg(test)]
+#[path = "tests/claude_cowork.rs"]
+mod claude_cowork;
 #[path = "tests/claude_hourly.rs"]
 mod claude_hourly;
 #[cfg(test)]

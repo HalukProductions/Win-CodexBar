@@ -90,6 +90,7 @@ pub struct SettingsSnapshot {
     menu_bar_shows_percent: bool,
     menu_bar_icon_style: codexbar::settings::MenuBarIconStyle,
     merged_overview_selected_providers: Vec<String>,
+    merged_overview_all_accounts: bool,
     quota_warning_markers_visible: bool,
     highlight_menu_cards_on_hover: bool,
     workday_tick_style: codexbar::settings::WorkdayTickStyle,
@@ -115,6 +116,7 @@ pub struct SettingsSnapshot {
     codex_custom_sessions_dirs: Vec<String>,
     antigravity_additional_profile_homes: Vec<String>,
     agent_sessions_enabled: bool,
+    agent_sessions_local_only: bool,
     stay_awake_enabled: bool,
     agent_session_ssh_hosts: Vec<String>,
     hooks_enabled: bool,
@@ -280,6 +282,7 @@ impl From<Settings> for SettingsSnapshot {
             menu_bar_shows_percent: settings.menu_bar_shows_percent,
             menu_bar_icon_style: settings.menu_bar_icon_style,
             merged_overview_selected_providers: settings.merged_overview_selected_providers,
+            merged_overview_all_accounts: settings.merged_overview_all_accounts,
             quota_warning_markers_visible: settings.quota_warning_markers_visible,
             highlight_menu_cards_on_hover: settings.highlight_menu_cards_on_hover,
             workday_tick_style: settings.workday_tick_style,
@@ -307,6 +310,7 @@ impl From<Settings> for SettingsSnapshot {
             codex_custom_sessions_dirs: settings.codex_custom_sessions_dirs,
             antigravity_additional_profile_homes: settings.antigravity_additional_profile_homes,
             agent_sessions_enabled: settings.agent_sessions_enabled,
+            agent_sessions_local_only: settings.agent_sessions_local_only,
             stay_awake_enabled: settings.stay_awake_enabled,
             agent_session_ssh_hosts: settings.agent_session_ssh_hosts,
             hooks_enabled: settings.hooks_enabled,
@@ -462,4 +466,24 @@ fn metric_preference_label(pref: &MetricPreference) -> String {
 
 pub(in crate::commands) fn parse_metric_preference(s: &str) -> Option<MetricPreference> {
     MetricPreference::from_key(s)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn overview_all_accounts_reaches_the_bridge_as_camel_case() {
+        let off = serde_json::to_value(SettingsSnapshot::from(Settings::default()))
+            .expect("serialize snapshot");
+        assert_eq!(off["mergedOverviewAllAccounts"], serde_json::json!(false));
+
+        let on = Settings {
+            merged_overview_all_accounts: true,
+            ..Settings::default()
+        };
+        let json = serde_json::to_value(SettingsSnapshot::from(on)).expect("serialize snapshot");
+        assert_eq!(json["mergedOverviewAllAccounts"], serde_json::json!(true));
+        assert!(json.get("merged_overview_all_accounts").is_none());
+    }
 }

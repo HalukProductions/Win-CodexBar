@@ -57,6 +57,7 @@ The app keeps its files in `%APPDATA%\CodexBar` (`dirs::config_dir()` plus `Code
 - Browser cookies are read from the browser profiles when a refresh needs them. See [COOKIES.md](./COOKIES.md).
 - `token-accounts.json` falls back to `~/.codexbar/` only when Windows reports no config folder.
 - A Claude token account can store an optional `claude_config_directory` (set with **Choose folder…** under Settings > Providers > Claude > Token accounts). While that account is active, local Claude cost estimates scan only `<folder>\projects`; the default `CLAUDE_CONFIG_DIR` / `%USERPROFILE%\.claude` history, claude-swap homes and Pi history are left out. A missing folder leaves the estimate unavailable. Clearing the folder restores the combined history. Quota fetching and credentials are unaffected.
+- **Edit** on a saved token account (Settings > Providers > provider > Token accounts) changes its label and, optionally, its credential. The credential field starts empty and masked. Leave it blank to keep the saved credential; the saved secret is never sent back to the UI. **Up** and **Down** reorder the list. Editing or moving an account keeps the same account ID, timestamps and metadata, and never changes which account is active.
 - Don't commit a real `settings.json` or key file to the repo.
 
 A CLI process can use another settings file through `CODEXBAR_CONFIG`. The API key, manual cookie and token account files then sit beside that file. The desktop app ignores the variable. See [CLI.md](./CLI.md#separate-config-file-codexbar_config).
@@ -191,10 +192,12 @@ These controls set the tray icon.
 | Switcher rows | `switcher_shows_icons` | icons |
 | Show most-used provider | `menu_bar_shows_highest_usage` | off |
 | Overview providers | `merged_overview_selected_providers` | first 6 enabled |
+| Show all accounts in Overview | `merged_overview_all_accounts` | off |
 
 - **Color Pace Indicator** tints a single-provider icon green when usage is behind pace and red when it is ahead. Stacked icons keep the usage color. [ARCHITECTURE.md](./ARCHITECTURE.md#tray-icon) explains how the window is picked.
 - Icon style, **Show every provider** and **Show most-used provider** are disabled while the icon is stacked.
 - The Overview can hold up to 6 providers.
+- **Show all accounts in Overview** expands Codex into one row per cached Codex account, using only usage already cached on this machine; it never starts a fetch. Rows count against the 6-provider limit as one provider. Claude and token accounts stay as one card each. Local-log charts and conversations are not shown on account rows. With Hide personal information on, rows read `Account 1`, `Account 2` and so on.
 - In `settings.json`, `tray_icon_mode` is lowercase: `single`, `perprovider` or `stacked`.
 
 ### Menu
@@ -216,11 +219,16 @@ These controls set the tray panel and the float bar.
 | Show all token accounts | `show_all_token_accounts_in_menu` | off |
 | Stay awake | `stay_awake_enabled` | off |
 | Agent sessions | `agent_sessions_enabled` | off |
+| Local sessions only | `agent_sessions_local_only` (skips Tailscale and SSH discovery) | off |
 | SSH hosts for agent sessions | `agent_session_ssh_hosts` (comma-separated) | none |
 | Cost summary | `cost_summary_display_style` (`compact`, `detailed`, `hidden`) | `compact` |
 | Cost reporting period | `cost_reporting_period` | `rolling:30` |
 
-Workday ticks are disabled while Work days is Automatic. SSH hosts are disabled while agent sessions are off.
+Workday ticks are disabled while Work days is Automatic. SSH hosts are disabled while agent sessions are off or local-only is on.
+
+With **Local sessions only** on, agent sessions never run `tailscale status` and never open SSH connections. The tray panel's session list reloads when the setting changes while the panel is open, and on its next open otherwise, so remote rows already shown are dropped then. Remote discovery stays on by default, so existing installs behave as before until this is turned on.
+
+Tailscale discovery runs only a standalone `tailscale.exe` found on `PATH`. The GUI client `tailscale-ipn.exe`, `.cmd`/`.bat` launchers, and symlinks are never executed. If no standalone CLI is found, Tailscale discovery is skipped without an error row.
 
 The float bar section is on this pane too. Every control except the first is disabled while the float bar is off.
 
@@ -336,7 +344,7 @@ These keys are exported (`ALLOWED_PREFERENCES` in `rust/src/settings/preferences
 | --- | --- |
 | Refresh | `refresh_interval_secs`, `adaptive_refresh`, `refresh_all_providers_on_menu_open`, `status_checks_enabled`, `low_power_mode_preference` |
 | Notifications | `show_notifications`, `session_quota_notifications_enabled`, `sound_enabled`, `high_usage_threshold`, `critical_usage_threshold`, `predictive_pace_warning_enabled` |
-| Display | `show_pace`, `show_as_used`, `reset_time_relative`, `show_reset_when_exhausted`, `hide_personal_info`, `menu_bar_shows_highest_usage`, `menu_bar_shows_percent`, `menu_bar_icon_style`, `merged_overview_selected_providers`, `quota_warning_markers_visible`, `workday_tick_style`, `tray_icon_mode`, `switcher_shows_icons`, `providers_sorted_alphabetically`, `overview_layout`, `menu_bar_display_mode` |
+| Display | `show_pace`, `show_as_used`, `reset_time_relative`, `show_reset_when_exhausted`, `hide_personal_info`, `menu_bar_shows_highest_usage`, `menu_bar_shows_percent`, `menu_bar_icon_style`, `merged_overview_selected_providers`, `merged_overview_all_accounts`, `quota_warning_markers_visible`, `workday_tick_style`, `tray_icon_mode`, `switcher_shows_icons`, `providers_sorted_alphabetically`, `overview_layout`, `menu_bar_display_mode` |
 | Providers | `provider_order`, `enabled_providers`, `provider_metrics`, `provider_quota_warnings` |
 | Look | `theme`, `ui_language`, `ui_language_follows_system`, `window_scale_percent`, `tray_scale_percent` |
 | Float bar | `float_bar_opacity`, `float_bar_scale`, `float_bar_orientation`, `float_bar_style`, `float_bar_dark_text`, `float_bar_show_reset_inline`, `float_bar_show_cost` |

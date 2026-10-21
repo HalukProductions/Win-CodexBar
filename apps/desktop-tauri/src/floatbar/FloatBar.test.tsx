@@ -160,6 +160,7 @@ function settings(overrides: Partial<SettingsSnapshot> = {}): SettingsSnapshot {
     menuBarShowsPercent: false,
     menuBarIconStyle: "bars",
     mergedOverviewSelectedProviders: [],
+    mergedOverviewAllAccounts: false,
     quotaWarningMarkersVisible: true,
     workdayTickStyle: "subtle",
     menuBarColorPace: false,

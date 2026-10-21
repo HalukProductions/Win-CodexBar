@@ -97,6 +97,7 @@ export const PROOF_PROVIDER_CATALOG: ProviderCatalogEntry[] = [
   { id: "zai", displayName: "z.ai", cookieDomain: null },
   { id: "mistral", displayName: "Mistral", cookieDomain: null },
   { id: "openaiapi", displayName: "OpenAI API", cookieDomain: null },
+  { id: "vercel", displayName: "Vercel", cookieDomain: null },
 ];
 
 export function catalogOrder(): string[] {
@@ -145,6 +146,7 @@ export function baseSettings(overrides: Partial<SettingsSnapshot> = {}): Setting
     menuBarShowsPercent: false,
     menuBarIconStyle: "bars",
     mergedOverviewSelectedProviders: [],
+    mergedOverviewAllAccounts: false,
     quotaWarningMarkersVisible: true,
     highlightMenuCardsOnHover: true,
     workdayTickStyle: "subtle",
@@ -169,6 +171,7 @@ export function baseSettings(overrides: Partial<SettingsSnapshot> = {}): Setting
     codexCustomSessionsDirs: [],
     antigravityAdditionalProfileHomes: [],
     agentSessionsEnabled: false,
+    agentSessionsLocalOnly: false,
     stayAwakeEnabled: false,
     agentSessionSshHosts: [],
     hooksEnabled: false,

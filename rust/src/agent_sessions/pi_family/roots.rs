@@ -180,6 +180,16 @@ impl DirectoryScanBudget {
         self.max_depth
     }
 
+    /// True once the entry cap is spent, so a walk may have skipped entries it
+    /// was asked for and its result is not the complete set.
+    #[cfg_attr(
+        not(windows),
+        allow(dead_code, reason = "only Windows Claude Desktop discovery reads it")
+    )]
+    pub(crate) fn entry_limit_reached(&self) -> bool {
+        self.entries_seen >= self.max_entry_count
+    }
+
     fn allowed_depth(&self, depth: usize) -> bool {
         depth <= self.max_depth
     }

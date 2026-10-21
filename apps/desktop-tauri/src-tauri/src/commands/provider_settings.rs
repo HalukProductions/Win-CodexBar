@@ -222,6 +222,34 @@ pub fn remove_openrouter_management_api_key() -> Result<(), String> {
     settings.save().map_err(|error| error.to_string())
 }
 
+// ── Vercel personal budget access token ──────────────────────────────
+
+#[tauri::command]
+pub fn has_vercel_access_token() -> bool {
+    Settings::load()
+        .management_api_token(ProviderId::Vercel)
+        .is_some()
+}
+
+#[tauri::command]
+pub fn set_vercel_access_token(access_token: String) -> Result<(), String> {
+    let trimmed = access_token.trim();
+    if trimmed.is_empty() {
+        return Err("Vercel access token must not be empty".to_string());
+    }
+    validate_single_line_secret(trimmed, "Vercel access token", MAX_API_KEY_LEN)?;
+    let mut settings = Settings::load();
+    settings.set_management_api_token(ProviderId::Vercel, Some(trimmed.to_string()));
+    settings.save().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn remove_vercel_access_token() -> Result<(), String> {
+    let mut settings = Settings::load();
+    settings.set_management_api_token(ProviderId::Vercel, None);
+    settings.save().map_err(|error| error.to_string())
+}
+
 // ── Azure OpenAI API version ─────────────────────────────────────────
 
 fn azure_openai_provider(provider_id: &str) -> Result<codexbar::core::ProviderId, String> {

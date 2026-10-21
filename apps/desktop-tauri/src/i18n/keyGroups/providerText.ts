@@ -388,6 +388,8 @@ export const PROVIDER_TEXT_LOCALE_KEYS = [
   "OverviewProvidersConfigure",
   "OverviewProvidersChooseUpTo",
   "OverviewProvidersDefaultSummary",
+  "OverviewAllAccountsLabel",
+  "OverviewAllAccountsHelper",
   "QuotaWarningMarkersLabel",
   "QuotaWarningMarkersHelper",
   "WorkDaysLabel",

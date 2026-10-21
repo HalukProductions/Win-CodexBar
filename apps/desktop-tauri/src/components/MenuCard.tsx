@@ -53,6 +53,12 @@ export interface MenuCardDisplayOptions {
   costTrackingEnabled?: boolean;
   /** Saved History window (raw); a change re-reads the Conversations list. */
   costReportingPeriod?: string;
+  /**
+   * One account's row in an Overview that lists accounts separately. Local-log
+   * charts and the Conversations list are per provider, not per account, so
+   * they are not read for such a row.
+   */
+  accountScoped?: boolean;
 }
 
 interface MenuCardProps {
@@ -167,6 +173,7 @@ export default function MenuCard({
     workdayTickStyle = "subtle",
     costTrackingEnabled = true,
     costReportingPeriod,
+    accountScoped = false,
   } = display;
   const { t, language } = useLocale();
   const provider = projectClaudeSections(reportedProvider.providerId, reportedProvider);
@@ -182,7 +189,7 @@ export default function MenuCard({
   // first mount without a full transcript walk on every refresh.
   const localDay = new Date().toLocaleDateString("sv");
   useEffect(() => {
-    if (!providerSupportsChartData(provider.providerId)) return;
+    if (!providerSupportsChartData(provider.providerId) || accountScoped) return;
     let cancelled = false;
     let frame: number | undefined;
     getProviderChartData(provider.providerId, provider.accountEmail ?? undefined)
@@ -200,13 +207,16 @@ export default function MenuCard({
       if (frame !== undefined) cancelAnimationFrame(frame);
     };
     // "Track costs" flips local estimates on or off; the backend answers for the new value.
-  }, [provider.providerId, provider.accountEmail, localDay, costTrackingEnabled, onLayoutChange]);
+  }, [provider.providerId, provider.accountEmail, localDay, costTrackingEnabled, accountScoped, onLayoutChange]);
 
   // The Conversations list reads the same backend-cached summary as Usage & Spend,
   // which masks titles itself; a summary fetched under the other Hide Personal
   // Info value is never shown.
   const listsConversations =
-    !compactOverview && costTrackingEnabled && providerListsConversations(provider.providerId);
+    !compactOverview &&
+    !accountScoped &&
+    costTrackingEnabled &&
+    providerListsConversations(provider.providerId);
   const [spend, setSpend] = useState<{ summary: UsageSpendSummary; hidden: boolean } | null>(null);
   useEffect(() => {
     if (!listsConversations) {

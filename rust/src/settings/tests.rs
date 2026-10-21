@@ -186,6 +186,22 @@ fn tray_pace_color_defaults_off_and_round_trips() {
 }
 
 #[test]
+fn agent_sessions_local_only_defaults_off_and_round_trips() {
+    // Off keeps the existing remote discovery behavior for every install.
+    assert!(!defaulted().agent_sessions_local_only);
+
+    let local_only = Settings {
+        agent_sessions_enabled: true,
+        agent_sessions_local_only: true,
+        ..Settings::default()
+    };
+    let (json, loaded) = round_trip(&local_only);
+    assert!(json.contains(r#""agent_sessions_local_only":true"#));
+    assert!(loaded.agent_sessions_enabled);
+    assert!(loaded.agent_sessions_local_only);
+}
+
+#[test]
 fn cost_reporting_period_defaults_to_thirty_days_and_round_trips() {
     let defaulted = defaulted();
     assert_eq!(
@@ -1576,6 +1592,23 @@ fn highlight_menu_cards_on_hover_defaults_on_and_round_trips() {
     assert!(json.contains(r#""highlight_menu_cards_on_hover":false"#));
     let loaded: Settings = serde_json::from_str(&json).expect("deserialize hover highlight");
     assert!(!loaded.highlight_menu_cards_on_hover);
+}
+
+#[test]
+fn merged_overview_all_accounts_defaults_off_and_round_trips() {
+    assert!(!Settings::default().merged_overview_all_accounts);
+    let legacy: Settings =
+        serde_json::from_str(r#"{ "enabled_providers": [] }"#).expect("legacy file");
+    assert!(!legacy.merged_overview_all_accounts);
+
+    let on = Settings {
+        merged_overview_all_accounts: true,
+        ..Settings::default()
+    };
+    let json = serde_json::to_string(&on).expect("serialize overview accounts");
+    assert!(json.contains(r#""merged_overview_all_accounts":true"#));
+    let loaded: Settings = serde_json::from_str(&json).expect("deserialize overview accounts");
+    assert!(loaded.merged_overview_all_accounts);
 }
 
 #[test]

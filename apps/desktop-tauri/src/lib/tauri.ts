@@ -280,6 +280,18 @@ export function removeOpenRouterManagementApiKey(): Promise<void> {
   return invoke<void>("remove_openrouter_management_api_key");
 }
 
+export function hasVercelAccessToken(): Promise<boolean> {
+  return invoke<boolean>("has_vercel_access_token");
+}
+
+export function setVercelAccessToken(accessToken: string): Promise<void> {
+  return invoke<void>("set_vercel_access_token", { accessToken });
+}
+
+export function removeVercelAccessToken(): Promise<void> {
+  return invoke<void>("remove_vercel_access_token");
+}
+
 export function getManualCookies(): Promise<CookieInfoBridge[]> {
   return invoke<CookieInfoBridge[]>("get_manual_cookies");
 }
@@ -390,6 +402,37 @@ export function addTokenAccount(
     providerId,
     label,
     token,
+  });
+}
+
+/**
+ * Edit a saved account in place. A blank `label` keeps the saved label; a
+ * `null` or blank `token` keeps the saved credential, which is never returned.
+ */
+export function updateTokenAccount(
+  providerId: string,
+  accountId: string,
+  label: string,
+  token: string | null,
+): Promise<ProviderTokenAccountsBridge> {
+  return invoke<ProviderTokenAccountsBridge>("update_token_account", {
+    providerId,
+    accountId,
+    label,
+    token,
+  });
+}
+
+/** Move a saved account to `index` in the list; the active account does not change. */
+export function moveTokenAccount(
+  providerId: string,
+  accountId: string,
+  index: number,
+): Promise<ProviderTokenAccountsBridge> {
+  return invoke<ProviderTokenAccountsBridge>("move_token_account", {
+    providerId,
+    accountId,
+    index,
   });
 }
 

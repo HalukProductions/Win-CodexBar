@@ -203,6 +203,11 @@ pub struct Settings {
     #[serde(default)]
     pub merged_overview_selected_providers: Vec<String>,
 
+    /// Expand each selected Overview provider into one row per cached account
+    /// (claude-swap/tcr, managed Codex, token accounts). Off by default; adds no fetches.
+    #[serde(default)]
+    pub merged_overview_all_accounts: bool,
+
     /// Draw quota-warning threshold ticks on usage bars.
     #[serde(default = "default_true")]
     pub quota_warning_markers_visible: bool,
@@ -339,6 +344,11 @@ pub struct Settings {
     /// Discover local and configured SSH Codex/Claude sessions.
     #[serde(default)]
     pub agent_sessions_enabled: bool,
+
+    /// Limit Agent Sessions to this PC: no Tailscale probe and no SSH polling.
+    /// Off by default, so remote discovery keeps running as before.
+    #[serde(default)]
+    pub agent_sessions_local_only: bool,
 
     /// Keep the system awake (no idle sleep) while a local agent session is live.
     #[serde(default)]
@@ -785,6 +795,7 @@ impl Default for Settings {
             menu_bar_shows_percent: false,
             menu_bar_icon_style: MenuBarIconStyle::Bars,
             merged_overview_selected_providers: Vec::new(),
+            merged_overview_all_accounts: false,
             quota_warning_markers_visible: true,
             highlight_menu_cards_on_hover: true,
             workday_tick_style: WorkdayTickStyle::Subtle,
@@ -816,6 +827,7 @@ impl Default for Settings {
             codex_custom_sessions_dirs: Vec::new(),
             antigravity_additional_profile_homes: Vec::new(),
             agent_sessions_enabled: false,
+            agent_sessions_local_only: false,
             stay_awake_enabled: false,
             agent_session_ssh_hosts: Vec::new(),
             hooks_enabled: false,

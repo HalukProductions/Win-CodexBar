@@ -126,6 +126,25 @@
       ]
     },
     {
+      "name": "tray-overview-all-accounts",
+      "query": "window=main&fixture=overview-all-accounts",
+      "size": [310, 1032],
+      "steps": [
+        { "expectText": ["work@example.com", "personal@example.com", "Claude"] },
+        { "screenshot": "tray-overview-all-accounts", "clip": "panel" }
+      ]
+    },
+    {
+      "name": "tray-overview-all-accounts-private",
+      "query": "window=main&fixture=overview-all-accounts-private",
+      "size": [310, 1032],
+      "steps": [
+        { "expectText": ["Account 1", "Account 2"] },
+        { "expectNoText": ["work@example.com", "personal@example.com"] },
+        { "screenshot": "tray-overview-all-accounts-private", "clip": "panel" }
+      ]
+    },
+    {
       "name": "flyout-default",
       "query": "window=flyout&fixture=default",
       "size": [310, 1032],
@@ -276,6 +295,25 @@
       ]
     },
     {
+      "name": "settings-menu-agent-sessions-local-only",
+      "query": "window=settings&tab=menu&theme=dark",
+      "size": [880, 620],
+      "steps": [
+        { "expectText": ["Local sessions only", "Skip Tailscale and SSH discovery. Only sessions on this PC are shown."] },
+        { "expectSelector": "input[aria-label=\"Local sessions only\"]:disabled" },
+        { "expectSelector": "input[aria-label=\"Local sessions only\"]:not(:checked)" },
+        { "screenshot": "settings-menu-agent-sessions-local-only-disabled" },
+        { "click": { "selector": "input", "label": "Agent sessions" } },
+        { "expectCall": { "cmd": "update_settings", "args": { "patch": { "agentSessionsEnabled": true } } } },
+        { "expectSelector": "input[aria-label=\"Local sessions only\"]:not(:disabled)" },
+        { "click": { "selector": "input", "label": "Local sessions only" } },
+        { "expectCall": { "cmd": "update_settings", "args": { "patch": { "agentSessionsLocalOnly": true } } } },
+        { "expectSelector": "input[aria-label=\"Local sessions only\"]:checked" },
+        { "expectSelector": "input[aria-label=\"Additional SSH hosts\"]:disabled" },
+        { "screenshot": "settings-menu-agent-sessions-local-only-on" }
+      ]
+    },
+    {
       "name": "tray-openai-live-spend",
       "query": "window=main&fixture=openai-live-spend",
       "size": [310, 1032],
@@ -342,6 +380,26 @@
         },
         { "expectNoText": ["C:\\Users\\proof\\.claude-work", "Unavailable"] },
         { "screenshot": "settings-claude-token-account-config-dir-cleared" }
+      ]
+    },
+    {
+      "name": "flyout-vercel-budget",
+      "query": "window=flyout&fixture=vercel&theme=dark",
+      "size": [310, 1032],
+      "steps": [
+        { "expectText": ["Vercel", "Personal budget", "Spend", "Limit", "Remaining", "$58.00"] },
+        { "expectNoText": "Available balance" },
+        { "screenshot": "flyout-vercel-budget", "clip": "panel" }
+      ]
+    },
+    {
+      "name": "settings-vercel-budget",
+      "query": "window=settings&tab=providers:vercel&fixture=vercel&theme=dark",
+      "size": [880, 1400],
+      "steps": [
+        { "expectText": ["Vercel personal budget", "Access token", "Vercel team", "Team ID"] },
+        { "expectNoText": "Remove" },
+        { "screenshot": "settings-vercel-budget" }
       ]
     },
     {
@@ -423,6 +481,113 @@
         { "expectText": ["pnpm test --run", "cargo clippy --all-targets"] },
         { "expectNoText": ["docs/search", "git status --short"] },
         { "screenshot": "settings-usage-spend-tool-activity-slow" }
+      ]
+    },
+    {
+      "name": "settings-claude-token-account-edit-reorder",
+      "query": "window=settings&tab=providers:claude&fixture=default&theme=dark",
+      "size": [
+        880,
+        760
+      ],
+      "steps": [
+        {
+          "click": {
+            "selector": "summary",
+            "label": "Token accounts1/2"
+          }
+        },
+        {
+          "expectOrder": {
+            "selector": ".token-accounts-card > .credential-card__header > .credential-card__info > strong",
+            "texts": [
+              "Work",
+              "Personal"
+            ]
+          }
+        },
+        {
+          "click": {
+            "selector": "button",
+            "label": "Edit",
+            "near": "Personal"
+          }
+        },
+        {
+          "expectSelector": ".token-accounts-edit input[type=\"password\"]"
+        },
+        {
+          "type": {
+            "selector": ".token-accounts-edit input",
+            "label": "Label (e.g. Work, Personal)…",
+            "text": "Personal (renamed)"
+          }
+        },
+        {
+          "screenshot": "settings-claude-token-account-edit"
+        },
+        {
+          "click": {
+            "selector": "button",
+            "label": "Save",
+            "near": "Leave blank to keep the saved credential."
+          }
+        },
+        {
+          "expectCall": {
+            "cmd": "update_token_account",
+            "args": {
+              "providerId": "claude",
+              "accountId": "00000000-0000-4000-8000-00000000c1a2",
+              "label": "Personal (renamed)",
+              "token": null
+            }
+          }
+        },
+        {
+          "expectNoText": "Leave blank to keep the saved credential."
+        },
+        {
+          "expectOrder": {
+            "selector": ".token-accounts-card > .credential-card__header > .credential-card__info > strong",
+            "texts": [
+              "Work",
+              "Personal (renamed)"
+            ]
+          }
+        },
+        {
+          "click": {
+            "selector": "button",
+            "label": "Move up",
+            "near": "Personal (renamed)"
+          }
+        },
+        {
+          "expectCall": {
+            "cmd": "move_token_account",
+            "args": {
+              "providerId": "claude",
+              "accountId": "00000000-0000-4000-8000-00000000c1a2",
+              "index": 0
+            }
+          }
+        },
+        {
+          "expectOrder": {
+            "selector": ".token-accounts-card > .credential-card__header > .credential-card__info > strong",
+            "texts": [
+              "Personal (renamed)",
+              "Work"
+            ]
+          }
+        },
+        {
+          "expectSelector": ".token-accounts-card:nth-child(2) .credential-card__badge--set"
+        },
+        {
+          "screenshot": "settings-claude-token-account-edit-reorder"
+        }
       ]
     },
     {

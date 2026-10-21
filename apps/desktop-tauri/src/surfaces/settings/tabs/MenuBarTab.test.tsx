@@ -37,6 +37,7 @@ const baseSettings = {
   menuBarColorByProvider: false,
   promoteTrayIcon: false,
   mergedOverviewSelectedProviders: [],
+  mergedOverviewAllAccounts: false,
 } as unknown as SettingsSnapshot;
 
 function renderTab(overrides: Partial<SettingsSnapshot> = {}, set = vi.fn()) {
@@ -74,6 +75,7 @@ describe("MenuBarTab layout", () => {
       "SwitcherRowsLabel",
       "PreferHighestUsage",
       "OverviewProvidersLabel",
+      "OverviewAllAccountsLabel",
     ]);
     await waitFor(() =>
       expect((screen.getByRole("checkbox", { name: "PromoteTrayIconLabel" }) as HTMLInputElement).disabled).toBe(false),
@@ -259,5 +261,22 @@ describe("MenuBarTab Overview providers", () => {
     expect(set).toHaveBeenCalledWith({ mergedOverviewSelectedProviders: ["codex", "zai", "kimi"] });
     fireEvent.click(screen.getByRole("button", { name: "DialogDone" }));
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
+describe("MenuBarTab show all accounts in Overview", () => {
+  it("is off by default and saves the toggle as mergedOverviewAllAccounts", () => {
+    const { set } = renderTab();
+    const toggle = screen.getByRole("checkbox", { name: "OverviewAllAccountsLabel" }) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    fireEvent.click(toggle);
+    expect(set).toHaveBeenCalledWith({ mergedOverviewAllAccounts: true });
+  });
+
+  it("shows a saved on state", () => {
+    renderTab({ mergedOverviewAllAccounts: true });
+    expect(
+      (screen.getByRole("checkbox", { name: "OverviewAllAccountsLabel" }) as HTMLInputElement).checked,
+    ).toBe(true);
   });
 });
