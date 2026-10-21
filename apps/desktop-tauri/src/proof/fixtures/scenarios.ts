@@ -1,4 +1,5 @@
 import type {
+  AccountUsageEntryBridge,
   ClaudeAccount,
   ClaudeSwapAccount,
   ClaudeSwapAccountsState,
@@ -59,6 +60,8 @@ export interface ProofScenario {
   localSpend: LocalSpendFixture[];
   /** Claude token accounts; absent means Claude offers no token accounts. */
   claudeTokenAccounts?: TokenAccountBridge[];
+  /** Cached last usage per Claude token account id; an account without an entry shows no usage. */
+  claudeTokenAccountUsage?: Record<string, AccountUsageEntryBridge>;
   /** External claude-swap/tcr accounts; absent means the adapter is off. */
   claudeSwapAccounts?: ClaudeSwapAccountsState;
   /** Quota-window history served with chart data; absent means none. */
@@ -340,10 +343,13 @@ function claudeAccounts(now: Date): ClaudeAccount[] {
   ];
 }
 
+const CLAUDE_WORK_TOKEN_ID = "00000000-0000-4000-8000-00000000c1a1";
+const CLAUDE_PERSONAL_TOKEN_ID = "00000000-0000-4000-8000-00000000c1a2";
+
 function claudeTokenAccounts(): TokenAccountBridge[] {
   return [
     {
-      id: "00000000-0000-4000-8000-00000000c1a1",
+      id: CLAUDE_WORK_TOKEN_ID,
       label: "Work",
       addedAt: "Oct 01, 2026",
       lastUsed: null,
@@ -352,7 +358,7 @@ function claudeTokenAccounts(): TokenAccountBridge[] {
       claudeConfigDirectoryAvailable: false,
     },
     {
-      id: "00000000-0000-4000-8000-00000000c1a2",
+      id: CLAUDE_PERSONAL_TOKEN_ID,
       label: "Personal",
       addedAt: "Oct 02, 2026",
       lastUsed: null,
@@ -412,7 +418,11 @@ function twoCodexAccountsScenario(now: Date): ProofScenario {
   };
 }
 
-/** Overview with "Show all accounts in Overview" on: Codex expands to one row per cached account. */
+/**
+ * Overview with "Show all accounts in Overview" on: Codex expands to one row per
+ * cached managed account, and Claude to one row per saved token account. Only
+ * the Work token account has cached usage, so Personal shows "No usage data".
+ */
 function overviewAllAccountsScenario(now: Date, hidePersonalInfo: boolean): ProofScenario {
   const scenario = twoCodexAccountsScenario(now);
   return {
@@ -423,6 +433,14 @@ function overviewAllAccountsScenario(now: Date, hidePersonalInfo: boolean): Proo
       mergedOverviewAllAccounts: true,
       hidePersonalInfo,
     }),
+    claudeTokenAccounts: claudeTokenAccounts(),
+    claudeTokenAccountUsage: {
+      [CLAUDE_WORK_TOKEN_ID]: {
+        primary: { usedPercent: 22, windowMinutes: 300, resetsAt: isoAfter(now, 61) },
+        secondary: { usedPercent: 41, windowMinutes: 10_080, resetsAt: isoAfter(now, 5 * DAY_MINUTES + 30) },
+        updatedAt: isoBefore(now, 2),
+      },
+    },
   };
 }
 

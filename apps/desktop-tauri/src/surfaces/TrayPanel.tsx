@@ -16,6 +16,7 @@ import { accentSelectionStyle } from "../lib/menuSelection";
 import { filterUsageSpendSummaryForOverview } from "../lib/usageSpendSharing";
 import { expandOverviewAccountRows, type OverviewEntry } from "../lib/overviewAccountRows";
 import { useCodexAccountsState } from "../hooks/useCodexAccountsState";
+import { useClaudeTokenOverviewAccounts } from "../hooks/useClaudeTokenOverviewAccounts";
 
 /**
  * Tray popover surface — two modes like macOS CodexBar:
@@ -56,6 +57,10 @@ export default function TrayPanel({ state }: { state: BootstrapState }) {
   } = useTrayPanelController(state);
   // Read the cached Codex account store only while "Show all accounts in Overview" is on.
   const codexAccounts = useCodexAccountsState({
+    enabled: settings.mergedOverviewAllAccounts === true,
+  });
+  // Saved Claude token accounts and their cached usage, under the same setting.
+  const claudeTokenAccounts = useClaudeTokenOverviewAccounts({
     enabled: settings.mergedOverviewAllAccounts === true,
   });
 
@@ -116,15 +121,21 @@ export default function TrayPanel({ state }: { state: BootstrapState }) {
     );
   };
 
-  // Overview: each selected provider, expanded to one row per cached Codex account
-  // when the setting is on. Rows never take a provider slot; the cap applies first.
+  // Overview: each selected provider, expanded to one row per cached account
+  // (Codex managed accounts, Claude token accounts) when the setting is on. Rows
+  // never take a provider slot; the cap applies first.
   const cardEntries: OverviewEntry[] =
-    selectedProviderId === null && settings.mergedOverviewAllAccounts === true && codexAccounts.loaded
-      ? expandOverviewAccountRows(visibleProviders, codexAccounts, {
-          hidePersonalInfo: settings.hidePersonalInfo,
-          accountWord: t("Account"),
-          unavailableText: t("CodexAccountsUsageUnavailable"),
-        })
+    selectedProviderId === null && settings.mergedOverviewAllAccounts === true
+      ? expandOverviewAccountRows(
+          visibleProviders,
+          codexAccounts.loaded ? codexAccounts : null,
+          {
+            hidePersonalInfo: settings.hidePersonalInfo,
+            accountWord: t("Account"),
+            unavailableText: t("CodexAccountsUsageUnavailable"),
+          },
+          claudeTokenAccounts.loaded ? claudeTokenAccounts : null,
+        )
       : visibleProviders.map((provider) => ({
           key: provider.providerId,
           provider,

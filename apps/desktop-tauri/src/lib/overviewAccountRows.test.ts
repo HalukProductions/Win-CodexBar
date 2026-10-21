@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { makeUsageSnapshot } from "../test/fixtures";
 import type { CodexAccount, CodexAccountUsageSnapshot } from "../types/bridge";
-import { expandOverviewAccountRows, type CodexOverviewAccounts } from "./overviewAccountRows";
+import {
+  expandOverviewAccountRows,
+  type ClaudeTokenOverviewAccounts,
+  type CodexOverviewAccounts,
+} from "./overviewAccountRows";
 
 const OPTIONS = {
   hidePersonalInfo: false,
@@ -71,6 +75,31 @@ const activeCodex = makeUsageSnapshot("codex", {
   error: null,
 });
 const claude = makeUsageSnapshot("claude", { displayName: "Claude" });
+
+/** The active Claude card: its plan and email must never reach a token account row. */
+const activeClaude = makeUsageSnapshot("claude", {
+  displayName: "Claude",
+  planName: "Max",
+  accountEmail: "active@example.com",
+  error: null,
+});
+
+function claudeState(overrides: Partial<ClaudeTokenOverviewAccounts> = {}): ClaudeTokenOverviewAccounts {
+  return {
+    accounts: [
+      { id: "tok-work", label: "Team Alpha" },
+      { id: "tok-personal", label: "Side Project" },
+    ],
+    usage: {
+      "tok-work": {
+        primary: { usedPercent: 22, windowMinutes: 300, resetsAt: "2026-05-24T05:00:00Z" },
+        secondary: { usedPercent: 41, windowMinutes: 10_080, resetsAt: null },
+        updatedAt: "2026-05-24T00:00:00Z",
+      },
+    },
+    ...overrides,
+  };
+}
 
 describe("expandOverviewAccountRows", () => {
   it("keeps one card per provider when the codex store is missing or has one account", () => {
@@ -142,5 +171,94 @@ describe("expandOverviewAccountRows", () => {
     const keys = entries.map((e) => e.key);
     expect(new Set(keys).size).toBe(keys.length);
     expect(new Set(entries.map((e) => e.provider.providerId))).toEqual(new Set(["codex", "claude"]));
+  });
+
+  it("expands Claude token accounts into one row each, with unique keys next to codex rows", () => {
+    const entries = expandOverviewAccountRows(
+      [activeCodex, activeClaude],
+      codexState(),
+      OPTIONS,
+      claudeState(),
+    );
+    expect(entries.map((e) => e.key)).toEqual([
+      "codex/account/acc-work",
+      "codex/account/acc-home",
+      "claude/account/tok-work",
+      "claude/account/tok-personal",
+    ]);
+    expect(entries.map((e) => e.accountId)).toEqual([
+      "acc-work",
+      "acc-home",
+      "tok-work",
+      "tok-personal",
+    ]);
+    const keys = entries.map((e) => e.key);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("builds each Claude token row from its own cached usage, never from the active card", () => {
+    const [work] = expandOverviewAccountRows([activeClaude], null, OPTIONS, claudeState());
+    const row = work.provider;
+    expect(row.accountEmail).toBe("Team Alpha");
+    expect(row.planName).toBeNull();
+    expect(row.cost).toBeNull();
+    expect(row.subscription).toBeNull();
+    expect(row.primary.usedPercent).toBe(22);
+    expect(row.primary.remainingPercent).toBe(78);
+    expect(row.primary.windowMinutes).toBe(300);
+    expect(row.primary.resetsAt).toBe("2026-05-24T05:00:00Z");
+    expect(row.secondary?.usedPercent).toBe(41);
+    expect(row.secondary?.windowMinutes).toBe(10_080);
+    expect(row.updatedAt).toBe("2026-05-24T00:00:00Z");
+    expect(row.error).toBeNull();
+    expect(row.errorState).toBe("ready");
+    expect(JSON.stringify(row)).not.toContain("active@example.com");
+    expect(JSON.stringify(row)).not.toContain("Max");
+  });
+
+  it("shows a Claude token account with no cached usage as unavailable, with no update time", () => {
+    const [, personal] = expandOverviewAccountRows([activeClaude], null, OPTIONS, claudeState());
+    const row = personal.provider;
+    expect(row.error).toBe("No usage data");
+    expect(row.errorState).toBe("unknown");
+    expect(row.primary.usedPercent).toBe(0);
+    expect(row.secondary).toBeNull();
+    expect(row.updatedAt).toBe("");
+    expect(row.planName).toBeNull();
+    expect(row.accountEmail).toBe("Side Project");
+  });
+
+  it("uses generic Claude token labels under Hide personal information", () => {
+    const entries = expandOverviewAccountRows([activeClaude], null, {
+      ...OPTIONS,
+      hidePersonalInfo: true,
+    }, claudeState());
+    // Ordinals follow the sorted account id, as the managed Claude accounts do:
+    // "tok-personal" sorts first, so it is Account 1.
+    expect(entries.map((e) => e.provider.accountEmail)).toEqual(["Account 2", "Account 1"]);
+    const serialized = JSON.stringify(entries.map((e) => e.provider));
+    expect(serialized).not.toContain("Team Alpha");
+    expect(serialized).not.toContain("Side Project");
+  });
+
+  it("keeps the single Claude card when there is at most one token account", () => {
+    const single = claudeState({ accounts: [{ id: "tok-work", label: "Team Alpha" }] });
+    const entries = expandOverviewAccountRows([activeClaude], null, OPTIONS, single);
+    expect(entries.map((e) => e.key)).toEqual(["claude"]);
+    expect(entries[0].accountId).toBeNull();
+    expect(entries[0].provider).toBe(activeClaude);
+  });
+
+  it("keeps the Claude card when token accounts are absent, and leaves other providers alone", () => {
+    expect(
+      expandOverviewAccountRows([activeCodex, activeClaude], null, OPTIONS, null).map((e) => e.key),
+    ).toEqual(["codex", "claude"]);
+    const entries = expandOverviewAccountRows(
+      [activeCodex, activeClaude],
+      null,
+      OPTIONS,
+      claudeState(),
+    );
+    expect(entries.filter((e) => e.provider.providerId === "codex")).toHaveLength(1);
   });
 });

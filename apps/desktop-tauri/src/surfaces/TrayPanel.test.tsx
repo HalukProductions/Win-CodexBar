@@ -44,6 +44,8 @@ const tauriMocks = vi.hoisted(() => ({
   getDeepSeekPricingStatus: vi.fn().mockResolvedValue(null),
   getUsageSpendSummary: vi.fn(),
   getCodexAccountsState: vi.fn(),
+  getTokenAccounts: vi.fn(),
+  getProviderAccountUsage: vi.fn(),
   claudeReconciliationState: vi.fn().mockResolvedValue(null),
 }));
 
@@ -1443,6 +1445,11 @@ describe("TrayPanel overview account rows", () => {
     tauriMocks.getLocaleStrings.mockResolvedValue(buildBundle({ ActionRefresh: "Refresh" }));
     tauriMocks.updateSettings.mockResolvedValue(settings());
     tauriMocks.getCodexAccountsState.mockResolvedValue(codexAccountsState());
+    // One saved Claude token account by default, so Claude keeps its single card.
+    tauriMocks.getTokenAccounts.mockResolvedValue(
+      claudeTokenAccountsBridge([["tok-work", "Team Alpha"]]),
+    );
+    tauriMocks.getProviderAccountUsage.mockResolvedValue(claudeProviderAccountUsage({}));
     tauriMocks.getProviderChartData.mockResolvedValue({
       providerId: "codex",
       costHistory: [],
@@ -1538,4 +1545,127 @@ describe("TrayPanel overview account rows", () => {
     const work = container.querySelector("#card-codex\\/account\\/acc-work")!;
     expect(work.textContent).not.toContain("CodexAccountsUsageUnavailable");
   });
+
+  it("expands Claude into one row per saved token account, keeping the six-provider cap", async () => {
+    tauriMocks.getTokenAccounts.mockResolvedValue(
+      claudeTokenAccountsBridge([
+        ["tok-work", "Team Alpha"],
+        ["tok-personal", "Side Project"],
+      ]),
+    );
+    tauriMocks.getProviderAccountUsage.mockResolvedValue(
+      claudeProviderAccountUsage({ "tok-work": claudeAccountUsageEntry(22) }),
+    );
+    const { container } = renderTrayPanel(
+      overviewProviders(),
+      { ...overviewOrder(8), mergedOverviewAllAccounts: true },
+      overviewCatalog(8),
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector("#card-claude\\/account\\/tok-personal")).not.toBeNull();
+    });
+    expect(container.querySelector("#card-claude")).toBeNull();
+    // Six providers: Codex and Claude each add rows; the rows take no provider slot.
+    expect(container.querySelectorAll(".menu-stack__item")).toHaveLength(8);
+    expect(container.querySelectorAll(".menu-stack__item")[8]).toBeUndefined();
+    const work = container.querySelector("#card-claude\\/account\\/tok-work")!;
+    expect(work.textContent).not.toContain("CodexAccountsUsageUnavailable");
+    const personal = container.querySelector("#card-claude\\/account\\/tok-personal")!;
+    expect(personal.textContent).toContain("CodexAccountsUsageUnavailable");
+    expect(personal.textContent).not.toContain("22%");
+    expect(tauriMocks.getTokenAccounts).toHaveBeenCalledWith("claude");
+    expect(tauriMocks.getProviderAccountUsage).toHaveBeenCalledWith("claude");
+  });
+
+  it("labels Claude token rows generically under Hide personal information", async () => {
+    tauriMocks.getTokenAccounts.mockResolvedValue(
+      claudeTokenAccountsBridge([
+        ["tok-work", "Team Alpha"],
+        ["tok-personal", "Side Project"],
+      ]),
+    );
+    const { container } = renderTrayPanel(
+      overviewProviders(),
+      { ...overviewOrder(8), mergedOverviewAllAccounts: true, hidePersonalInfo: true },
+      overviewCatalog(8),
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector("#card-claude\\/account\\/tok-work")).not.toBeNull();
+    });
+    // Ordinals follow the sorted account id: "tok-personal" is Account 1.
+    expect(container.querySelector("#card-claude\\/account\\/tok-work")!.textContent).toContain(
+      "Account 2",
+    );
+    expect(container.querySelector("#card-claude\\/account\\/tok-personal")!.textContent).toContain(
+      "Account 1",
+    );
+    expect(container.textContent).not.toContain("Team Alpha");
+    expect(container.textContent).not.toContain("Side Project");
+  });
+
+  it("keeps the single Claude card when only one token account is saved", async () => {
+    const { container } = renderTrayPanel(
+      overviewProviders(),
+      { ...overviewOrder(8), mergedOverviewAllAccounts: true },
+      overviewCatalog(8),
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector("#card-claude")).not.toBeNull();
+    });
+    expect(container.querySelector("#card-claude\\/account\\/tok-work")).toBeNull();
+  });
+
+  it("does not read Claude token accounts while the setting is off", async () => {
+    tauriMocks.getTokenAccounts.mockResolvedValue(
+      claudeTokenAccountsBridge([
+        ["tok-work", "Team Alpha"],
+        ["tok-personal", "Side Project"],
+      ]),
+    );
+    const { container } = renderTrayPanel(overviewProviders(), overviewOrder(8), overviewCatalog(8));
+
+    await waitFor(() => {
+      expect(container.querySelector("#card-claude")).not.toBeNull();
+    });
+    expect(tauriMocks.getTokenAccounts).not.toHaveBeenCalled();
+    expect(tauriMocks.getProviderAccountUsage).not.toHaveBeenCalled();
+  });
 });
+
+function claudeTokenAccountsBridge(accounts: Array<[id: string, label: string]>) {
+  return {
+    providerId: "claude",
+    support: {
+      providerId: "claude",
+      displayName: "Claude",
+      title: "Claude token accounts",
+      subtitle: "",
+      placeholder: "",
+    },
+    accounts: accounts.map(([id, label], index) => ({
+      id,
+      label,
+      addedAt: "2026-05-01T00:00:00Z",
+      lastUsed: null,
+      isActive: index === 0,
+      claudeConfigDirectory: null,
+      claudeConfigDirectoryAvailable: false,
+    })),
+    activeIndex: 0,
+  };
+}
+
+function claudeAccountUsageEntry(usedPercent: number) {
+  return {
+    primary: { usedPercent, windowMinutes: 300, resetsAt: null },
+    secondary: null,
+    updatedAt: "2026-05-24T00:00:00Z",
+  };
+}
+
+function claudeProviderAccountUsage(accounts: Record<string, ReturnType<typeof claudeAccountUsageEntry>>) {
+  return { providerId: "claude", accounts };
+}

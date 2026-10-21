@@ -157,6 +157,7 @@ fn main() {
     let mut initial_state = AppState::new();
     initial_state.proof_config = proof_config;
     initial_state.claude_account_usage = commands::load_account_usage_cache();
+    initial_state.provider_account_usage = commands::load_provider_account_usage();
     // Validate the complete proof seed before installing any snapshots, so an
     // invalid multi-provider fixture cannot leave a partial cache behind.
     if let Some(snapshots) = proof_harness::seed_usage_snapshots_from_env(
@@ -237,6 +238,7 @@ fn main() {
             commands::refresh_providers,
             commands::refresh_providers_if_stale,
             commands::get_cached_providers,
+            commands::get_provider_account_usage,
             commands::get_deepseek_pricing_status,
             commands::codex_accounts_list,
             commands::get_claude_accounts_state,

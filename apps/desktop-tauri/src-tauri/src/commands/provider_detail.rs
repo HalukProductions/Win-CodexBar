@@ -297,11 +297,17 @@ pub fn revoke_provider_credentials(
 
     let token_store = TokenAccountStore::new();
     let mut token_accounts = token_store.load().map_err(|e| e.to_string())?;
-    if token_accounts.remove(&id).is_some() {
+    let removed_accounts = token_accounts.remove(&id);
+    if removed_accounts.is_some() {
         token_store
             .save(&token_accounts)
             .map_err(|e| e.to_string())?;
     }
+    let removed_ids: Vec<uuid::Uuid> = removed_accounts
+        .iter()
+        .flat_map(|data| data.accounts.iter().map(|account| account.id))
+        .collect();
+    forget_provider_accounts(&app, id, &removed_ids);
 
     Ok(())
 }

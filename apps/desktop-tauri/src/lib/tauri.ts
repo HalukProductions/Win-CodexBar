@@ -27,6 +27,7 @@ import type {
   ProviderSummary,
   ProviderUsageSnapshot,
   ProviderTokenAccountsBridge,
+  ProviderAccountUsageBridge,
   TokenAccountSupportBridge,
   SettingsSnapshot,
   SettingsUpdate,
@@ -391,6 +392,11 @@ export function getTokenAccounts(
   providerId: string,
 ): Promise<ProviderTokenAccountsBridge> {
   return invoke<ProviderTokenAccountsBridge>("get_token_accounts", { providerId });
+}
+
+/** Last successful usage per saved token account. Reads the cache only; never fetches. */
+export function getProviderAccountUsage(providerId: string): Promise<ProviderAccountUsageBridge> {
+  return invoke<ProviderAccountUsageBridge>("get_provider_account_usage", { providerId });
 }
 
 export function addTokenAccount(

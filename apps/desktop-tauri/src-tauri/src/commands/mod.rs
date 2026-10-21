@@ -47,6 +47,7 @@ mod hooks;
 mod locale_cmd;
 mod openai_live;
 mod preferences_transfer;
+mod provider_account_usage;
 mod provider_detail;
 mod provider_refresh;
 mod provider_settings;
@@ -73,6 +74,7 @@ pub use hooks::*;
 pub use locale_cmd::*;
 pub use openai_live::*;
 pub use preferences_transfer::*;
+pub use provider_account_usage::*;
 pub use provider_detail::*;
 #[cfg(test)]
 pub(crate) use provider_refresh::is_provider_cache_fresh;

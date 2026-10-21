@@ -168,6 +168,7 @@ pub fn remove_token_account(
     let before = mapped_cost_directory(id, &data);
     data.remove_account(uuid);
     store.save_provider(id, &data).map_err(|e| e.to_string())?;
+    super::forget_token_account(&app, id, uuid);
     clear_costs_if_mapping_changed(id, before, &data);
     crate::auto_resume::clear(&app, id);
     let active = data.clamped_active_index();

@@ -124,6 +124,15 @@ pub struct AppState {
     pub flyout_cursor_anchor: Option<(f64, f64)>,
     pub provider_cache: Vec<ProviderUsageSnapshot>,
     pub claude_account_usage: HashMap<String, crate::commands::ClaudeAccountUsageState>,
+    /// Last successful usage per saved token account, for Overview account rows.
+    /// Persisted without credentials; see `commands::provider_account_usage`.
+    pub provider_account_usage: crate::commands::ProviderAccountUsageCache,
+    /// Bumped under this lock on every change to `provider_account_usage`, so
+    /// disk writes can be applied in change order.
+    pub provider_account_usage_revision: u64,
+    /// Token account ids removed this session. An in-flight refresh that
+    /// finishes after a removal must not re-add that account's usage.
+    pub removed_token_account_usage: std::collections::HashSet<String>,
     pub codex_account_needs_authentication: HashMap<uuid::Uuid, bool>,
     pub transient_provider_failure_counts: HashMap<ProviderId, u8>,
     /// Live session behind each provider's cached good snapshot, for
@@ -207,6 +216,9 @@ impl AppState {
             flyout_cursor_anchor: None,
             provider_cache: Vec::new(),
             claude_account_usage: HashMap::new(),
+            provider_account_usage: HashMap::new(),
+            provider_account_usage_revision: 0,
+            removed_token_account_usage: std::collections::HashSet::new(),
             codex_account_needs_authentication: HashMap::new(),
             transient_provider_failure_counts: HashMap::new(),
             last_good_owners: HashMap::new(),
