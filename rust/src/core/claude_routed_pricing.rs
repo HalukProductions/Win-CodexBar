@@ -167,6 +167,31 @@ pub(crate) fn cost_usd_from_u64_counts_with_threshold(
     cache_write: u64,
     output: u64,
 ) -> f64 {
+    cost_usd_from_u64_counts_with_one_hour_writes(
+        pricing,
+        threshold_tokens,
+        input,
+        cache_read,
+        cache_write,
+        0,
+        output,
+    )
+}
+
+/// Like [`cost_usd_from_u64_counts_with_threshold`], with a one-hour cache-write
+/// share. `cache_write` is the total; the one-hour part is clamped to it and
+/// billed at twice the selected input rate, and the rest at the 5-minute rate
+/// (upstream `claudeCostUSD(pricing:tokens:)`). The tier is chosen from the
+/// total cache writes, so the split never changes which rates apply.
+pub(crate) fn cost_usd_from_u64_counts_with_one_hour_writes(
+    pricing: models_dev_pricing::DynamicModelPricing,
+    threshold_tokens: Option<u64>,
+    input: u64,
+    cache_read: u64,
+    cache_write: u64,
+    cache_write_1h: u64,
+    output: u64,
+) -> f64 {
     let use_tier = threshold_tokens.is_some_and(|threshold| {
         input
             .checked_add(cache_read)
@@ -174,10 +199,13 @@ pub(crate) fn cost_usd_from_u64_counts_with_threshold(
             .is_none_or(|total| total > threshold)
     });
     let rates = selected_cost_rates(pricing, use_tier);
+    let cache_write_1h = cache_write_1h.min(cache_write);
+    let cache_write_5m = cache_write - cache_write_1h;
 
     (input as f64) * rates.input
         + (cache_read as f64) * rates.cache_read
-        + (cache_write as f64) * rates.cache_write
+        + (cache_write_5m as f64) * rates.cache_write
+        + (cache_write_1h as f64) * rates.input * 2.0
         + (output as f64) * rates.output
 }
 

@@ -2,9 +2,58 @@ use super::*;
 use std::io::Write;
 use tempfile::tempdir;
 
+fn empty_pricing() -> ModelsDevPricingSnapshot {
+    ModelsDevPricingSnapshot::from_catalog_json_for_tests("{}").expect("empty catalog")
+}
+
+fn catalog(json: &str) -> ModelsDevPricingSnapshot {
+    ModelsDevPricingSnapshot::from_catalog_json_for_tests(json).expect("catalog")
+}
+
 fn parse_pi_assistant_entry(value: &Value, target: PiMappedProvider) -> Option<PiEntry> {
-    let entry = parse_pi_assistant_entry_any(value)?;
+    let entry = parse_pi_assistant_entry_any(value, &empty_pricing())?;
     (entry.provider == Some(target)).then_some(entry)
+}
+
+fn assert_cost(actual: f64, expected: f64) {
+    assert!(
+        (actual - expected).abs() < 1e-12,
+        "expected {expected}, got {actual}"
+    );
+}
+
+/// Synthetic models.dev fixture: Bedrock regional IDs with distinct rates, a
+/// non-Bedrock row for the same bare Claude ID, and no `eu.` entry.
+const BEDROCK_CATALOG: &str = r#"{
+    "amazon-bedrock": {"models": {
+        "global.anthropic.claude-sonnet-4-6": {"id": "global.anthropic.claude-sonnet-4-6",
+            "cost": {"input": 3, "output": 5, "cache_read": 0.5, "cache_write": 3}},
+        "us.anthropic.claude-sonnet-4-6": {"id": "us.anthropic.claude-sonnet-4-6",
+            "cost": {"input": 3.3, "output": 5, "cache_read": 0.5, "cache_write": 3}},
+        "global.openai.gpt-5.4": {"id": "global.openai.gpt-5.4",
+            "cost": {"input": 2, "output": 5, "cache_read": 0.5, "cache_write": 3}},
+        "claude-sonnet-4-6": {"id": "claude-sonnet-4-6",
+            "cost": {"input": 3, "output": 5, "cache_read": 0.5, "cache_write": 3}}
+    }}
+}"#;
+
+const SCAN_CUTOFF: &str = "2026-07-01T00:00:00Z";
+const ROW_TIMESTAMP: &str = "2026-07-20T12:00:00Z";
+const STANDARD_USAGE: &str = r#"{"input":100,"output":20,"cacheRead":10,"cacheWrite":10}"#;
+
+fn scan_cutoff() -> DateTime<Utc> {
+    DateTime::parse_from_rfc3339(SCAN_CUTOFF)
+        .unwrap()
+        .with_timezone(&Utc)
+}
+
+fn bedrock_row(id: &str, model: &str, timestamp: Option<&str>, usage: &str) -> String {
+    let timestamp = timestamp
+        .map(|ts| format!(r#""timestamp":"{ts}","#))
+        .unwrap_or_default();
+    format!(
+        r#"{{"id":"{id}","role":"assistant","provider":"amazon-bedrock","model":"{model}",{timestamp}"usage":{usage}}}"#
+    )
 }
 
 #[test]
@@ -14,6 +63,12 @@ fn maps_openai_codex_and_anthropic_providers() {
         Some(PiMappedProvider::Codex)
     );
     assert_eq!(map_provider("anthropic"), Some(PiMappedProvider::Claude));
+    assert_eq!(
+        map_provider("amazon-bedrock"),
+        Some(PiMappedProvider::Bedrock)
+    );
+    // Only the exact Pi backend id is Bedrock; other Bedrock aliases stay unpriced.
+    assert_eq!(map_provider("amazon-bedrock-runtime"), None);
     assert_eq!(map_provider("google"), None);
 }
 
@@ -93,7 +148,7 @@ fn unknown_model_keeps_tokens_and_marks_pricing_incomplete() {
         "model": "future-model-without-a-rate",
         "usage": { "input": 11, "output": 3 }
     });
-    let entry = parse_pi_assistant_entry_any(&raw).unwrap();
+    let entry = parse_pi_assistant_entry_any(&raw, &empty_pricing()).unwrap();
     assert!(!entry.pricing_known);
     assert_eq!(entry.cost, 0.0);
 
@@ -127,13 +182,13 @@ fn standalone_parser_keeps_the_mapped_provider_for_mixed_history() {
     });
 
     assert_eq!(
-        parse_pi_assistant_entry_any(&codex)
+        parse_pi_assistant_entry_any(&codex, &empty_pricing())
             .expect("Codex row should parse")
             .provider,
         Some(PiMappedProvider::Codex)
     );
     assert_eq!(
-        parse_pi_assistant_entry_any(&claude)
+        parse_pi_assistant_entry_any(&claude, &empty_pricing())
             .expect("Claude row should parse")
             .provider,
         Some(PiMappedProvider::Claude)
@@ -143,16 +198,17 @@ fn standalone_parser_keeps_the_mapped_provider_for_mixed_history() {
 #[test]
 fn unsupported_backend_keeps_tokens_as_unpriced_standalone_history() {
     let raw = serde_json::json!({
-        "id": "bedrock-1",
+        "id": "google-1",
         "role": "assistant",
-        "provider": "amazon-bedrock",
-        "model": "anthropic.claude-sonnet",
+        "provider": "google",
+        "model": "gemini-sample",
         "timestamp": "2026-07-20T12:00:00Z",
         "usage": { "input": 11, "output": 3, "cacheRead": 2 }
     });
-    let entry = parse_pi_assistant_entry_any(&raw).expect("unsupported backend row should parse");
+    let entry = parse_pi_assistant_entry_any(&raw, &empty_pricing())
+        .expect("unsupported backend row should parse");
     assert_eq!(entry.provider, None);
-    assert_eq!(entry.model, "amazon-bedrock/anthropic.claude-sonnet");
+    assert_eq!(entry.model, "google/gemini-sample");
     assert!(!entry.pricing_known);
     assert_eq!(entry.cost, 0.0);
 
@@ -161,11 +217,7 @@ fn unsupported_backend_keeps_tokens_as_unpriced_standalone_history() {
     assert_eq!(summary.input_tokens, 11);
     assert_eq!(summary.output_tokens, 3);
     assert_eq!(summary.cached_tokens, 2);
-    assert!(
-        summary
-            .unknown_models
-            .contains("amazon-bedrock/anthropic.claude-sonnet")
-    );
+    assert!(summary.unknown_models.contains("google/gemini-sample"));
     assert!(summary.model_pricing_completeness.is_partial());
 }
 
@@ -175,16 +227,15 @@ fn native_scans_skip_unsupported_backends_without_losing_completeness() {
     let sessions = dir.path().join("agent").join("sessions");
     std::fs::create_dir_all(&sessions).unwrap();
     let codex = r#"{"id":"codex-1","role":"assistant","provider":"openai-codex","model":"gpt-5","timestamp":"2026-07-20T12:00:00Z","usage":{"input":50,"output":5}}"#;
-    let dated = r#"{"id":"bedrock-1","role":"assistant","provider":"amazon-bedrock","model":"claude","timestamp":"2026-07-20T13:00:00Z","usage":{"input":70,"output":7}}"#;
-    let undated = r#"{"id":"bedrock-2","role":"assistant","provider":"amazon-bedrock","model":"claude","usage":{"input":9,"output":1}}"#;
+    let dated = r#"{"id":"google-1","role":"assistant","provider":"google","model":"gemini","timestamp":"2026-07-20T13:00:00Z","usage":{"input":70,"output":7}}"#;
+    let undated = r#"{"id":"google-2","role":"assistant","provider":"google","model":"gemini","usage":{"input":9,"output":1}}"#;
     std::fs::write(
         sessions.join("mixed.jsonl"),
         format!("{codex}\n{dated}\n{undated}\n"),
     )
     .unwrap();
-    let cutoff = DateTime::parse_from_rfc3339("2026-07-01T00:00:00Z")
-        .unwrap()
-        .with_timezone(&Utc);
+    let cutoff = scan_cutoff();
+    let pricing = empty_pricing();
 
     let mut native = CostSummary::default();
     let evidence = scan_roots_into(
@@ -194,6 +245,7 @@ fn native_scans_skip_unsupported_backends_without_losing_completeness() {
         &mut HashSet::new(),
         vec![sessions.clone()],
         Some(PiMappedProvider::Codex),
+        &pricing,
     );
     assert!(evidence.complete);
     assert_eq!(native.input_tokens, 50);
@@ -209,6 +261,7 @@ fn native_scans_skip_unsupported_backends_without_losing_completeness() {
         &mut HashSet::new(),
         vec![sessions],
         None,
+        &pricing,
     );
     assert!(!evidence.complete);
     assert_eq!(standalone.input_tokens, 50 + 70 + 9);
@@ -224,15 +277,14 @@ fn malformed_unsupported_backend_row_marks_only_standalone_history_incomplete() 
     let sessions = dir.path().join("agent").join("sessions");
     std::fs::create_dir_all(&sessions).unwrap();
     let codex = r#"{"id":"codex-1","role":"assistant","provider":"openai-codex","model":"gpt-5","timestamp":"2026-07-20T12:00:00Z","usage":{"input":50,"output":5}}"#;
-    let malformed = r#"{"id":"bedrock-bad","role":"assistant","provider":"amazon-bedrock","model":"claude","timestamp":"2026-07-20T13:00:00Z","usage":{"input":"many"}}"#;
+    let malformed = r#"{"id":"google-bad","role":"assistant","provider":"google","model":"gemini","timestamp":"2026-07-20T13:00:00Z","usage":{"input":"many"}}"#;
     std::fs::write(
         sessions.join("mixed.jsonl"),
         format!("{codex}\n{malformed}\n"),
     )
     .unwrap();
-    let cutoff = DateTime::parse_from_rfc3339("2026-07-01T00:00:00Z")
-        .unwrap()
-        .with_timezone(&Utc);
+    let cutoff = scan_cutoff();
+    let pricing = empty_pricing();
 
     let mut native = CostSummary::default();
     let evidence = scan_roots_into(
@@ -242,13 +294,266 @@ fn malformed_unsupported_backend_row_marks_only_standalone_history_incomplete() 
         &mut HashSet::new(),
         vec![sessions.clone()],
         Some(PiMappedProvider::Codex),
+        &pricing,
     );
     assert!(evidence.complete);
     assert_eq!(native.input_tokens, 50);
 
-    let scan = scan_pi_daily_from_roots(cutoff, None, vec![sessions]);
+    let scan = scan_pi_daily_from_roots(cutoff, None, vec![sessions], &pricing);
     assert!(!scan.history_coverage_established);
     assert_eq!(scan.tokens.values().sum::<u64>(), 55);
+}
+
+#[test]
+fn malformed_bedrock_row_marks_native_history_incomplete() {
+    // Bedrock is a mapped backend, so a malformed row is a native failure too
+    // (upstream: the row's mapped provider is non-nil, so it is not "unsupported").
+    let dir = tempdir().unwrap();
+    let sessions = dir.path().join("agent").join("sessions");
+    std::fs::create_dir_all(&sessions).unwrap();
+    let codex = r#"{"id":"codex-1","role":"assistant","provider":"openai-codex","model":"gpt-5","timestamp":"2026-07-20T12:00:00Z","usage":{"input":50,"output":5}}"#;
+    let malformed = bedrock_row(
+        "bedrock-bad",
+        "us.anthropic.claude-sonnet-4-6",
+        Some(ROW_TIMESTAMP),
+        r#"{"input":"many"}"#,
+    );
+    std::fs::write(
+        sessions.join("mixed.jsonl"),
+        format!("{codex}\n{malformed}\n"),
+    )
+    .unwrap();
+
+    let mut native = CostSummary::default();
+    let evidence = scan_roots_into(
+        &mut native,
+        scan_cutoff(),
+        None,
+        &mut HashSet::new(),
+        vec![sessions],
+        Some(PiMappedProvider::Codex),
+        &empty_pricing(),
+    );
+    assert!(!evidence.complete);
+    assert_eq!(native.input_tokens, 50);
+}
+
+#[test]
+fn undated_bedrock_row_marks_native_history_incomplete_but_keeps_native_totals() {
+    // Upstream: an undated Bedrock row cannot be bucketed, and its mapped
+    // provider is non-nil, so native scans cannot advance past it.
+    let dir = tempdir().unwrap();
+    let sessions = dir.path().join("agent").join("sessions");
+    std::fs::create_dir_all(&sessions).unwrap();
+    let codex = r#"{"id":"codex-1","role":"assistant","provider":"openai-codex","model":"gpt-5","timestamp":"2026-07-20T12:00:00Z","usage":{"input":50,"output":5}}"#;
+    let undated = bedrock_row(
+        "bedrock-undated",
+        "us.anthropic.claude-sonnet-4-6",
+        None,
+        STANDARD_USAGE,
+    );
+    std::fs::write(
+        sessions.join("mixed.jsonl"),
+        format!("{codex}\n{undated}\n"),
+    )
+    .unwrap();
+
+    let mut native = CostSummary::default();
+    let evidence = scan_roots_into(
+        &mut native,
+        scan_cutoff(),
+        None,
+        &mut HashSet::new(),
+        vec![sessions],
+        Some(PiMappedProvider::Codex),
+        &catalog(BEDROCK_CATALOG),
+    );
+    assert!(!evidence.complete);
+    assert_eq!(native.input_tokens, 50);
+    assert!(
+        native
+            .by_model
+            .keys()
+            .all(|model| model != "us.anthropic.claude-sonnet-4-6")
+    );
+}
+
+#[test]
+fn bedrock_rows_price_by_exact_regional_model_id_and_stay_standalone() {
+    let dir = tempdir().unwrap();
+    let sessions = dir.path().join("agent").join("sessions");
+    std::fs::create_dir_all(&sessions).unwrap();
+    let rows = [
+        bedrock_row(
+            "b-global",
+            "global.anthropic.claude-sonnet-4-6",
+            Some(ROW_TIMESTAMP),
+            STANDARD_USAGE,
+        ),
+        bedrock_row(
+            "b-regional",
+            "us.anthropic.claude-sonnet-4-6",
+            Some(ROW_TIMESTAMP),
+            STANDARD_USAGE,
+        ),
+        bedrock_row(
+            "b-other",
+            "global.openai.gpt-5.4",
+            Some(ROW_TIMESTAMP),
+            STANDARD_USAGE,
+        ),
+        // No `eu.` entry, and the exact-ID rule must not borrow the bare
+        // `claude-sonnet-4-6` price.
+        bedrock_row(
+            "b-unknown",
+            "eu.anthropic.claude-sonnet-4-6",
+            Some(ROW_TIMESTAMP),
+            STANDARD_USAGE,
+        ),
+    ];
+    std::fs::write(sessions.join("bedrock.jsonl"), rows.join("\n")).unwrap();
+    let cutoff = scan_cutoff();
+    let pricing = catalog(BEDROCK_CATALOG);
+
+    let mut standalone = CostSummary::default();
+    let evidence = scan_roots_into(
+        &mut standalone,
+        cutoff,
+        None,
+        &mut HashSet::new(),
+        vec![sessions.clone()],
+        None,
+        &pricing,
+    );
+    assert!(evidence.complete);
+    assert_eq!(standalone.total_tokens_for_provider("pi"), 4 * 140);
+    assert_cost(
+        standalone.by_model["global.anthropic.claude-sonnet-4-6"],
+        0.000435,
+    );
+    assert_cost(
+        standalone.by_model["us.anthropic.claude-sonnet-4-6"],
+        0.000465,
+    );
+    assert_cost(standalone.by_model["global.openai.gpt-5.4"], 0.000335);
+    assert_cost(standalone.by_model["eu.anthropic.claude-sonnet-4-6"], 0.0);
+    assert!(
+        standalone
+            .unknown_models
+            .contains("eu.anthropic.claude-sonnet-4-6")
+    );
+    assert!(standalone.model_pricing_completeness.is_partial());
+
+    // Bedrock never lands in a native Codex or Claude summary.
+    for target in [PiMappedProvider::Codex, PiMappedProvider::Claude] {
+        let mut native = CostSummary::default();
+        let evidence = scan_roots_into(
+            &mut native,
+            cutoff,
+            None,
+            &mut HashSet::new(),
+            vec![sessions.clone()],
+            Some(target),
+            &pricing,
+        );
+        assert!(evidence.complete, "{target:?}");
+        assert_eq!(native.input_tokens, 0, "{target:?}");
+        assert!(native.by_model.is_empty(), "{target:?}");
+        assert_eq!(native.total_cost_usd, 0.0, "{target:?}");
+    }
+
+    let daily = scan_pi_daily_from_roots(cutoff, None, vec![sessions.clone()], &pricing);
+    assert!(daily.history_coverage_established);
+    assert_eq!(daily.tokens.values().sum::<u64>(), 4 * 140);
+    assert_eq!(daily.unpriced_days.len(), 1);
+
+    // A refreshed catalog reprices the same history on the next scan.
+    let repriced = catalog(
+        r#"{"amazon-bedrock": {"models": {"global.anthropic.claude-sonnet-4-6": {
+            "id": "global.anthropic.claude-sonnet-4-6",
+            "cost": {"input": 6, "output": 5, "cache_read": 0.5, "cache_write": 3}}}}}"#,
+    );
+    let mut after = CostSummary::default();
+    scan_roots_into(
+        &mut after,
+        cutoff,
+        None,
+        &mut HashSet::new(),
+        vec![sessions],
+        None,
+        &repriced,
+    );
+    assert_cost(
+        after.by_model["global.anthropic.claude-sonnet-4-6"],
+        0.000735,
+    );
+}
+
+#[test]
+fn bedrock_rows_stay_unpriced_without_a_catalog_entry() {
+    let row = serde_json::json!({
+        "id": "b-1", "role": "assistant", "provider": "amazon-bedrock",
+        "model": "us.anthropic.claude-sonnet-4-6", "timestamp": ROW_TIMESTAMP,
+        "usage": {"input": 100, "output": 20}
+    });
+    // A stale or missing models.dev catalog yields an empty snapshot.
+    let entry = parse_pi_assistant_entry_any(&row, &empty_pricing()).unwrap();
+    assert_eq!(entry.provider, Some(PiMappedProvider::Bedrock));
+    assert_eq!(entry.model, "us.anthropic.claude-sonnet-4-6");
+    assert!(!entry.pricing_known);
+    assert_eq!(entry.cost, 0.0);
+}
+
+#[test]
+fn bedrock_one_hour_cache_writes_bill_at_twice_the_input_rate() {
+    let pricing = catalog(BEDROCK_CATALOG);
+    let cost = |usage: Value| {
+        let row = serde_json::json!({
+            "id": "b-1", "role": "assistant", "provider": "amazon-bedrock",
+            "model": "us.anthropic.claude-sonnet-4-6", "timestamp": ROW_TIMESTAMP,
+            "usage": usage,
+        });
+        parse_pi_assistant_entry_any(&row, &pricing).unwrap().cost
+    };
+    // 4 five-minute writes at 3.0 plus 6 one-hour writes at 2 x 3.3.
+    assert_cost(
+        cost(serde_json::json!({
+            "input": 100, "output": 20, "cacheRead": 10, "cacheWrite": 10, "cacheWrite1h": 6
+        })),
+        0.0004866,
+    );
+    assert_cost(
+        cost(serde_json::json!({
+            "input": 100, "output": 20, "cacheRead": 10, "cacheWrite": 10,
+            "cttl": {"ephemeral1h": 6}
+        })),
+        0.0004866,
+    );
+    // A one-hour share above the total writes is clamped to them: 10 x 2 x 3.3.
+    assert_cost(
+        cost(serde_json::json!({
+            "input": 100, "output": 20, "cacheRead": 10, "cacheWrite": 10, "cacheWrite1h": 99
+        })),
+        0.000501,
+    );
+}
+
+#[test]
+fn bedrock_uses_the_catalog_context_boundary() {
+    let pricing = catalog(
+        r#"{"amazon-bedrock": {"models": {"us.anthropic.claude-sonnet-4-6": {
+            "id": "us.anthropic.claude-sonnet-4-6",
+            "cost": {"input": 3, "output": 5, "cache_read": 0.5, "cache_write": 3,
+                "context_over_200k": {"input": 6, "output": 10, "cache_read": 1, "cache_write": 6}}}}}}"#,
+    );
+    let row = serde_json::json!({
+        "id": "b-1", "role": "assistant", "provider": "amazon-bedrock",
+        "model": "us.anthropic.claude-sonnet-4-6", "timestamp": ROW_TIMESTAMP,
+        "usage": {"input": 250_000, "output": 0}
+    });
+    // 250k input tokens exceed the 200k boundary, so the above-threshold rate applies.
+    let entry = parse_pi_assistant_entry_any(&row, &pricing).unwrap();
+    assert_cost(entry.cost, 1.5);
 }
 
 #[test]
@@ -270,6 +575,7 @@ fn dedupes_shared_entry_ids_across_files() {
     let mut seen = HashSet::new();
     let mut summary = CostSummary::default();
     let mut total = 0u32;
+    let pricing = empty_pricing();
     for name in ["a.jsonl", "b.jsonl"] {
         total += for_each_pi_entry(
             &sessions.join(name),
@@ -278,6 +584,7 @@ fn dedupes_shared_entry_ids_across_files() {
                 .with_timezone(&Utc),
             Some(PiMappedProvider::Codex),
             &mut seen,
+            &pricing,
             |entry| apply_entry(&mut summary, &entry),
         )
         .counted;
@@ -306,12 +613,14 @@ fn same_message_id_in_distinct_sessions_is_not_deduped() {
     let mut seen = HashSet::new();
     let mut summary = CostSummary::default();
     let mut total = 0u32;
+    let pricing = empty_pricing();
     for session in ["session-a", "session-b"] {
         total += for_each_pi_entry(
             &sessions.join(format!("{session}.jsonl")),
             cutoff,
             Some(PiMappedProvider::Codex),
             &mut seen,
+            &pricing,
             |entry| apply_entry(&mut summary, &entry),
         )
         .counted;
@@ -369,6 +678,7 @@ fn configured_roots_include_explicit_pi_and_omp_profile_sources() {
             .with_timezone(&Utc),
         None,
         roots,
+        &empty_pricing(),
     );
     assert!(scan.history_coverage_established);
     assert_eq!(scan.tokens.values().sum::<u64>(), 132);
@@ -385,6 +695,7 @@ fn malformed_usage_input_keeps_valid_rows_but_marks_source_incomplete() {
         format!("{valid}\n{{\"role\":\"assistant\",\"usage\":\n"),
     )
     .unwrap();
+    let pricing = empty_pricing();
 
     let scan = scan_pi_daily_from_roots(
         DateTime::parse_from_rfc3339("2026-07-01T00:00:00Z")
@@ -392,6 +703,7 @@ fn malformed_usage_input_keeps_valid_rows_but_marks_source_incomplete() {
             .with_timezone(&Utc),
         None,
         vec![sessions.clone()],
+        &pricing,
     );
     assert!(!scan.history_coverage_established);
     assert_eq!(scan.tokens.values().sum::<u64>(), 14);
@@ -407,6 +719,7 @@ fn malformed_usage_input_keeps_valid_rows_but_marks_source_incomplete() {
         &mut seen,
         vec![sessions],
         None,
+        &pricing,
     );
     assert!(!evidence.complete);
     assert_eq!(summary.input_tokens, 11);
@@ -434,6 +747,7 @@ fn standalone_daily_scan_dedupes_pi_and_omp_roots() {
             .with_timezone(&Utc),
         None,
         vec![pi_sessions, omp_sessions],
+        &empty_pricing(),
     );
     assert!(scan.history_coverage_established);
     assert_eq!(scan.tokens.values().sum::<u64>(), 132);
@@ -455,15 +769,24 @@ fn daily_tokens_count_cache_like_the_window_total() {
     let cutoff = DateTime::parse_from_rfc3339("2026-07-01T00:00:00Z")
         .unwrap()
         .with_timezone(&Utc);
+    let pricing = empty_pricing();
 
-    let scan = scan_pi_daily_from_roots(cutoff, None, vec![sessions.clone()]);
+    let scan = scan_pi_daily_from_roots(cutoff, None, vec![sessions.clone()], &pricing);
     assert!(scan.history_coverage_established);
     let daily_total = scan.tokens.values().sum::<u64>();
     assert_eq!(daily_total, 135 + 374);
 
     let mut summary = CostSummary::default();
     let mut seen = HashSet::new();
-    let evidence = scan_roots_into(&mut summary, cutoff, None, &mut seen, vec![sessions], None);
+    let evidence = scan_roots_into(
+        &mut summary,
+        cutoff,
+        None,
+        &mut seen,
+        vec![sessions],
+        None,
+        &pricing,
+    );
     assert!(evidence.complete);
     assert_eq!(summary.total_tokens_for_provider("pi"), daily_total);
 }
