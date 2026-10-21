@@ -167,6 +167,23 @@
       ]
     },
     {
+      "name": "settings-provider-sidebar-restore-default",
+      "query": "window=settings&tab=providers&theme=dark",
+      "size": [880, 620],
+      "steps": [
+        { "expectText": ["Codex", "Claude"] },
+        { "click": { "selector": "button", "label": "Provider list options" } },
+        { "expectText": ["Only show enabled providers", "Restore default order"] },
+        { "expectSelector": ".providers-sidebar-menu > button:nth-of-type(2):disabled" },
+        { "screenshot": "settings-provider-sidebar-restore-default-disabled" },
+        { "key": "Escape" },
+        { "click": { "selector": "button", "label": "Sort providers alphabetically" } },
+        { "click": { "selector": "button", "label": "Provider list options" } },
+        { "expectSelector": ".providers-sidebar-menu > button:nth-of-type(2):not(:disabled)" },
+        { "screenshot": "settings-provider-sidebar-restore-default-sorted" }
+      ]
+    },
+    {
       "name": "settings-codex-two-accounts",
       "query": "window=settings&tab=providers:codex&fixture=two-codex-accounts&theme=dark",
       "size": [880, 620],

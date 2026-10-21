@@ -266,6 +266,8 @@ export interface SettingsSnapshot {
   providersSortedAlphabetically: boolean;
   /** Settings sidebar lists only enabled providers. Local, not portable. Absent on older shells: off. */
   providersEnabledOnly?: boolean;
+  /** Built-in order of the providers the sidebar lists; "Restore default order" is unavailable while the order matches it. Absent on older shells: always available. */
+  providerDefaultOrder?: string[];
   showAsUsed: boolean;
   showAllTokenAccountsInMenu: boolean;
   enableAnimations: boolean;

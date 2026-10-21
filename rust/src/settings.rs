@@ -935,6 +935,17 @@ impl Settings {
         normalize_provider_order(&self.provider_order)
     }
 
+    /// Built-in order of the providers the Settings sidebar lists. It is the
+    /// target of "Restore default order" and decides whether that action is
+    /// available.
+    pub fn provider_default_order_names(&self) -> Vec<String> {
+        ProviderId::all()
+            .iter()
+            .filter(|provider| self.is_provider_listed(**provider))
+            .map(|provider| provider.cli_name().to_string())
+            .collect()
+    }
+
     /// Get the metric preference for a provider
     pub fn get_provider_metric(&self, id: ProviderId) -> MetricPreference {
         self.provider_metrics
