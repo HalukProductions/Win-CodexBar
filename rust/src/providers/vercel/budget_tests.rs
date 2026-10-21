@@ -396,7 +396,39 @@ async fn rows_for_other_scopes_are_ignored_even_when_malformed() {
 }
 
 #[tokio::test]
-async fn http_failures_map_to_fixed_messages_without_the_body() {
+async fn user_endpoint_401_or_403_reads_as_a_rejected_token() {
+    for status_line in ["401 Unauthorized", "403 Forbidden"] {
+        let (result, heads) = budget(vec![(status_line, "private-response".into())]).await;
+        let message = result.expect_err(status_line).to_string();
+        assert!(
+            message.contains("rejected the access token"),
+            "{status_line}: {message}"
+        );
+        assert!(
+            !message.contains("non-Contributor"),
+            "{status_line}: {message}"
+        );
+        assert!(!message.contains("private-response"), "{message}");
+        assert_eq!(heads.len(), 1, "the budget list is not requested");
+    }
+}
+
+#[tokio::test]
+async fn user_endpoint_other_failures_map_to_fixed_messages() {
+    for (status_line, needle) in [
+        ("429 Too Many Requests", "rate limit"),
+        ("503 Service Unavailable", "unavailable"),
+        ("400 Bad Request", "HTTP 400"),
+    ] {
+        let (result, _) = budget(vec![(status_line, "private-response".into())]).await;
+        let message = result.expect_err(status_line).to_string();
+        assert!(message.contains(needle), "{status_line}: {message}");
+        assert!(!message.contains("private-response"), "{message}");
+    }
+}
+
+#[tokio::test]
+async fn budget_list_failures_map_to_fixed_messages_without_the_body() {
     for (status_line, needle) in [
         ("401 Unauthorized", "rejected the access token"),
         ("403 Forbidden", "non-Contributor role"),
@@ -404,11 +436,19 @@ async fn http_failures_map_to_fixed_messages_without_the_body() {
         ("503 Service Unavailable", "unavailable"),
         ("400 Bad Request", "HTTP 400"),
     ] {
-        let (result, _) = budget(vec![(status_line, "private-response".into())]).await;
-        let error = result.expect_err(status_line);
-        let message = error.to_string();
+        let (result, heads) = budget(vec![
+            ("200 OK", user_body("user_fixture")),
+            (status_line, "private-response".into()),
+        ])
+        .await;
+        let message = result.expect_err(status_line).to_string();
         assert!(message.contains(needle), "{status_line}: {message}");
         assert!(!message.contains("private-response"), "{message}");
+        assert_eq!(
+            heads.len(),
+            2,
+            "{status_line}: the user lookup succeeded first"
+        );
     }
 }
 
