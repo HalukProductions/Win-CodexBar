@@ -27,6 +27,8 @@ import {
 export const PROOF_SCENARIO_NAMES = [
   "default",
   "two-codex-accounts",
+  "overview-all-accounts",
+  "overview-all-accounts-private",
   "errors",
   "empty",
   "openai-live-spend",
@@ -359,6 +361,20 @@ function twoCodexAccountsScenario(now: Date): ProofScenario {
     },
     claudeAccounts: claudeAccounts(now),
     localSpend: [codexSpend(), claudeSpend()],
+  };
+}
+
+/** Overview with "Show all accounts in Overview" on: Codex expands to one row per cached account. */
+function overviewAllAccountsScenario(now: Date, hidePersonalInfo: boolean): ProofScenario {
+  const scenario = twoCodexAccountsScenario(now);
+  return {
+    ...scenario,
+    name: hidePersonalInfo ? "overview-all-accounts-private" : "overview-all-accounts",
+    settings: baseSettings({
+      enabledProviders: ["codex", "claude"],
+      mergedOverviewAllAccounts: true,
+      hidePersonalInfo,
+    }),
   };
 }
 
@@ -792,6 +808,8 @@ function cookieNoBrowsersScenario(now: Date): ProofScenario {
 const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   default: defaultScenario,
   "two-codex-accounts": twoCodexAccountsScenario,
+  "overview-all-accounts": (now) => overviewAllAccountsScenario(now, false),
+  "overview-all-accounts-private": (now) => overviewAllAccountsScenario(now, true),
   errors: errorsScenario,
   empty: emptyScenario,
   "openai-live-spend": openAiLiveSpendScenario,
