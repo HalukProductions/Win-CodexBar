@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use super::tokens::{RowTokens, TokenSums};
 use crate::core::{ProviderError, ProviderFetchResult};
+use crate::cost_scanner::CostSummary;
 use scan_cache::ScanCache;
 
 const FIVE_HOURS_MS: i64 = 5 * 60 * 60 * 1000;
@@ -389,6 +390,44 @@ pub struct ModelCostSummary {
     pub by_model_tokens: std::collections::HashMap<String, TokenSums>,
     pub period_start: Option<NaiveDate>,
     pub period_end: Option<NaiveDate>,
+}
+
+impl ModelCostSummary {
+    /// Shared `CostSummary` view. Token fields carry only what rows recorded and
+    /// `unknown_token_rows` counts the rows that had no usable tokens, so the
+    /// shared renderers can show those totals as unknown instead of zero.
+    pub fn into_cost_summary(self) -> CostSummary {
+        let totals = self.tokens.to_model_token_counts().unwrap_or_default();
+        let by_model_tokens = self
+            .by_model_tokens
+            .iter()
+            .filter_map(|(model, sums)| {
+                sums.to_model_token_counts()
+                    .map(|counts| (model.clone(), counts))
+            })
+            .collect();
+        let unknown_token_rows_by_model = self
+            .by_model_tokens
+            .iter()
+            .filter(|(_, sums)| sums.unknown_token_rows() > 0)
+            .map(|(model, sums)| (model.clone(), sums.unknown_token_rows()))
+            .collect();
+        CostSummary {
+            total_cost_usd: self.total_cost_usd,
+            input_tokens: totals.input_tokens,
+            output_tokens: totals.output_tokens,
+            cached_tokens: totals.cached_tokens,
+            reasoning_tokens: totals.reasoning_tokens,
+            by_model: self.by_model,
+            by_model_tokens,
+            unknown_token_rows: self.tokens.unknown_token_rows(),
+            unknown_token_rows_by_model,
+            sessions_count: self.request_count,
+            period_start: self.period_start,
+            period_end: self.period_end,
+            ..CostSummary::default()
+        }
+    }
 }
 
 /// Local calendar-day key (`yyyy-MM-dd`) for a UTC millisecond timestamp,

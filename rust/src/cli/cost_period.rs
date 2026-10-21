@@ -60,9 +60,23 @@ pub(crate) fn stamp_period(payload: &mut Value, period: CostReportingPeriod) {
 /// `totalTokens` uses the provider's own rule, the same total the desktop
 /// spend rows show (Claude and Pi add cache tokens; Codex input already
 /// includes them).
+///
+/// Token fields are `null` when some contributing row had no usable token counts
+/// (`CostSummary::tokens_known`): a partial sum is not an exact total. Cost stays
+/// numeric because it comes from the recorded cost field.
 pub(crate) fn cost_totals_json(provider: &str, summary: &CostSummary) -> Value {
     if summary.sessions_count == 0 && !summary.known_zero {
         return Value::Null;
+    }
+    if !summary.tokens_known() {
+        return json!({
+            "inputTokens": Value::Null,
+            "outputTokens": Value::Null,
+            "cachedTokens": Value::Null,
+            "reasoningTokens": Value::Null,
+            "totalTokens": Value::Null,
+            "totalCost": summary.total_cost_usd,
+        });
     }
     json!({
         "inputTokens": summary.input_tokens,

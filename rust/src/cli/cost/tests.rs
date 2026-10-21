@@ -405,3 +405,89 @@ fn identified_flags_parse_with_remote() {
     assert_eq!(args.remote.as_deref(), Some("build-host"));
     assert!(!parse_args(&[]).identified_only);
 }
+
+/// OpenCode Go window where one GLM row recorded no usable tokens (upstream #4629).
+fn opencodego_with_unknown_glm_tokens() -> CostResult {
+    use crate::cost_scanner::ModelTokenCounts;
+    use std::collections::HashMap;
+    CostResult {
+        provider: "opencodego".to_string(),
+        display_name: "OpenCode Go".to_string(),
+        summary: CostSummary {
+            total_cost_usd: 1.5,
+            input_tokens: 1000,
+            output_tokens: 400,
+            cached_tokens: 50,
+            sessions_count: 3,
+            by_model: HashMap::from([("kimi-k2".to_string(), 1.0), ("glm-5".to_string(), 0.5)]),
+            by_model_tokens: HashMap::from([(
+                "kimi-k2".to_string(),
+                ModelTokenCounts {
+                    input_tokens: 1000,
+                    output_tokens: 400,
+                    cached_tokens: 50,
+                    reasoning_tokens: None,
+                },
+            )]),
+            unknown_token_rows: 2,
+            unknown_token_rows_by_model: HashMap::from([("glm-5".to_string(), 2)]),
+            ..CostSummary::default()
+        },
+        supported: true,
+        token_history: None,
+    }
+}
+
+#[test]
+fn opencodego_text_reports_unknown_tokens_not_zero() {
+    let result = opencodego_with_unknown_glm_tokens();
+    let mut out = String::new();
+    render_result_text(
+        &mut out,
+        &result,
+        false,
+        CostReportingPeriod::Rolling(30),
+        CostGroupBy::None,
+        false,
+        &registered_extension,
+    );
+    assert!(out.contains("  Tokens:   unknown (2 rows lacked complete token counts)"));
+    assert!(out.contains("    kimi-k2: $1.00 · 1,000 input, 400 output, 50 cached"));
+    assert!(
+        out.contains("    glm-5: $0.50 · tokens unknown (2 rows lacked complete token counts)")
+    );
+}
+
+#[test]
+fn opencodego_json_nulls_unknown_tokens_and_lists_model_tokens() {
+    let payloads = build_json_payloads(
+        &[opencodego_with_unknown_glm_tokens()],
+        CostReportingPeriod::Rolling(30),
+        30,
+        &Settings::default(),
+    );
+    let payload = &payloads[0];
+    assert!(payload["tokens"].is_null());
+    assert!(payload["totals"]["inputTokens"].is_null());
+    assert!(payload["totals"]["totalTokens"].is_null());
+    assert_eq!(payload["totals"]["totalCost"], 1.5);
+    assert_eq!(payload["unknownTokenRowCount"], 2);
+    assert_eq!(payload["byModelTokens"]["kimi-k2"]["inputTokens"], 1000);
+    assert!(payload["byModelTokens"]["glm-5"]["inputTokens"].is_null());
+}
+
+#[test]
+fn known_token_payload_keeps_numeric_fields_and_omits_unknown_count() {
+    let mut result = opencodego_with_unknown_glm_tokens();
+    result.summary.unknown_token_rows = 0;
+    result.summary.unknown_token_rows_by_model.clear();
+    let payloads = build_json_payloads(
+        &[result],
+        CostReportingPeriod::Rolling(30),
+        30,
+        &Settings::default(),
+    );
+    let payload = &payloads[0];
+    assert_eq!(payload["tokens"]["input"], 1000);
+    assert!(payload.get("unknownTokenRowCount").is_none());
+}
