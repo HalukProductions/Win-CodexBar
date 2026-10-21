@@ -85,7 +85,7 @@ For Claude, browser cookies (the `sessionKey`) are preferred, because they match
 | Kiro | Cookies / CLI | Monthly Credits, Overage |
 | Vertex AI | gcloud OAuth | Cost |
 | v0 | API Key | Billing quota, API rate limits, on-demand balance |
-| Vercel AI Gateway | API Key | Team credit balance, lifetime spend |
+| Vercel AI Gateway | API Key (+ optional access token) | Team credit balance, lifetime spend; opt-in personal budget |
 | Augment | Cookies | Credits |
 | OpenCode | Local Config | Usage |
 | Kimi | Cookies | 5h Rate, Weekly |
