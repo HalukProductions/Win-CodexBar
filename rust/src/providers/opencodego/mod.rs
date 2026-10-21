@@ -547,6 +547,12 @@ impl Provider for OpenCodeGoProvider {
         vec![SourceMode::Auto, SourceMode::Web, SourceMode::Cli]
     }
 
+    /// The configured source wins over a manual cookie (upstream #4616). The
+    /// cookie then scopes only the web session that Web or Auto may use.
+    fn manual_cookie_keeps_usage_source(&self) -> bool {
+        true
+    }
+
     /// An API result needs a browser session only for the Zen balance, so the
     /// provider imports one when it will use it instead of on every refresh.
     fn owns_browser_cookie_resolution(&self) -> bool {

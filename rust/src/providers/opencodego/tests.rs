@@ -331,3 +331,57 @@ async fn production_fallback_preserves_console_error_precedence() {
     assert!(transport.usage_sessions.lock().unwrap().is_empty());
     assert!(transport.balance_sessions.lock().unwrap().is_empty());
 }
+
+/// Context built the way the shell builds it: manual cookie source with a
+/// stored cookie and the given configured usage source.
+fn manual_cookie_context(usage_source: &str) -> FetchContext {
+    let mut settings = crate::settings::Settings::default();
+    settings.set_cookie_source(ProviderId::OpenCodeGo, "manual");
+    settings.set_usage_source(ProviderId::OpenCodeGo, usage_source);
+    let mut cookies = crate::settings::ManualCookies::default();
+    cookies.set(ProviderId::OpenCodeGo.cli_name(), "auth=fixture");
+    crate::core::build_fetch_context(
+        ProviderId::OpenCodeGo,
+        &settings,
+        &cookies,
+        &crate::settings::ApiKeys::default(),
+        None,
+    )
+}
+
+#[test]
+fn manual_cookie_keeps_the_configured_opencode_go_source() {
+    for (configured, expected) in [
+        ("cli", SourceMode::Cli),
+        ("web", SourceMode::Web),
+        ("auto", SourceMode::Auto),
+    ] {
+        let ctx = manual_cookie_context(configured);
+        assert_eq!(ctx.source_mode, expected, "configured {configured}");
+        assert_eq!(
+            ctx.manual_cookie_header.as_deref(),
+            Some("auth=fixture"),
+            "configured {configured} keeps the cookie"
+        );
+    }
+    // Auto with a manual cookie stays web-first, as before.
+    assert!(manual_cookie_context("auto").auto_prefer_web);
+
+    // Providers that do not opt in keep routing a manual cookie to Web.
+    let mut settings = crate::settings::Settings::default();
+    settings.set_cookie_source(ProviderId::Cursor, "manual");
+    settings.set_usage_source(ProviderId::Cursor, "auto");
+    let mut cookies = crate::settings::ManualCookies::default();
+    cookies.set(
+        ProviderId::Cursor.cli_name(),
+        "WorkosCursorSessionToken=fixture",
+    );
+    let cursor = crate::core::build_fetch_context(
+        ProviderId::Cursor,
+        &settings,
+        &cookies,
+        &crate::settings::ApiKeys::default(),
+        None,
+    );
+    assert_eq!(cursor.source_mode, SourceMode::Web);
+}

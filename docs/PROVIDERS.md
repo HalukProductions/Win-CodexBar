@@ -917,6 +917,7 @@ OpenCode reads usage from `opencode.ai` cookies. Which API it uses depends on th
 - A cookie with only a legacy session (`auth` or `__Host-auth`) keeps the legacy `_server` path and its monthly pay-as-you-go billing fallback.
 - When both cookies are present and the Console call fails, the legacy path is tried. If the legacy path also fails, the Console error is reported, unless the Console error was a 401.
 - OpenCode reuses the OpenCode Go Console client (`providers/opencodego/console.rs`). The monthly Go meter appears only on OpenCode Go.
+- For OpenCode Go, a manual cookie keeps the configured usage source (Auto, Web or Local) instead of forcing Web (upstream #4616). The cookie scopes only the web session. The source label shows the source that actually supplied the result, such as `web` or `local estimate`.
 
 OpenCode Go's local SQLite reader reads only its own `opencode-go` assistant records. OpenAI API-platform usage is a separate provider.
 
