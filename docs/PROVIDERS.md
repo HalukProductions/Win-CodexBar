@@ -864,6 +864,50 @@ only to `ai-gateway.vercel.sh`. 401 asks you to check the token; 403, 429 and 5x
 report their status. A token without a Team ID fails with a message that asks
 for one. Response bodies are never echoed in errors.
 
+## Grok
+
+Grok reads its usage from the Grok CLI login in `~/.grok/auth.json`, a saved
+account row, a token account, or a browser session. A bearer login tries these
+sources in order and stops at the first one that answers:
+
+1. Credits proxy: `GET https://cli-chat-proxy.grok.com/v1/billing?format=credits`
+   with the login's bearer token. If the answer has no quota percent, grok.com
+   gRPC-web may supply one within 6 seconds.
+2. grok.com gRPC-web billing (`POST .../GetGrokCreditsConfig`), used when the
+   proxy fails.
+3. Grok CLI ACP billing, a fallback that runs only when 1 and 2 both fail.
+
+The ACP fallback (upstream #4595) runs only for the ambient Grok CLI login. It
+also runs when that login is missing (no `~/.grok/auth.json` or no Cli entry) or
+expired, since the installed CLI may hold its own valid session. In that case
+there is no CodexBar token, so the answer has no account identity and no
+reset-credit lookup. If ACP also fails, the original login error is shown, not
+an ACP error. It never runs for an isolated token account, a saved account row,
+or an OAuth principal, so it can never read a different account's usage:
+
+- The installed `grok agent stdio` is started with no console window and its
+  stderr discarded. Requests are newline-delimited JSON-RPC 2.0 on stdin and
+  stdout.
+- `initialize` is sent first with `protocolVersion` `"1"` and filesystem and
+  terminal capabilities off, with a 4-second budget. Then `_x.ai/billing` is
+  sent with empty params, with a 3-second budget. The method name is written
+  literally, without a `\/` escape.
+- The child is killed after every call, including on timeout. It is never left
+  running.
+- A current result has the nested `config` credits shape, read by the same
+  parser as the credits proxy. A top-level `subscription_tier` names the plan
+  and overrides `config.subscriptionTier`. The older top-level shape with
+  `monthlyLimit` and `usage.totalUsed` is still read.
+- A prepaid balance counts as an answer without a quota percent. A result with
+  neither a percent nor a balance is unavailable.
+- A JSON-RPC `-32601` error means this CLI does not provide billing over ACP.
+  An error that says authentication is required, or mentions `grok login`, is
+  an auth failure. In both cases the bearer path's original error is shown, so
+  auto mode continues to its next source as before.
+- Not ported: upstream's team-principal diagnostic, which turns a `-32601`
+  answer for a team login into an identity-only row with an unsupported-team
+  usage message. On Windows that case shows the original error.
+
 ## Window lengths that match the Mac
 
 These providers set window lengths so their rows get the same pace as in the Mac app, and the tray tint can score them. Where the stored length differs from the Mac's, the row says so:
