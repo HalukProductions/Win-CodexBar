@@ -294,6 +294,21 @@ fn explicit_provider_never_reads_enabled_providers() {
 }
 
 #[test]
+fn provider_flag_accepts_every_catalog_id_from_config_providers() {
+    // `config providers --format json` reports each provider by its CLI name,
+    // and `--provider` must select that same provider (upstream #4643).
+    for id in ProviderId::all() {
+        assert_eq!(
+            ProviderSelection::from_arg(Some(id.cli_name())).unwrap(),
+            ProviderSelection::Single(*id),
+            "--provider {} should select {}",
+            id.cli_name(),
+            id.display_name()
+        );
+    }
+}
+
+#[test]
 fn plain_usage_queries_the_enabled_providers() {
     let command = UsageCommand::from_args_with(UsageArgs::default(), || {
         vec![ProviderId::Claude, ProviderId::Cursor]
