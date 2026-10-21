@@ -443,6 +443,7 @@ fn workspace_provider(provider_id: &str) -> Option<codexbar::core::ProviderId> {
         "exa" => ProviderId::Exa,
         "cosmic" => ProviderId::Cosmic,
         "flora" => ProviderId::Flora,
+        "vercel" => ProviderId::Vercel,
         _ => return None,
     })
 }
@@ -588,6 +589,22 @@ mod tests {
     #[test]
     fn maps_flora_workspace_provider() {
         assert_eq!(workspace_provider("flora"), Some(ProviderId::Flora));
+    }
+
+    #[test]
+    fn maps_vercel_team_provider_and_validates_its_team_id() {
+        let id = workspace_provider("vercel").expect("vercel exposes a team id");
+        assert_eq!(id, ProviderId::Vercel);
+        assert_eq!(
+            codexbar::settings::validate_provider_workspace_value(id, " team_abc123 ").unwrap(),
+            "team_abc123"
+        );
+        assert_eq!(
+            codexbar::settings::validate_provider_workspace_value(id, "my-team").unwrap(),
+            "my-team"
+        );
+        assert!(codexbar::settings::validate_provider_workspace_value(id, "bad team").is_err());
+        assert!(codexbar::settings::validate_provider_workspace_value(id, "../team").is_err());
     }
 
     #[test]

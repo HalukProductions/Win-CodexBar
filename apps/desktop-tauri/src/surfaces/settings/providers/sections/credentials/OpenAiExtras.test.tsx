@@ -65,6 +65,23 @@ describe("OpenAiExtras", () => {
     );
   });
 
+  it("renders the Team ID field for Vercel and saves it through the workspace command", async () => {
+    renderExtras("vercel");
+    expect(await screen.findByText("VercelTeamTitle")).toBeInTheDocument();
+    expect(screen.getByText("VercelTeamIdLabel")).toBeInTheDocument();
+    const input = (await screen.findByRole("textbox")) as HTMLInputElement;
+    expect(input.placeholder).toBe("team_...");
+
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "team_abc123" } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    });
+
+    expect(setProviderWorkspaceId).toHaveBeenCalledWith("vercel", "team_abc123");
+  });
+
   it("renders help text for Cosmic Project ID", async () => {
     renderExtras("cosmic");
     expect(
