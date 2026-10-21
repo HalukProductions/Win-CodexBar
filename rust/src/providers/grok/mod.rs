@@ -54,10 +54,17 @@ pub struct GrokProvider {
 }
 
 /// Where the ACP billing fallback gets its answer. `Installed` runs the Grok
-/// CLI; tests substitute a fake to pin the fallback ordering.
+/// CLI; tests substitute a scripted child process or a fake to pin the
+/// fallback ordering.
 #[derive(Clone)]
 enum CliBillingRunner {
     Installed,
+    #[cfg(test)]
+    Process {
+        program: PathBuf,
+        args: Vec<String>,
+        timeouts: acp::AcpTimeouts,
+    },
     #[cfg(test)]
     Fake(std::sync::Arc<dyn Fn() -> Result<BearerBilling, ProviderError> + Send + Sync>),
 }
@@ -72,6 +79,15 @@ impl CliBillingRunner {
                 let program = accounts::login::executable()
                     .map_err(|_| ProviderError::NotInstalled(acp::CLI_NOT_FOUND.to_string()))?;
                 acp::fetch_billing(&program, &GROK_CLI_ACP_ARGS, acp::AcpTimeouts::default()).await
+            }
+            #[cfg(test)]
+            Self::Process {
+                program,
+                args,
+                timeouts,
+            } => {
+                let args: Vec<&str> = args.iter().map(String::as_str).collect();
+                acp::fetch_billing(program, &args, *timeouts).await
             }
             #[cfg(test)]
             Self::Fake(run) => run(),
@@ -115,6 +131,21 @@ impl GrokProvider {
     #[cfg(test)]
     fn with_credits_proxy_endpoint_for_tests(mut self, endpoint: String) -> Self {
         self.credits_proxy_endpoint = endpoint;
+        self
+    }
+
+    #[cfg(test)]
+    fn with_acp_process_for_tests(
+        mut self,
+        program: PathBuf,
+        args: Vec<String>,
+        timeouts: acp::AcpTimeouts,
+    ) -> Self {
+        self.cli_billing = CliBillingRunner::Process {
+            program,
+            args,
+            timeouts,
+        };
         self
     }
 

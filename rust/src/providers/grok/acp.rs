@@ -365,3 +365,7 @@ fn legacy_billing(result: &Value, now: DateTime<Utc>) -> Option<GrokBillingSnaps
 #[cfg(test)]
 #[path = "acp_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "acp_process_tests.rs"]
+mod process_tests;
