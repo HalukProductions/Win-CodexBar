@@ -489,7 +489,7 @@ const SILENT_CHILD: (&str, &[&str]) = ("sleep", &["120"]);
 #[tokio::test]
 async fn timed_out_child_is_stopped_and_reaped() {
     let (program, args) = SILENT_CHILD;
-    let mut child = spawn_child(program, args).expect("silent child starts");
+    let mut child = spawn_child(std::path::Path::new(program), args).expect("silent child starts");
 
     let outcome = run_child(&mut child, short_timeouts(), now()).await;
     // `fetch_billing` runs exactly this sequence.
@@ -511,7 +511,7 @@ async fn timed_out_child_is_stopped_and_reaped() {
 #[tokio::test]
 async fn a_missing_grok_binary_is_reported_as_not_installed() {
     let error = fetch_billing(
-        "codexbar-test-no-such-grok-binary",
+        std::path::Path::new("codexbar-test-no-such-grok-binary"),
         &["agent", "stdio"],
         short_timeouts(),
     )

@@ -37,7 +37,6 @@ const REMAINING_RESETS_ENDPOINT: &str =
 const CLI_SETTINGS_ENDPOINT: &str = "https://cli-chat-proxy.grok.com/v1/settings";
 const RESET_CREDITS_TIMEOUT: Duration = Duration::from_secs(2);
 const RESET_CREDITS_JOIN_GRACE: Duration = Duration::from_millis(250);
-const GROK_CLI_PROGRAM: &str = "grok";
 const GROK_CLI_ACP_ARGS: [&str; 2] = ["agent", "stdio"];
 
 /// Reset-window pace (upstream `GrokProviderDescriptor.pace`, v0.70.0): weekly
@@ -55,10 +54,17 @@ pub struct GrokProvider {
 }
 
 /// Where the ACP billing fallback gets its answer. `Installed` runs the Grok
-/// CLI; tests substitute a fake to pin the fallback ordering.
+/// CLI; tests substitute a scripted child process or a fake to pin the
+/// fallback ordering.
 #[derive(Clone)]
 enum CliBillingRunner {
     Installed,
+    #[cfg(test)]
+    Process {
+        program: PathBuf,
+        args: Vec<String>,
+        timeouts: acp::AcpTimeouts,
+    },
     #[cfg(test)]
     Fake(std::sync::Arc<dyn Fn() -> Result<BearerBilling, ProviderError> + Send + Sync>),
 }
@@ -67,12 +73,21 @@ impl CliBillingRunner {
     async fn fetch(&self) -> Result<BearerBilling, ProviderError> {
         match self {
             Self::Installed => {
-                acp::fetch_billing(
-                    GROK_CLI_PROGRAM,
-                    &GROK_CLI_ACP_ARGS,
-                    acp::AcpTimeouts::default(),
-                )
-                .await
+                // The native installer puts grok under ~/.grok/bin, which is
+                // often not on PATH. The login flow's resolver checks that
+                // location first, so the ACP fallback uses the same answer.
+                let program = accounts::login::executable()
+                    .map_err(|_| ProviderError::NotInstalled(acp::CLI_NOT_FOUND.to_string()))?;
+                acp::fetch_billing(&program, &GROK_CLI_ACP_ARGS, acp::AcpTimeouts::default()).await
+            }
+            #[cfg(test)]
+            Self::Process {
+                program,
+                args,
+                timeouts,
+            } => {
+                let args: Vec<&str> = args.iter().map(String::as_str).collect();
+                acp::fetch_billing(program, &args, *timeouts).await
             }
             #[cfg(test)]
             Self::Fake(run) => run(),
@@ -116,6 +131,21 @@ impl GrokProvider {
     #[cfg(test)]
     fn with_credits_proxy_endpoint_for_tests(mut self, endpoint: String) -> Self {
         self.credits_proxy_endpoint = endpoint;
+        self
+    }
+
+    #[cfg(test)]
+    fn with_acp_process_for_tests(
+        mut self,
+        program: PathBuf,
+        args: Vec<String>,
+        timeouts: acp::AcpTimeouts,
+    ) -> Self {
+        self.cli_billing = CliBillingRunner::Process {
+            program,
+            args,
+            timeouts,
+        };
         self
     }
 
@@ -629,7 +659,7 @@ impl GrokProvider {
     }
 
     fn detect_cli_version() -> Option<String> {
-        let mut command = std::process::Command::new("grok");
+        let mut command = std::process::Command::new(accounts::login::executable().ok()?);
         command.arg("--version");
         hide_windows_console(&mut command);
         let output = command.output().ok()?;

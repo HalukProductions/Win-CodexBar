@@ -10,6 +10,7 @@
 //! rows never reach it.
 
 use std::io;
+use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
 
@@ -37,6 +38,8 @@ const MAX_LINE_BYTES: usize = 256 * 1024;
 /// How long a killed child gets to be reaped before the caller moves on.
 const EXIT_GRACE: Duration = Duration::from_secs(1);
 const USAGE_UNAVAILABLE: &str = "Grok CLI billing returned no usage, reset or prepaid balance";
+/// Shown when the CLI cannot be started because it is not installed.
+pub(super) const CLI_NOT_FOUND: &str = "Grok CLI not found. Install it, then run `grok login`.";
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -63,7 +66,7 @@ impl Default for AcpTimeouts {
 /// The child has no console window, its stderr is discarded, and it is killed
 /// before this returns on every path: success, error or timeout.
 pub(super) async fn fetch_billing(
-    program: &str,
+    program: &Path,
     args: &[&str],
     timeouts: AcpTimeouts,
 ) -> Result<BearerBilling, ProviderError> {
@@ -73,7 +76,7 @@ pub(super) async fn fetch_billing(
     outcome
 }
 
-fn spawn_child(program: &str, args: &[&str]) -> Result<Child, ProviderError> {
+fn spawn_child(program: &Path, args: &[&str]) -> Result<Child, ProviderError> {
     let mut command = Command::new(program);
     command
         .args(args)
@@ -86,9 +89,7 @@ fn spawn_child(program: &str, args: &[&str]) -> Result<Child, ProviderError> {
 
     command.spawn().map_err(|error| {
         if error.kind() == io::ErrorKind::NotFound {
-            ProviderError::NotInstalled(
-                "Grok CLI not found. Install it, then run `grok login`.".to_string(),
-            )
+            ProviderError::NotInstalled(CLI_NOT_FOUND.to_string())
         } else {
             ProviderError::Other("Grok CLI failed to start".to_string())
         }
@@ -246,9 +247,13 @@ async fn read_bounded_line<R: AsyncBufRead + Unpin>(reader: &mut R) -> io::Resul
     }
 }
 
-/// The reply to request `id`, or `None` for notifications and replies to other
-/// requests.
+/// The reply to request `id`, or `None` for notifications, requests from the
+/// server, and replies to other requests. A message with a `method` is never a
+/// reply, even when its `id` happens to match ours.
 fn reply_for(message: &Value, id: u64) -> Option<Result<Value, ProviderError>> {
+    if message.get("method").is_some() {
+        return None;
+    }
     let message_id = message.get("id")?.as_u64()?;
     if message_id != id {
         return None;
@@ -360,3 +365,7 @@ fn legacy_billing(result: &Value, now: DateTime<Utc>) -> Option<GrokBillingSnaps
 #[cfg(test)]
 #[path = "acp_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "acp_process_tests.rs"]
+mod process_tests;
