@@ -28,6 +28,7 @@ import type {
   ProviderUsageSnapshot,
   ProviderTokenAccountsBridge,
   ProviderAccountUsageBridge,
+  ClaudeSwapOverviewAccountsBridge,
   TokenAccountSupportBridge,
   SettingsSnapshot,
   SettingsUpdate,
@@ -397,6 +398,11 @@ export function getTokenAccounts(
 /** Last successful usage per saved token account. Reads the cache only; never fetches. */
 export function getProviderAccountUsage(providerId: string): Promise<ProviderAccountUsageBridge> {
   return invoke<ProviderAccountUsageBridge>("get_provider_account_usage", { providerId });
+}
+
+/** claude-swap/tcr pool accounts and their last usage. Reads the cache only; never fetches. */
+export function getClaudeSwapOverviewAccounts(): Promise<ClaudeSwapOverviewAccountsBridge> {
+  return invoke<ClaudeSwapOverviewAccountsBridge>("get_claude_swap_overview_accounts");
 }
 
 export function addTokenAccount(

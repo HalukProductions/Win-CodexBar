@@ -3,6 +3,7 @@ import { buildAccountOrdinals } from "../components/claudeAccountDisplay";
 import type {
   AccountUsageEntryBridge,
   AccountUsageWindowBridge,
+  ClaudeSwapOverviewAccountsBridge,
   CodexAccount,
   CodexAccountUsageSnapshot,
   CodexUsageWindow,
@@ -53,17 +54,19 @@ const CLAUDE_PROVIDER_ID = "claude";
  * Expand each Overview provider into one row per cached account. Only the
  * already-selected providers are passed in, so rows never take a provider slot.
  *
- * Codex expands over its managed accounts; Claude expands over its saved token
- * accounts. claude-swap and managed Claude accounts are not expanded here: they
- * stay one card. A provider with at most one account keeps its single card. Each
- * row is built from that account's own data and never borrows the active
- * account's quota, plan, email or cost.
+ * Codex expands over its managed accounts. Claude expands over its claude-swap
+ * or tcr pool accounts when two or more are listed, which takes precedence, and
+ * otherwise over its saved token accounts. Managed Claude logins stay one card.
+ * A provider with at most one account keeps its single card. Each row is built
+ * from that account's own data and never borrows the active account's quota,
+ * plan, email or cost.
  */
 export function expandOverviewAccountRows(
   providers: readonly ProviderUsageSnapshot[],
   codex: CodexOverviewAccounts | null,
   options: OverviewRowOptions,
   claudeTokens: ClaudeTokenOverviewAccounts | null = null,
+  claudeSwap: ClaudeSwapOverviewAccountsBridge | null = null,
 ): OverviewEntry[] {
   const plain = (provider: ProviderUsageSnapshot): OverviewEntry => ({
     key: provider.providerId,
@@ -74,12 +77,13 @@ export function expandOverviewAccountRows(
     if (provider.providerId === CODEX_PROVIDER_ID && codex && codex.accounts.length > 1) {
       return codexAccountRows(provider, codex, options);
     }
-    if (
-      provider.providerId === CLAUDE_PROVIDER_ID &&
-      claudeTokens &&
-      claudeTokens.accounts.length > 1
-    ) {
-      return claudeTokenAccountRows(provider, claudeTokens, options);
+    if (provider.providerId === CLAUDE_PROVIDER_ID) {
+      if (claudeSwap && claudeSwap.accounts.length > 1) {
+        return claudeSwapAccountRows(provider, claudeSwap, options);
+      }
+      if (claudeTokens && claudeTokens.accounts.length > 1) {
+        return claudeTokenAccountRows(provider, claudeTokens, options);
+      }
     }
     return [plain(provider)];
   });
@@ -124,9 +128,35 @@ function claudeTokenAccountRows(
       : account.label;
     return {
       key: `${provider.providerId}/account/${account.id}`,
-      provider: claudeTokenAccountOverviewSnapshot(
+      provider: claudeAccountOverviewSnapshot(
         provider,
         claude.usage[account.id] ?? null,
+        label,
+        options.unavailableText,
+      ),
+      accountId: account.id,
+    };
+  });
+}
+
+/**
+ * One row per claude-swap or tcr pool account. Hidden personal info shows the
+ * slot as `Account N`, and the real label never enters the row in that mode.
+ */
+function claudeSwapAccountRows(
+  provider: ProviderUsageSnapshot,
+  swap: ClaudeSwapOverviewAccountsBridge,
+  options: OverviewRowOptions,
+): OverviewEntry[] {
+  return swap.accounts.map((account) => {
+    const label = options.hidePersonalInfo
+      ? `${options.accountWord} ${account.slot}`
+      : account.label;
+    return {
+      key: `${provider.providerId}/account/${account.id}`,
+      provider: claudeAccountOverviewSnapshot(
+        provider,
+        swap.usage[account.id] ?? null,
         label,
         options.unavailableText,
       ),
@@ -175,12 +205,13 @@ function codexAccountOverviewSnapshot(
 }
 
 /**
- * Build one Claude token account's card model from its cached last-fetched usage.
- * The cache holds windows and an update time only, so plan, cost and subscription
- * stay empty. A missing entry renders as "No usage data" with an empty update time
- * ("Not fetched yet"); it never shows the active account's time.
+ * Build one Claude account's card model (token or claude-swap/tcr) from its
+ * cached last-fetched usage. The cache holds windows and an update time only, so
+ * plan, cost and subscription stay empty. A missing entry renders as "No usage
+ * data" with an empty update time ("Not fetched yet"); it never shows the active
+ * account's time.
  */
-function claudeTokenAccountOverviewSnapshot(
+function claudeAccountOverviewSnapshot(
   base: ProviderUsageSnapshot,
   entry: AccountUsageEntryBridge | null,
   label: string,
