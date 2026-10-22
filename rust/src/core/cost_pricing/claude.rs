@@ -235,10 +235,13 @@ impl CostUsagePricing {
     }
 
     /// Cost of one Claude row whose cache writes split into a five-minute
-    /// remainder and a one-hour share. Resolves the model against `snapshot`
-    /// the same way the Claude scanner does, prices the remainder at the
-    /// cache-write rate, and bills the one-hour share at twice the base input
-    /// rate. `None` when the model resolves to no pricing at all.
+    /// remainder and a one-hour share. Resolves the model against `snapshot`.
+    /// Models.dev resolutions use the upstream rule: the long-context tier is
+    /// chosen from total input, cache reads and all cache writes (one-hour
+    /// writes included), and the one-hour share bills at twice the selected
+    /// input rate. Built-in resolutions keep their existing per-field path, with
+    /// the one-hour share at twice the base input rate. `None` when the model
+    /// resolves to no pricing at all.
     pub(crate) fn claude_cost_usd_with_cache_ttl(
         model: &str,
         snapshot: &models_dev_pricing::ModelsDevPricingSnapshot,
@@ -250,6 +253,23 @@ impl CostUsagePricing {
     ) -> Option<f64> {
         let normalized = Self::normalize_claude_model(model);
         let resolution = Self::resolve_claude_pricing(model, &normalized, Some(snapshot))?;
+        if let ClaudePricingResolution::ModelsDev {
+            pricing,
+            threshold_tokens,
+        } = resolution
+        {
+            return Some(
+                claude_routed_pricing::cost_usd_from_u64_counts_with_one_hour_writes(
+                    pricing,
+                    threshold_tokens,
+                    input,
+                    cache_read,
+                    cache_write,
+                    cache_write_1h,
+                    output,
+                ),
+            );
+        }
         let cache_write_1h = cache_write_1h.min(cache_write);
         let cache_write_5m = cache_write - cache_write_1h;
         let base = Self::claude_cost_usd_u64_from_resolution(

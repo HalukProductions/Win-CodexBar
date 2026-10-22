@@ -599,6 +599,35 @@ fn anthropic_one_hour_cache_writes_use_catalog_rates_for_unbuilt_in_models() {
 }
 
 #[test]
+fn anthropic_one_hour_writes_count_toward_the_long_context_threshold() {
+    let pricing = catalog(
+        r#"{"anthropic": {"models": {"claude-threshold-fixture": {
+            "id": "claude-threshold-fixture",
+            "cost": {"input": 2, "output": 4, "cache_read": 0.25, "cache_write": 3,
+                "context_over_200k": {"input": 7, "output": 11, "cache_read": 0.5, "cache_write": 9}}}}}}"#,
+    );
+    let cost = |usage: Value| {
+        let row = serde_json::json!({
+            "id": "a-4", "role": "assistant", "provider": "anthropic",
+            "model": "claude-threshold-fixture", "timestamp": ROW_TIMESTAMP,
+            "usage": usage,
+        });
+        let entry = parse_pi_assistant_entry_any(&row, &pricing).unwrap();
+        assert!(entry.pricing_known);
+        entry.cost
+    };
+    // 100k input plus 150k one-hour writes is 250k total, above the 200k
+    // boundary, so every token bills at the long-context rates: input 7e-6,
+    // one-hour writes 2 x 7e-6. The ordinary 100k input alone would stay below.
+    assert_cost(
+        cost(serde_json::json!({
+            "input": 100_000, "output": 0, "cacheWrite": 150_000, "cacheWrite1h": 150_000
+        })),
+        2.8,
+    );
+}
+
+#[test]
 fn anthropic_rows_without_one_hour_key_keep_five_minute_pricing() {
     let row = serde_json::json!({
         "id": "a-3", "role": "assistant", "provider": "anthropic",
