@@ -138,6 +138,10 @@ pub struct AppState {
     /// Bumped under this lock on every change to `provider_account_usage`, so
     /// disk writes can be applied in change order.
     pub provider_account_usage_revision: u64,
+    /// Last usage read from the claude-swap or tcr pool, for Overview account
+    /// rows. Persisted without credentials or organization names; see
+    /// `commands::claude_swap_usage`.
+    pub claude_swap_usage: crate::commands::ClaudeSwapUsageState,
     /// Token account ids removed this session. An in-flight refresh that
     /// finishes after a removal must not re-add that account's usage.
     pub removed_token_account_usage: std::collections::HashSet<String>,
@@ -228,6 +232,7 @@ impl AppState {
             removed_claude_accounts: HashMap::new(),
             provider_account_usage: HashMap::new(),
             provider_account_usage_revision: 0,
+            claude_swap_usage: Default::default(),
             removed_token_account_usage: std::collections::HashSet::new(),
             codex_account_needs_authentication: HashMap::new(),
             transient_provider_failure_counts: HashMap::new(),

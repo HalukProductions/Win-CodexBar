@@ -196,6 +196,22 @@ export interface ProviderAccountUsageBridge {
   accounts: Record<string, AccountUsageEntryBridge>;
 }
 
+/**
+ * One claude-swap or tcr pool account for Overview rows. `label` is the unmasked
+ * label; the frontend shows `Account <slot>` instead while personal info is hidden.
+ */
+export interface ClaudeSwapOverviewAccountBridge {
+  id: string;
+  slot: number;
+  label: string;
+}
+
+/** Cached claude-swap/tcr pool accounts and their last usage. Cache-only. */
+export interface ClaudeSwapOverviewAccountsBridge {
+  accounts: ClaudeSwapOverviewAccountBridge[];
+  usage: Record<string, AccountUsageEntryBridge>;
+}
+
 // ── Phase 4 — credential detection ───────────────────────────────────
 
 export interface GeminiCliStatus {

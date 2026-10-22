@@ -36,6 +36,8 @@ export const PROOF_SCENARIO_NAMES = [
   "claude-plan-hidden",
   "codex-tool-activity",
   "claude-swap-tcr",
+  "overview-claude-swap-accounts",
+  "overview-claude-swap-accounts-private",
   "codex-conversations",
   "codex-conversations-private",
   "claude-reset-credits",
@@ -64,6 +66,8 @@ export interface ProofScenario {
   claudeTokenAccountUsage?: Record<string, AccountUsageEntryBridge>;
   /** External claude-swap/tcr accounts; absent means the adapter is off. */
   claudeSwapAccounts?: ClaudeSwapAccountsState;
+  /** Cached last usage per claude-swap/tcr account id, for Overview rows. Absent means none cached. */
+  claudeSwapOverviewUsage?: Record<string, AccountUsageEntryBridge>;
   /** Quota-window history served with chart data; absent means none. */
   quotaWindowHistory?: QuotaWindowHistoryBridge[];
   /** Synthetic replacements for single locale keys; absent means the shipped English strings. */
@@ -736,6 +740,70 @@ function claudeSwapTcrScenario(now: Date): ProofScenario {
   };
 }
 
+/**
+ * Three claude-swap pool accounts with Overview rows on. Slot 1 is active, slot 2
+ * has usage, and slot 3 has no cached usage ("No usage data"). The pool is
+ * claude-swap, so it stays switchable; the tcr pool fixture covers read-only rows.
+ */
+function overviewClaudeSwapAccountsScenario(now: Date, hidePersonalInfo: boolean): ProofScenario {
+  const base = defaultScenario(now);
+  const active: ClaudeSwapAccount = {
+    ...tcrPoolAccount(now, 1, "work@example.com", 22, 41),
+    id: "claude-swap:1",
+    source: "claude-swap",
+    isActive: true,
+  };
+  const second: ClaudeSwapAccount = {
+    ...tcrPoolAccount(now, 2, "personal@example.com", 63, 12),
+    id: "claude-swap:2",
+    source: "claude-swap",
+  };
+  const unfetched: ClaudeSwapAccount = {
+    ...tcrPoolAccount(now, 3, "backup@example.com", 0, 0),
+    id: "claude-swap:3",
+    source: "claude-swap",
+    status: "token_expired",
+    fiveHour: null,
+    sevenDay: null,
+    error: "Re-login required. Re-authenticate this account in claude-swap.",
+  };
+  return {
+    ...base,
+    name: hidePersonalInfo
+      ? "overview-claude-swap-accounts-private"
+      : "overview-claude-swap-accounts",
+    settings: {
+      ...baseSettings({
+        enabledProviders: DEFAULT_ENABLED,
+        mergedOverviewAllAccounts: true,
+        hidePersonalInfo,
+      }),
+      claudeSwapEnabled: true,
+      claudeSwapExecutablePath: "C:\\tools\\cswap.exe",
+      claudeSwapSource: "claude-swap",
+    },
+    claudeSwapAccounts: {
+      enabled: true,
+      source: "claude-swap",
+      executableConfigured: true,
+      accounts: [active, second, unfetched],
+      error: null,
+    },
+    claudeSwapOverviewUsage: {
+      "claude-swap:1": {
+        primary: { usedPercent: 22, windowMinutes: 300, resetsAt: isoAfter(now, 61) },
+        secondary: { usedPercent: 41, windowMinutes: 10_080, resetsAt: isoAfter(now, 5 * DAY_MINUTES + 30) },
+        updatedAt: isoBefore(now, 2),
+      },
+      "claude-swap:2": {
+        primary: { usedPercent: 63, windowMinutes: 300, resetsAt: isoAfter(now, 95) },
+        secondary: { usedPercent: 12, windowMinutes: 10_080, resetsAt: isoAfter(now, 4 * DAY_MINUTES) },
+        updatedAt: isoBefore(now, 9),
+      },
+    },
+  };
+}
+
 function codexConversation(
   now: Date,
   id: string,
@@ -895,6 +963,8 @@ const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   "claude-plan-hidden": claudePlanHiddenScenario,
   "codex-tool-activity": codexToolActivityScenario,
   "claude-swap-tcr": claudeSwapTcrScenario,
+  "overview-claude-swap-accounts": (now) => overviewClaudeSwapAccountsScenario(now, false),
+  "overview-claude-swap-accounts-private": (now) => overviewClaudeSwapAccountsScenario(now, true),
   "codex-conversations": codexConversationsScenario,
   "codex-conversations-private": codexConversationsPrivateScenario,
   "claude-reset-credits": (now) => claudeResetCreditsScenario(now, false),

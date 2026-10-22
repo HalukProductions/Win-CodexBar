@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { makeUsageSnapshot } from "../test/fixtures";
-import type { CodexAccount, CodexAccountUsageSnapshot } from "../types/bridge";
+import type {
+  ClaudeSwapOverviewAccountsBridge,
+  CodexAccount,
+  CodexAccountUsageSnapshot,
+} from "../types/bridge";
 import {
   expandOverviewAccountRows,
   type ClaudeTokenOverviewAccounts,
@@ -260,5 +264,149 @@ describe("expandOverviewAccountRows", () => {
       claudeState(),
     );
     expect(entries.filter((e) => e.provider.providerId === "codex")).toHaveLength(1);
+  });
+});
+
+function swapState(
+  overrides: Partial<ClaudeSwapOverviewAccountsBridge> = {},
+): ClaudeSwapOverviewAccountsBridge {
+  return {
+    accounts: [
+      { id: "claude-swap:1", slot: 1, label: "work@example.com" },
+      { id: "claude-swap:2", slot: 2, label: "personal@example.com" },
+      { id: "claude-swap:3", slot: 3, label: "backup@example.com" },
+    ],
+    usage: {
+      "claude-swap:1": {
+        primary: { usedPercent: 22, windowMinutes: 300, resetsAt: "2026-05-24T05:00:00Z" },
+        secondary: { usedPercent: 41, windowMinutes: 10_080, resetsAt: null },
+        updatedAt: "2026-05-24T00:00:00Z",
+      },
+      "claude-swap:2": {
+        primary: { usedPercent: 63, windowMinutes: 300, resetsAt: null },
+        secondary: null,
+        updatedAt: "2026-05-23T20:00:00Z",
+      },
+    },
+    ...overrides,
+  };
+}
+
+describe("expandOverviewAccountRows for claude-swap and tcr pools", () => {
+  it("expands a claude-swap pool into one row per account, in pool order", () => {
+    const entries = expandOverviewAccountRows(
+      [activeClaude],
+      null,
+      OPTIONS,
+      null,
+      swapState(),
+    );
+    expect(entries.map((e) => e.key)).toEqual([
+      "claude/account/claude-swap:1",
+      "claude/account/claude-swap:2",
+      "claude/account/claude-swap:3",
+    ]);
+    expect(entries.map((e) => e.accountId)).toEqual([
+      "claude-swap:1",
+      "claude-swap:2",
+      "claude-swap:3",
+    ]);
+    expect(entries.map((e) => e.provider.accountEmail)).toEqual([
+      "work@example.com",
+      "personal@example.com",
+      "backup@example.com",
+    ]);
+  });
+
+  it("builds each row from its own cached usage, never from the active card", () => {
+    const [work] = expandOverviewAccountRows([activeClaude], null, OPTIONS, null, swapState());
+    const row = work.provider;
+    expect(row.primary.usedPercent).toBe(22);
+    expect(row.primary.remainingPercent).toBe(78);
+    expect(row.primary.windowMinutes).toBe(300);
+    expect(row.secondary?.usedPercent).toBe(41);
+    expect(row.updatedAt).toBe("2026-05-24T00:00:00Z");
+    expect(row.planName).toBeNull();
+    expect(row.cost).toBeNull();
+    expect(row.error).toBeNull();
+    expect(row.errorState).toBe("ready");
+    expect(JSON.stringify(row)).not.toContain("active@example.com");
+    expect(JSON.stringify(row)).not.toContain("Max");
+  });
+
+  it("keeps a single-window account ready with no secondary", () => {
+    const [, second] = expandOverviewAccountRows([activeClaude], null, OPTIONS, null, swapState());
+    expect(second.provider.secondary).toBeNull();
+    expect(second.provider.primary.usedPercent).toBe(63);
+    expect(second.provider.error).toBeNull();
+  });
+
+  it("shows an account with no cached usage as unavailable, with no update time", () => {
+    const entries = expandOverviewAccountRows([activeClaude], null, OPTIONS, null, swapState());
+    const row = entries[2].provider;
+    expect(row.error).toBe("No usage data");
+    expect(row.errorState).toBe("unknown");
+    expect(row.primary.usedPercent).toBe(0);
+    expect(row.secondary).toBeNull();
+    expect(row.updatedAt).toBe("");
+    expect(row.accountEmail).toBe("backup@example.com");
+  });
+
+  it("takes precedence over Claude token accounts when both are present", () => {
+    const entries = expandOverviewAccountRows(
+      [activeClaude],
+      null,
+      OPTIONS,
+      claudeState(),
+      swapState(),
+    );
+    expect(entries.map((e) => e.key)).toEqual([
+      "claude/account/claude-swap:1",
+      "claude/account/claude-swap:2",
+      "claude/account/claude-swap:3",
+    ]);
+  });
+
+  it("keeps the single Claude card when the pool has at most one account", () => {
+    const single = swapState({ accounts: [{ id: "claude-swap:1", slot: 1, label: "work@example.com" }] });
+    const entries = expandOverviewAccountRows([activeClaude], null, OPTIONS, null, single);
+    expect(entries.map((e) => e.key)).toEqual(["claude"]);
+    expect(entries[0].accountId).toBeNull();
+    expect(entries[0].provider).toBe(activeClaude);
+  });
+
+  it("uses generic Account N labels and never the real label under Hide personal information", () => {
+    const entries = expandOverviewAccountRows([activeClaude], null, {
+      ...OPTIONS,
+      hidePersonalInfo: true,
+    }, null, swapState());
+    expect(entries.map((e) => e.provider.accountEmail)).toEqual([
+      "Account 1",
+      "Account 2",
+      "Account 3",
+    ]);
+    const serialized = JSON.stringify(entries.map((e) => e.provider));
+    expect(serialized).not.toContain("work@example.com");
+    expect(serialized).not.toContain("personal@example.com");
+    expect(serialized).not.toContain("backup@example.com");
+  });
+
+  it("leaves Codex rows alone when claude-swap rows expand next to them", () => {
+    const entries = expandOverviewAccountRows(
+      [activeCodex, activeClaude],
+      codexState(),
+      OPTIONS,
+      null,
+      swapState(),
+    );
+    expect(entries.map((e) => e.key)).toEqual([
+      "codex/account/acc-work",
+      "codex/account/acc-home",
+      "claude/account/claude-swap:1",
+      "claude/account/claude-swap:2",
+      "claude/account/claude-swap:3",
+    ]);
+    const keys = entries.map((e) => e.key);
+    expect(new Set(keys).size).toBe(keys.length);
   });
 });

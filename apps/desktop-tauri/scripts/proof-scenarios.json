@@ -145,6 +145,25 @@
       ]
     },
     {
+      "name": "tray-overview-claude-swap-accounts",
+      "query": "window=main&fixture=overview-claude-swap-accounts",
+      "size": [310, 1032],
+      "steps": [
+        { "expectText": ["work@example.com", "personal@example.com", "backup@example.com", "No usage data"] },
+        { "screenshot": "tray-overview-claude-swap-accounts", "clip": "panel" }
+      ]
+    },
+    {
+      "name": "tray-overview-claude-swap-accounts-private",
+      "query": "window=main&fixture=overview-claude-swap-accounts-private",
+      "size": [310, 1032],
+      "steps": [
+        { "expectText": ["Account 1", "Account 2", "Account 3", "No usage data"] },
+        { "expectNoText": ["work@example.com", "personal@example.com", "backup@example.com"] },
+        { "screenshot": "tray-overview-claude-swap-accounts-private", "clip": "panel" }
+      ]
+    },
+    {
       "name": "flyout-default",
       "query": "window=flyout&fixture=default",
       "size": [310, 1032],

@@ -1,3 +1,6 @@
+use super::claude_swap_usage::{
+    PoolObservation, begin_pool_read, observe_list, record_observation,
+};
 use super::{claude_reconciliation, invalidate_account_usage};
 use crate::state::AppState;
 use codexbar::core::ProviderId;
@@ -68,44 +71,57 @@ impl ClaudeSwapConfig {
     }
 }
 
-fn claude_swap_accounts_state() -> ClaudeSwapAccountsState {
+/// Read the pool for the settings list. Also returns what the read saw, for the
+/// Overview usage cache: `Inactive` when no pool can be read, and `None` when
+/// the read failed, so the last good cache is kept.
+fn claude_swap_accounts_state() -> (ClaudeSwapAccountsState, Option<PoolObservation>) {
     let config = ClaudeSwapConfig::load();
     let enabled = config.enabled;
     let executable_configured = !config.executable_path.trim().is_empty();
     if !enabled || !executable_configured {
-        return ClaudeSwapAccountsState {
-            enabled,
-            source: config.source,
-            executable_configured,
-            accounts: Vec::new(),
-            error: None,
-        };
+        return (
+            ClaudeSwapAccountsState {
+                enabled,
+                source: config.source,
+                executable_configured,
+                accounts: Vec::new(),
+                error: None,
+            },
+            Some(PoolObservation::Inactive),
+        );
     }
     match claude_swap::read_account_list(&config.executable_path, config.source) {
         Ok(list) => {
+            let observation = observe_list(&list, config.source);
             let mut accounts =
                 claude_swap::project_accounts(&list, config.source, config.hide_personal_info);
             let now = chrono::Utc::now();
             claude_swap::attach_session_forecasts(&list, &mut accounts, now, |sample| {
                 claude_swap::record_and_forecast(sample, now, config.weekly_progress_work_days)
             });
+            (
+                ClaudeSwapAccountsState {
+                    enabled,
+                    source: config.source,
+                    executable_configured,
+                    accounts,
+                    error: None,
+                },
+                Some(observation),
+            )
+        }
+        // Adapter failures are isolated from ambient Claude usage: the last
+        // built-in account list still renders and the error is surfaced inline.
+        Err(error) => (
             ClaudeSwapAccountsState {
                 enabled,
                 source: config.source,
                 executable_configured,
-                accounts,
-                error: None,
-            }
-        }
-        // Adapter failures are isolated from ambient Claude usage: the last
-        // built-in account list still renders and the error is surfaced inline.
-        Err(error) => ClaudeSwapAccountsState {
-            enabled,
-            source: config.source,
-            executable_configured,
-            accounts: Vec::new(),
-            error: Some(error.to_string()),
-        },
+                accounts: Vec::new(),
+                error: Some(error.to_string()),
+            },
+            None,
+        ),
     }
 }
 
@@ -311,10 +327,19 @@ async fn finish_claude_swap_mutation(
 }
 
 #[tauri::command]
-pub async fn claude_swap_accounts_list() -> Result<ClaudeSwapAccountsState, String> {
-    tauri::async_runtime::spawn_blocking(claude_swap_accounts_state)
+pub async fn claude_swap_accounts_list(
+    app: tauri::AppHandle,
+) -> Result<ClaudeSwapAccountsState, String> {
+    // The read number is taken before the subprocess runs, so an older read that
+    // finishes late cannot overwrite a newer one in the Overview cache.
+    let read = begin_pool_read(&app);
+    let (state, observation) = tauri::async_runtime::spawn_blocking(claude_swap_accounts_state)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    if let Some(observation) = observation {
+        record_observation(&app, read, &observation);
+    }
+    Ok(state)
 }
 
 #[tauri::command]

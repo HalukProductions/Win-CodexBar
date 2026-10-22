@@ -335,6 +335,23 @@ export function createProofRouter(
         accounts: providerId === "claude" ? (scenario.claudeTokenAccountUsage ?? {}) : {},
       };
     },
+    // Cache-only read: the pool accounts the scenario's claude-swap/tcr source lists,
+    // with the usage the shell would have cached. Empty when the integration is off.
+    get_claude_swap_overview_accounts: () => {
+      const swap = scenario.claudeSwapAccounts;
+      const source = settings.claudeSwapSource ?? "claude-swap";
+      if (!settings.claudeSwapEnabled || !swap || (swap.source ?? "claude-swap") !== source) {
+        return { accounts: [], usage: {} };
+      }
+      return {
+        accounts: swap.accounts.map((account) => ({
+          id: account.id,
+          slot: account.slot,
+          label: account.label,
+        })),
+        usage: scenario.claudeSwapOverviewUsage ?? {},
+      };
+    },
     set_token_account_claude_config_dir: (args) => {
       const accountId = stringArg(args, "accountId");
       const directory = typeof args.directory === "string" ? args.directory : null;
