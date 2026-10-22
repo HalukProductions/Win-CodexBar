@@ -138,6 +138,53 @@ fn aggregate_window_total_matches_model_and_daily_totals() {
     assert_eq!(daily_total, 160);
 }
 
+// Review (CodeRabbit, PR #976): a model total derived from only some token
+// classes is an undercount presented as exact, so it must stay unknown.
+#[test]
+fn model_total_stays_unknown_when_derivation_inputs_are_partial() {
+    let now = DateTime::parse_from_rfc3339("2026-08-19T12:00:00Z")
+        .unwrap()
+        .with_timezone(&Utc);
+    // Input only: no explicit total, output and cache creation unknown.
+    let mut input_only = entry("openai", "gpt-partial");
+    input_only.request_id = "partial-input-only".to_string();
+    input_only.total_tokens = None;
+    input_only.output_tokens = None;
+    input_only.cache_creation_tokens = None;
+    // Input and output but no cache creation: the derivation is still incomplete.
+    let mut no_cache_creation = entry("openai", "gpt-partial");
+    no_cache_creation.request_id = "partial-no-cache-creation".to_string();
+    no_cache_creation.total_tokens = None;
+
+    // A complete derivation (input 100 + output 5 + cache creation 2) plus an
+    // explicit total (105) still sums to a known model total.
+    let mut complete_derived = entry("openai", "gpt-complete");
+    complete_derived.request_id = "complete-derived".to_string();
+    complete_derived.total_tokens = None;
+    complete_derived.cache_creation_tokens = Some(2);
+    let mut explicit = entry("openai", "gpt-complete");
+    explicit.request_id = "complete-explicit".to_string();
+
+    let source = aggregate(
+        vec![input_only, no_cache_creation, complete_derived, explicit],
+        now,
+        30,
+        &CustomPricing::default(),
+    )
+    .expect("source");
+    let model = |name: &str| {
+        source
+            .models
+            .iter()
+            .find(|row| row.model == name)
+            .expect("model row")
+    };
+
+    assert_eq!(model("gpt-partial").total_tokens, None);
+    assert_eq!(model("gpt-partial").input_tokens, Some(200));
+    assert_eq!(model("gpt-complete").total_tokens, Some(212));
+}
+
 fn entry(provider: &str, model: &str) -> OpenCodexEntry {
     OpenCodexEntry {
         request_id: format!("{provider}:{model}"),

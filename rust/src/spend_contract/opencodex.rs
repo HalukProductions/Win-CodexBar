@@ -286,8 +286,8 @@ fn aggregate_with_pricing(
         add_known_tokens(&mut model.input, entry.input_tokens);
         add_known_tokens(&mut model.output, entry.output_tokens);
         add_known_tokens(&mut model.cache_read, entry.cache_read_tokens);
-        // A row with no resolvable total makes the model total unknown.
-        add_known_tokens(&mut model.total, entry.resolved_total_tokens());
+        // A row without a complete total makes the model total unknown.
+        add_known_tokens(&mut model.total, entry.model_total_tokens());
         if let Some(cost) = cost {
             model.cost = Some(model.cost.unwrap_or(0.0) + cost);
         }
@@ -603,6 +603,22 @@ impl OpenCodexEntry {
             }
             saw.then_some(total)
         })
+    }
+
+    /// The row's total for its model. An explicit total wins. A derived total
+    /// needs every derivation input; a partial sum would present an undercount
+    /// as an exact model total while the missing class is unknown.
+    fn model_total_tokens(&self) -> Option<u64> {
+        match (
+            self.total_tokens,
+            self.input_tokens,
+            self.output_tokens,
+            self.cache_creation_tokens,
+        ) {
+            (Some(total), _, _, _) => Some(total),
+            (None, Some(_), Some(_), Some(_)) => self.resolved_total_tokens(),
+            _ => None,
+        }
     }
 }
 
