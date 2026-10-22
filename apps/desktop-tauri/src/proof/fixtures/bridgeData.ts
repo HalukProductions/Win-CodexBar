@@ -241,6 +241,16 @@ function codexConversationsContract(scenario: ProofScenario, reportingPeriod: st
   };
 }
 
+/** The Usage & Spend contract: Codex conversations or model rows when a scenario provides them, else the empty all-provider contract. */
+function usageSpendContract(scenario: ProofScenario, reportingPeriod: string): SpendContract {
+  const conversations = codexConversationsContract(scenario, reportingPeriod);
+  if (conversations) return conversations;
+  if (scenario.codexSpendModels) {
+    return { ...spendContract("codex", reportingPeriod), models: scenario.codexSpendModels };
+  }
+  return spendContract("all", reportingPeriod);
+}
+
 export function usageSpendSummary(scenario: ProofScenario, now: Date): UsageSpendSummary {
   const reportingPeriod = scenario.settings.spendDashboardPeriod ?? "rolling:30";
   const rows: UsageSpendRow[] = scenario.catalog.flatMap((entry) => {
@@ -268,7 +278,7 @@ export function usageSpendSummary(scenario: ProofScenario, now: Date): UsageSpen
   });
   return {
     rows,
-    contract: codexConversationsContract(scenario, reportingPeriod) ?? spendContract("all", reportingPeriod),
+    contract: usageSpendContract(scenario, reportingPeriod),
     reportingPeriod,
     reportingDay: dayKey(now, 0),
     dashboardTimezone: "UTC",

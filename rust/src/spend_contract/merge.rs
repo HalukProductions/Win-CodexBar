@@ -135,6 +135,16 @@ pub(super) fn add_optional(left: Option<u64>, right: Option<u64>) -> Option<u64>
     }
 }
 
+/// Adds one per-model token class. Unknown is sticky: once either side is
+/// unknown the sum stays unknown, and an overflow is unknown too, so a
+/// per-model total never pretends to be exact.
+pub(super) fn add_known_tokens(total: &mut Option<u64>, incoming: Option<u64>) {
+    *total = match (*total, incoming) {
+        (Some(total), Some(incoming)) => total.checked_add(incoming),
+        _ => None,
+    };
+}
+
 pub(super) fn merge_models(
     mut left: Vec<SpendModelRow>,
     right: &[SpendModelRow],
@@ -142,14 +152,10 @@ pub(super) fn merge_models(
     for incoming in right {
         if let Some(existing) = left.iter_mut().find(|row| row.model == incoming.model) {
             existing.cost_usd = sum_optional_cost(existing.cost_usd, incoming.cost_usd);
-            existing.input_tokens = existing.input_tokens.saturating_add(incoming.input_tokens);
-            existing.output_tokens = existing
-                .output_tokens
-                .saturating_add(incoming.output_tokens);
-            existing.cache_read_tokens = existing
-                .cache_read_tokens
-                .saturating_add(incoming.cache_read_tokens);
-            existing.total_tokens = existing.total_tokens.saturating_add(incoming.total_tokens);
+            add_known_tokens(&mut existing.input_tokens, incoming.input_tokens);
+            add_known_tokens(&mut existing.output_tokens, incoming.output_tokens);
+            add_known_tokens(&mut existing.cache_read_tokens, incoming.cache_read_tokens);
+            add_known_tokens(&mut existing.total_tokens, incoming.total_tokens);
             existing.custom_pricing |= incoming.custom_pricing;
         } else {
             left.push(incoming.clone());

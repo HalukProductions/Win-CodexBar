@@ -14,6 +14,7 @@ import type {
   ProviderUsageSnapshot,
   QuotaWindowHistoryBridge,
   SettingsSnapshot,
+  SpendModelRow,
   TokenAccountBridge,
 } from "../../types/bridge";
 import {
@@ -35,6 +36,7 @@ export const PROOF_SCENARIO_NAMES = [
   "openai-live-spend",
   "claude-plan-hidden",
   "codex-tool-activity",
+  "usage-spend-unknown-tokens",
   "claude-swap-tcr",
   "codex-conversations",
   "codex-conversations-private",
@@ -72,6 +74,8 @@ export interface ProofScenario {
   codexConversations?: CodexWorkspacesSessionUsage[];
   /** Per-session Codex tool activity, unredacted; the router redacts it under Hide personal information. */
   codexToolActivity?: CodexSessionToolActivity[];
+  /** Per-model rows in the Codex Usage & Spend contract; a null token count renders as unknown. */
+  codexSpendModels?: SpendModelRow[];
   /** Browsers the cookie section detects; absent means the router's default pair. */
   detectedBrowsers?: DetectedBrowserBridge[];
 }
@@ -676,6 +680,34 @@ function codexToolActivityScenario(now: Date): ProofScenario {
   };
 }
 
+/** Default data plus Codex model rows where one model's token counts are unknown, not zero. */
+function usageSpendUnknownTokensScenario(now: Date): ProofScenario {
+  return {
+    ...defaultScenario(now),
+    name: "usage-spend-unknown-tokens",
+    codexSpendModels: [
+      {
+        model: "gpt-5-codex",
+        costUsd: 1.42,
+        inputTokens: 182_000,
+        outputTokens: 14_500,
+        cacheReadTokens: 96_000,
+        totalTokens: 196_500,
+        customPricing: false,
+      },
+      {
+        model: "gpt-5-mini",
+        costUsd: null,
+        inputTokens: null,
+        outputTokens: null,
+        cacheReadTokens: null,
+        totalTokens: null,
+        customPricing: false,
+      },
+    ],
+  };
+}
+
 /** A synthetic tcr pool read through the claude-swap adapter: two read-only cards, no active account. */
 function tcrPoolAccount(
   now: Date,
@@ -894,6 +926,7 @@ const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   "openai-live-spend": openAiLiveSpendScenario,
   "claude-plan-hidden": claudePlanHiddenScenario,
   "codex-tool-activity": codexToolActivityScenario,
+  "usage-spend-unknown-tokens": usageSpendUnknownTokensScenario,
   "claude-swap-tcr": claudeSwapTcrScenario,
   "codex-conversations": codexConversationsScenario,
   "codex-conversations-private": codexConversationsPrivateScenario,

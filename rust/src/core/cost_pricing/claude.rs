@@ -276,6 +276,55 @@ impl CostUsagePricing {
         )
     }
 
+    /// Cost of one Claude row whose cache writes split into a five-minute
+    /// remainder and a one-hour share. Resolves the model against `snapshot`.
+    /// Models.dev resolutions use the upstream rule: the long-context tier is
+    /// chosen from total input, cache reads and all cache writes (one-hour
+    /// writes included), and the one-hour share bills at twice the selected
+    /// input rate. Built-in resolutions keep their existing per-field path, with
+    /// the one-hour share at twice the base input rate. `None` when the model
+    /// resolves to no pricing at all.
+    pub(crate) fn claude_cost_usd_with_cache_ttl(
+        model: &str,
+        snapshot: &models_dev_pricing::ModelsDevPricingSnapshot,
+        input: u64,
+        cache_read: u64,
+        cache_write: u64,
+        cache_write_1h: u64,
+        output: u64,
+    ) -> Option<f64> {
+        let normalized = Self::normalize_claude_model(model);
+        let resolution = Self::resolve_claude_pricing(model, &normalized, Some(snapshot))?;
+        if let ClaudePricingResolution::ModelsDev {
+            pricing,
+            threshold_tokens,
+        } = resolution
+        {
+            return Some(
+                claude_routed_pricing::cost_usd_from_u64_counts_with_one_hour_writes(
+                    pricing,
+                    threshold_tokens,
+                    input,
+                    cache_read,
+                    cache_write,
+                    cache_write_1h,
+                    output,
+                ),
+            );
+        }
+        let cache_write_1h = cache_write_1h.min(cache_write);
+        let cache_write_5m = cache_write - cache_write_1h;
+        let base = Self::claude_cost_usd_u64_from_resolution(
+            resolution,
+            input,
+            cache_read,
+            cache_write_5m,
+            output,
+        );
+        let input_rate = Self::claude_input_cost_per_token_from_resolution(resolution);
+        Some(base + (cache_write_1h as f64) * input_rate * 2.0)
+    }
+
     /// Base per-token input rate for a Claude model. Exposed for callers that
     /// need a rate the standard cost function doesn't model — e.g. the usage
     /// scanner's one-hour cache-write premium, billed at 2x the input rate.

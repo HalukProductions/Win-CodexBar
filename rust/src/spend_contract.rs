@@ -23,8 +23,8 @@ use crate::cost_scanner::{
 
 use custom_pricing::{CustomPricing, CustomRates};
 use merge::{
-    ActivityHistogram, activity_from_sessions, add_optional, merge_activity, merge_coverage,
-    merge_daily, merge_models, merge_token_mix, sum_optional_cost,
+    ActivityHistogram, activity_from_sessions, add_known_tokens, add_optional, merge_activity,
+    merge_coverage, merge_daily, merge_models, merge_token_mix, sum_optional_cost,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -131,10 +131,12 @@ pub struct SpendModelRow {
     pub model: String,
     /// None = unknown/unpriced. Some(0.0) = known free.
     pub cost_usd: Option<f64>,
-    pub input_tokens: u64,
-    pub output_tokens: u64,
-    pub cache_read_tokens: u64,
-    pub total_tokens: u64,
+    /// None = unknown: at least one of the model's rows did not record usable
+    /// token counts. Some(0) = known zero. Unknown is never summed as zero.
+    pub input_tokens: Option<u64>,
+    pub output_tokens: Option<u64>,
+    pub cache_read_tokens: Option<u64>,
+    pub total_tokens: Option<u64>,
     pub custom_pricing: bool,
 }
 
@@ -630,19 +632,24 @@ fn model_rows(
     let mut names: HashSet<String> = summary.by_model.keys().cloned().collect();
     names.extend(summary.by_model_tokens.keys().cloned());
     names.extend(summary.unknown_models.iter().cloned());
+    names.extend(summary.unknown_token_rows_by_model.keys().cloned());
     let mut rows: Vec<_> = names
         .into_iter()
         .map(|model| {
-            let counts = summary
-                .by_model_tokens
-                .get(&model)
-                .cloned()
-                .unwrap_or_default();
+            // Unknown counts stay `None` and are never summed as zero, so a
+            // custom-rate cost is not computed from them either.
+            let counts = (!model_tokens_unknown(summary, &model)).then(|| {
+                summary
+                    .by_model_tokens
+                    .get(&model)
+                    .cloned()
+                    .unwrap_or_default()
+            });
             let custom_rates = custom.rates(provider_id, &model);
             // Exact-match overlay is authoritative when present. Missing fields
             // remain unknown rather than falling back to built-in/model.dev rates.
             let cost_usd = if let Some(rates) = custom_rates {
-                rates.cost(&counts)
+                counts.as_ref().and_then(|counts| rates.cost(counts))
             } else if summary.unknown_models.contains(&model) {
                 None
             } else {
@@ -655,10 +662,12 @@ fn model_rows(
             SpendModelRow {
                 model,
                 cost_usd,
-                input_tokens: counts.input_tokens,
-                output_tokens: counts.output_tokens,
-                cache_read_tokens: counts.cached_tokens,
-                total_tokens: counts.total_for_provider(provider_id),
+                input_tokens: counts.as_ref().map(|counts| counts.input_tokens),
+                output_tokens: counts.as_ref().map(|counts| counts.output_tokens),
+                cache_read_tokens: counts.as_ref().map(|counts| counts.cached_tokens),
+                total_tokens: counts
+                    .as_ref()
+                    .map(|counts| counts.total_for_provider(provider_id)),
                 custom_pricing: custom_rates.is_some(),
             }
         })
@@ -673,6 +682,16 @@ fn model_rows(
         (None, None) => left.model.cmp(&right.model),
     });
     rows
+}
+
+/// True when a model's token counts are unknown: one of its rows lacked usable
+/// token counts (`CostSummary::unknown_token_rows_by_model`). A summary that
+/// reports unknown rows without per-model attribution marks every model unknown.
+fn model_tokens_unknown(summary: &CostSummary, model: &str) -> bool {
+    match summary.unknown_token_rows_by_model.get(model) {
+        Some(rows) => *rows > 0,
+        None => summary.unknown_token_rows > 0 && summary.unknown_token_rows_by_model.is_empty(),
+    }
 }
 
 fn coverage_for_models(models: &[SpendModelRow]) -> CostCoverageCounts {
