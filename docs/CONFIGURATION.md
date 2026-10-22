@@ -227,7 +227,7 @@ These controls set the tray panel and the float bar.
 
 Workday ticks are disabled while Work days is Automatic. SSH hosts are disabled while agent sessions are off or local-only is on.
 
-With **Local sessions only** on, agent sessions never run `tailscale status` and never open SSH connections. The tray panel's session list reloads when the setting changes while the panel is open, and on its next open otherwise, so remote rows already shown are dropped then. Remote discovery stays on by default, so existing installs behave as before until this is turned on.
+With **Local sessions only** on, the desktop app's agent sessions never run `tailscale status` and never open SSH connections. The `codexbar sessions` CLI is not affected by this setting (see [CLI.md](CLI.md)). The setting is re-read from `settings.json` immediately before every Tailscale or SSH spawn, so a discovery that began before the toggle starts no new remote process after it. Results from remote processes that finished before the toggle are dropped too. A process that was already running when the toggle landed can run until its own timeout (5 seconds at most), but its output is discarded. The tray panel's session list reloads when the setting changes while the panel is open, and on its next open otherwise, so remote rows already shown are dropped then. Remote discovery stays on by default, so existing installs behave as before until this is turned on.
 
 Tailscale discovery runs only a standalone `tailscale.exe` found on `PATH`. The GUI client `tailscale-ipn.exe`, `.cmd`/`.bat` launchers, and symlinks are never executed. If no standalone CLI is found, Tailscale discovery is skipped without an error row.
 

@@ -1,7 +1,87 @@
 //! Remote (SSH / Tailscale) agent-session retrieval and wire decoding.
 
 use super::*;
+use crate::settings::Settings;
 use futures::future::join_all;
+use std::ffi::OsString;
+
+/// Decides whether remote (SSH / Tailscale) discovery may run.
+///
+/// Checked immediately before every remote spawn (see [`spawn_remote`]) and
+/// again before remote results are merged, so a toggle made while a discovery
+/// is in flight stops the next spawn and drops results already gathered.
+#[derive(Clone)]
+pub(crate) struct RemoteDiscoveryGate {
+    allowed: Arc<dyn Fn() -> bool + Send + Sync>,
+}
+
+impl RemoteDiscoveryGate {
+    /// Re-reads `settings.json` on every check. See `Settings::agent_sessions_remote_allowed_now`.
+    pub(crate) fn from_settings() -> Self {
+        Self::new(Settings::agent_sessions_remote_allowed_now)
+    }
+
+    /// For remote discovery the user asked for directly, such as `codexbar sessions
+    /// --ssh-host`. Desktop "Agent sessions" and "Local sessions only" do not apply.
+    pub(crate) fn explicit_request() -> Self {
+        Self::new(|| true)
+    }
+
+    pub(crate) fn new(allowed: impl Fn() -> bool + Send + Sync + 'static) -> Self {
+        Self {
+            allowed: Arc::new(allowed),
+        }
+    }
+
+    pub(crate) fn allows(&self) -> bool {
+        (self.allowed)()
+    }
+}
+
+/// Runs one remote discovery process. Production uses the hidden [`CommandRunner`];
+/// tests inject a recorder so they can assert which processes would have started.
+pub(crate) trait RemoteProcessSpawner: Send + Sync {
+    fn spawn(&self, binary: &str, options: &CommandOptions) -> Result<CommandResult, CommandError>;
+}
+
+/// Spawns through [`CommandRunner::run`], whose `spawn_child` sets `CREATE_NO_WINDOW` on Windows.
+pub(crate) struct HiddenProcessSpawner;
+
+impl RemoteProcessSpawner for HiddenProcessSpawner {
+    fn spawn(&self, binary: &str, options: &CommandOptions) -> Result<CommandResult, CommandError> {
+        CommandRunner::new().run(binary, None, options)
+    }
+}
+
+/// Everything one discovery pass needs to reach the network: the gate, the spawner,
+/// and the `PATH` used to find the standalone Tailscale CLI.
+#[derive(Clone)]
+pub(crate) struct RemoteContext {
+    pub(crate) gate: RemoteDiscoveryGate,
+    pub(crate) spawner: Arc<dyn RemoteProcessSpawner>,
+    pub(crate) path_var: Option<OsString>,
+}
+
+/// Spawns one remote discovery process only while the gate allows it.
+///
+/// The gate is read on the blocking thread right before the spawner runs, so a
+/// closed gate never starts a process. Returns `None` when nothing was spawned.
+pub(crate) async fn spawn_remote(
+    ctx: &RemoteContext,
+    binary: String,
+    options: CommandOptions,
+) -> Option<Result<CommandResult, CommandError>> {
+    let gate = ctx.gate.clone();
+    let spawner = Arc::clone(&ctx.spawner);
+    match tokio::task::spawn_blocking(move || {
+        gate.allows().then(|| spawner.spawn(&binary, &options))
+    })
+    .await
+    {
+        Ok(outcome) => outcome,
+        Err(error) => Some(Err(CommandError::LaunchFailed(error.to_string()))),
+    }
+}
 
 impl RemoteSessionFetcher {
     const BUNDLED_CLI_FALLBACK: &'static str =
@@ -11,7 +91,16 @@ impl RemoteSessionFetcher {
         Self { per_host_timeout }
     }
 
-    pub async fn fetch(&self, hosts: &[String]) -> Vec<AgentSessionHostResult> {
+    /// Fetch every host over SSH. Returns nothing once the gate is closed, and drops
+    /// results gathered while it was closing.
+    pub(crate) async fn fetch(
+        &self,
+        hosts: &[String],
+        ctx: &RemoteContext,
+    ) -> Vec<AgentSessionHostResult> {
+        if !ctx.gate.allows() {
+            return Vec::new();
+        }
         let valid = Self::sanitized_hosts(hosts);
         let valid_keys = valid
             .iter()
@@ -31,10 +120,14 @@ impl RemoteSessionFetcher {
             })
             .collect::<Vec<_>>();
         let timeout = self.per_host_timeout;
-        let mut results = Self::fetch_hosts_with(&valid, |host| async move {
-            Self::fetch_host(host, timeout).await
+        let mut results = Self::fetch_hosts_with(&valid, |host| {
+            let ctx = ctx.clone();
+            async move { Self::fetch_host(host, timeout, &ctx).await }
         })
         .await;
+        if !ctx.gate.allows() {
+            return Vec::new();
+        }
         results.append(&mut invalid);
         results.sort_by(|lhs, rhs| {
             lhs.host
@@ -44,8 +137,10 @@ impl RemoteSessionFetcher {
         results
     }
 
-    pub(crate) async fn tailscale_hosts() -> Result<Vec<String>, String> {
-        let Some(cli) = tailscale_cli_path(std::env::var_os("PATH").as_deref()) else {
+    /// Tailscale peers from the standalone CLI. `Ok(empty)` when the gate is closed
+    /// (nothing spawned) or no standalone CLI exists.
+    pub(crate) async fn tailscale_hosts(ctx: &RemoteContext) -> Result<Vec<String>, String> {
+        let Some(cli) = tailscale_cli_path(ctx.path_var.as_deref()) else {
             tracing::debug!(
                 "No standalone Tailscale CLI found on PATH; skipping Tailscale discovery."
             );
@@ -57,7 +152,10 @@ impl RemoteSessionFetcher {
             extra_args: vec!["status".to_string(), "--json".to_string()],
             ..CommandOptions::default()
         };
-        match CommandRunner::new().run_async(&cli, None, &options).await {
+        let Some(outcome) = spawn_remote(ctx, cli, options).await else {
+            return Ok(Vec::new());
+        };
+        match outcome {
             Err(CommandError::BinaryNotFound(_)) => Ok(Vec::new()),
             Err(_) => Err(
                 "Unable to query Tailscale peers; manual SSH hosts are still available.".to_string(),
@@ -74,13 +172,18 @@ impl RemoteSessionFetcher {
         }
     }
 
-    async fn fetch_host(host: String, timeout: Duration) -> AgentSessionHostResult {
+    /// One host's SSH result. `None` when the gate closed before the spawn.
+    async fn fetch_host(
+        host: String,
+        timeout: Duration,
+        ctx: &RemoteContext,
+    ) -> Option<AgentSessionHostResult> {
         let options = match Self::ssh_options(&host, timeout) {
             Ok(options) => options,
-            Err(error) => return AgentSessionHostResult::failed("<invalid SSH host>", error),
+            Err(error) => return Some(AgentSessionHostResult::failed("<invalid SSH host>", error)),
         };
-        let result = CommandRunner::new().run_async("ssh", None, &options).await;
-        match result {
+        let result = spawn_remote(ctx, "ssh".to_string(), options).await?;
+        Some(match result {
             Ok(result) if result.timed_out => AgentSessionHostResult::failed(
                 host,
                 "SSH session discovery timed out; verify the host is reachable and key authentication is configured.",
@@ -113,7 +216,7 @@ impl RemoteSessionFetcher {
                     error,
                 ),
             ),
-        }
+        })
     }
 
     pub(crate) fn ssh_options(host: &str, timeout: Duration) -> Result<CommandOptions, String> {
@@ -296,15 +399,18 @@ impl RemoteSessionFetcher {
         )
     }
 
+    /// Runs `fetch` for every host concurrently. `None` marks a host skipped because
+    /// the gate closed; it contributes no row.
     pub(crate) async fn fetch_hosts_with<F, Fut>(
         hosts: &[String],
         fetch: F,
     ) -> Vec<AgentSessionHostResult>
     where
         F: Fn(String) -> Fut + Clone,
-        Fut: Future<Output = AgentSessionHostResult>,
+        Fut: Future<Output = Option<AgentSessionHostResult>>,
     {
-        let mut results = join_all(hosts.iter().cloned().map(|host| fetch.clone()(host))).await;
+        let outcomes = join_all(hosts.iter().cloned().map(|host| fetch.clone()(host))).await;
+        let mut results = outcomes.into_iter().flatten().collect::<Vec<_>>();
         results.sort_by(|lhs, rhs| {
             lhs.host
                 .to_ascii_lowercase()

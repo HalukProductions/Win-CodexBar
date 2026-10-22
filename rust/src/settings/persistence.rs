@@ -40,6 +40,21 @@ impl Settings {
         settings
     }
 
+    /// Whether Agent Sessions may run Tailscale or SSH discovery right now.
+    ///
+    /// Reads `settings.json` fresh on every call and skips the desktop side
+    /// effects of [`Settings::load`] (autostart registry sync, migrations), so
+    /// it is safe to call immediately before each remote spawn. A missing or
+    /// unreadable file yields defaults, which fail closed.
+    pub fn agent_sessions_remote_allowed_now() -> bool {
+        Self::load_from_path(Self::settings_path().as_deref()).agent_sessions_remote_allowed()
+    }
+
+    /// Remote discovery runs only when Agent Sessions is on and "Local sessions only" is off.
+    pub fn agent_sessions_remote_allowed(&self) -> bool {
+        self.agent_sessions_enabled && !self.agent_sessions_local_only
+    }
+
     /// A missing file is a first run and loads saveable defaults. A file that
     /// exists but cannot be read or parsed loads defaults that refuse to save,
     /// so a later settings change cannot replace it (upstream 0.76.0 #4509).

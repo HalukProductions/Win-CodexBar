@@ -443,6 +443,8 @@ codexbar sessions --ssh-host user@host
 
 `--json` prints the legacy v1 format, Codex and Claude only. `--json-v2` adds Pi-family sessions. `--ssh-host` reads a configured SSH host, and you can repeat it or pass a comma-separated list. `--brief` prints one line per session.
 
+The CLI always runs its remote discovery: each `--ssh-host` and any online Tailscale peer (standalone `tailscale.exe` on `PATH`). It does not read the desktop **Agent sessions** switch or **Local sessions only** setting, so those settings do not change CLI output. Use the desktop app's settings to limit remote discovery there.
+
 ## List Codex workspaces
 
 ```powershell

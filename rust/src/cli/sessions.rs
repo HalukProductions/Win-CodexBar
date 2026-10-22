@@ -79,7 +79,7 @@ mod tests {
 }
 use crate::agent_sessions::{
     AgentSession, AgentSessionDiscovery, AgentSessionDiscoveryMode, AgentSessionDiscoveryResult,
-    SessionFocusResult, focus_session,
+    RemoteDiscoveryGate, SessionFocusResult, focus_session,
 };
 use clap::Args;
 use serde::Serialize;
@@ -120,10 +120,15 @@ struct SessionsOutput<'a> {
 
 pub async fn run(args: SessionsArgs) -> anyhow::Result<()> {
     let discovery = AgentSessionDiscovery::default();
+    // The CLI's `--ssh-host` and Tailscale discovery are direct requests, so they do not
+    // read the desktop Agent sessions or "Local sessions only" settings.
     let result = discovery
-        .scan(AgentSessionDiscoveryMode::Enabled {
-            ssh_hosts: args.ssh_hosts,
-        })
+        .scan_with_gate(
+            AgentSessionDiscoveryMode::Enabled {
+                ssh_hosts: args.ssh_hosts,
+            },
+            RemoteDiscoveryGate::explicit_request(),
+        )
         .await;
     let sessions = match &result {
         AgentSessionDiscoveryResult::Disabled => Vec::new(),
