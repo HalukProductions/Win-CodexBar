@@ -139,7 +139,8 @@ pub struct AppState {
     /// disk writes can be applied in change order.
     pub provider_account_usage_revision: u64,
     /// Last usage read from the claude-swap or tcr pool, for Overview account
-    /// rows. Persisted without credentials or organization names; see
+    /// rows. Persisted without tokens or organization IDs, but the label may
+    /// include an organization name when two accounts share an email; see
     /// `commands::claude_swap_usage`.
     pub claude_swap_usage: crate::commands::ClaudeSwapUsageState,
     /// Token account ids removed this session. An in-flight refresh that
