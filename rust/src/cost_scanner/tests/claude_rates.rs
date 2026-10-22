@@ -6,6 +6,8 @@ use super::*;
 struct ClaudePricing;
 
 impl ClaudePricing {
+    /// Built-in rows first, then the models.dev snapshot, with Sonnet as the fallback for
+    /// unpriced IDs. Same resolution order as the memo, without the memo.
     fn cost_usd_with_cache_ttl(
         model: &str,
         input: u64,
@@ -14,41 +16,26 @@ impl ClaudePricing {
         cache_read: u64,
         output: u64,
     ) -> f64 {
-        let cache_create_1h = cache_create_1h.min(cache_create);
-        let cache_create_5m = cache_create.saturating_sub(cache_create_1h);
-
-        // Standard buckets (input, cache-read, 5-minute cache-write, output),
-        // including any long-context tiering, come from the canonical table.
-        // Unknown/retired models fall back to Sonnet pricing.
-        #[allow(
-            clippy::cast_possible_truncation,
-            reason = "clamped to i32::MAX before casting"
-        )]
-        let clamp = |v: u64| v.min(i32::MAX as u64) as i32;
-        let base = CostUsagePricing::claude_cost_usd(
-            model,
-            clamp(input),
-            clamp(cache_read),
-            clamp(cache_create_5m),
-            clamp(output),
-        )
-        .or_else(|| {
-            CostUsagePricing::claude_cost_usd(
-                FALLBACK_CLAUDE_MODEL,
-                clamp(input),
-                clamp(cache_read),
-                clamp(cache_create_5m),
-                clamp(output),
-            )
-        })
-        .unwrap_or(0.0);
-
-        // Scanner-specific: one-hour cache writes bill at 2x the input rate.
-        let input_rate = CostUsagePricing::claude_input_cost_per_token(model)
-            .or_else(|| CostUsagePricing::claude_input_cost_per_token(FALLBACK_CLAUDE_MODEL))
-            .unwrap_or(0.0);
-
-        base + (cache_create_1h as f64) * input_rate * 2.0
+        let resolve = |model: &str| {
+            let normalized = CostUsagePricing::normalize_claude_model(model);
+            CostUsagePricing::resolve_claude_pricing(model, &normalized, None).or_else(|| {
+                let snapshot = crate::core::pricing_snapshot();
+                CostUsagePricing::resolve_claude_pricing(model, &normalized, Some(&snapshot))
+            })
+        };
+        let billable = resolve(model).or_else(|| resolve(FALLBACK_CLAUDE_MODEL));
+        billable
+            .map(|pricing| {
+                CostUsagePricing::claude_cost_usd_u64_from_resolution_with_one_hour_writes(
+                    pricing,
+                    input,
+                    cache_read,
+                    cache_create,
+                    cache_create_1h,
+                    output,
+                )
+            })
+            .unwrap_or(0.0)
     }
 }
 
@@ -229,4 +216,96 @@ fn claude_scan_pricing_follows_the_canonical_table() {
             "{model} should bill ${expected}, got {cost}"
         );
     }
+}
+
+/// Models.dev fixture with a 200k long-context tier. Per million tokens: base input $2,
+/// cache read $0.25, cache write $3, output $4; above 200k: input $7, cache read $0.5,
+/// cache write $9, output $11. The 1h share bills at twice the selected input rate, so it
+/// is $4 at base and $14 above the threshold.
+fn one_hour_tier_snapshot() -> crate::core::ModelsDevPricingSnapshot {
+    crate::core::ModelsDevPricingSnapshot::from_catalog_json_for_tests(
+        r#"{
+            "anthropic": {"models": {"claude-one-hour-fixture": {"id": "claude-one-hour-fixture", "cost": {
+                "input": 2, "output": 4, "cache_read": 0.25, "cache_write": 3,
+                "context_over_200k": {"input": 7, "output": 11, "cache_read": 0.5, "cache_write": 9}
+            }}}}
+        }"#,
+    )
+    .expect("pricing fixture")
+}
+
+#[test]
+fn models_dev_one_hour_writes_cross_the_long_context_threshold() {
+    // The 5-minute remainder is 120k alone; the 210k total only crosses 200k because the
+    // 90k one-hour writes count toward the tier.
+    let mut resolver = ClaudeScanPricingResolver::with_snapshot(one_hour_tier_snapshot());
+    let cost =
+        resolver.cost_usd_with_cache_ttl("claude-one-hour-fixture", 120_000, 90_000, 90_000, 0, 0);
+    // Tiered: 120k * $7 + 90k * (2 * $7) = 0.84 + 1.26 = 2.10.
+    // Five-minute-only tiering would give 120k * $2 + 90k * $4 = 0.60.
+    assert!((cost - 2.10).abs() < 1e-9, "{cost}");
+}
+
+#[test]
+fn models_dev_one_hour_share_uses_the_tier_aware_input_rate() {
+    let mut resolver = ClaudeScanPricingResolver::with_snapshot(one_hour_tier_snapshot());
+    let cost =
+        resolver.cost_usd_with_cache_ttl("claude-one-hour-fixture", 120_000, 90_000, 30_000, 0, 0);
+    // Tiered: 120k * $7 + 60k 5-minute * $9 + 30k 1-hour * $14 = 0.84 + 0.54 + 0.42 = 1.80.
+    // The old base-rate 1-hour share would give 0.54 for the same row.
+    assert!((cost - 1.80).abs() < 1e-9, "{cost}");
+}
+
+#[test]
+fn models_dev_cache_reads_count_toward_the_one_hour_tier() {
+    let mut resolver = ClaudeScanPricingResolver::with_snapshot(one_hour_tier_snapshot());
+    let cost = resolver.cost_usd_with_cache_ttl(
+        "claude-one-hour-fixture",
+        100_000,
+        60_000,
+        60_000,
+        50_000,
+        0,
+    );
+    // Total 100k + 50k + 60k = 210k, tiered: 0.70 + 50k * $0.5 + 60k * $14 = 1.565.
+    assert!((cost - 1.565).abs() < 1e-9, "{cost}");
+}
+
+#[test]
+fn models_dev_one_hour_writes_below_the_threshold_keep_base_rates() {
+    let mut resolver = ClaudeScanPricingResolver::with_snapshot(one_hour_tier_snapshot());
+    let cost =
+        resolver.cost_usd_with_cache_ttl("claude-one-hour-fixture", 100_000, 50_000, 50_000, 0, 0);
+    // Total 150k stays under 200k: 100k * $2 + 50k * (2 * $2) = 0.20 + 0.20 = 0.40.
+    assert!((cost - 0.40).abs() < 1e-9, "{cost}");
+}
+
+#[test]
+fn models_dev_five_minute_writes_are_unchanged_when_no_one_hour_writes_exist() {
+    let mut resolver = ClaudeScanPricingResolver::with_snapshot(one_hour_tier_snapshot());
+    let cost =
+        resolver.cost_usd_with_cache_ttl("claude-one-hour-fixture", 120_000, 90_000, 0, 0, 0);
+    // The total crosses 200k with or without the 1h split, so this row was already tiered:
+    // 120k * $7 + 90k * $9 = 0.84 + 0.81 = 1.65.
+    assert!((cost - 1.65).abs() < 1e-9, "{cost}");
+}
+
+#[test]
+fn models_dev_gpt_proxy_one_hour_writes_use_the_bundled_boundary() {
+    let snapshot = crate::core::ModelsDevPricingSnapshot::from_catalog_json_for_tests(
+        r#"{
+            "openai": {"models": {"gpt-5.6-sol": {"id": "gpt-5.6-sol", "cost": {
+                "input": 2, "output": 4, "cache_read": 0.25, "cache_write": 3,
+                "context_over_200k": {"input": 7, "output": 11, "cache_read": 0.5, "cache_write": 9}
+            }}}}
+        }"#,
+    )
+    .expect("pricing fixture");
+    let mut resolver = ClaudeScanPricingResolver::with_snapshot(snapshot);
+
+    // Bundled OpenAI boundary is 272k. The 5-minute-only total is 262k (no tier), but the
+    // 272,001 total with 10,001 one-hour writes crosses it.
+    let long = resolver.cost_usd_with_cache_ttl("gpt-5.6-sol", 262_000, 10_001, 10_001, 0, 13);
+    // 262k * $7 + 10,001 * $14 + 13 * $11 = 1.834 + 0.140014 + 0.000143 = 1.974157.
+    assert!((long - 1.974_157).abs() < 1e-9, "{long}");
 }

@@ -160,6 +160,48 @@ impl CostUsagePricing {
         }
     }
 
+    /// Cost from a resolved Claude pricing source when the cache-write total includes a
+    /// one-hour share. Models.dev routes follow upstream `claudeCostUSD(pricing:tokens:)`: the
+    /// long-context tier is chosen from input, cache read and total cache writes, and the
+    /// one-hour share bills at twice the selected input rate. Built-in rows keep the
+    /// per-bucket split and add the one-hour share at twice the base input rate.
+    pub(crate) fn claude_cost_usd_u64_from_resolution_with_one_hour_writes(
+        resolution: ClaudePricingResolution,
+        input_tokens: u64,
+        cache_read_input_tokens: u64,
+        cache_creation_input_tokens: u64,
+        cache_creation_1h_input_tokens: u64,
+        output_tokens: u64,
+    ) -> f64 {
+        match resolution {
+            ClaudePricingResolution::ModelsDev {
+                pricing,
+                threshold_tokens,
+            } => claude_routed_pricing::cost_usd_from_u64_counts_with_one_hour_writes(
+                pricing,
+                threshold_tokens,
+                input_tokens,
+                cache_read_input_tokens,
+                cache_creation_input_tokens,
+                cache_creation_1h_input_tokens,
+                output_tokens,
+            ),
+            builtin @ ClaudePricingResolution::BuiltIn(_) => {
+                let one_hour = cache_creation_1h_input_tokens.min(cache_creation_input_tokens);
+                let five_minute = cache_creation_input_tokens - one_hour;
+                Self::claude_cost_usd_u64_from_resolution(
+                    builtin,
+                    input_tokens,
+                    cache_read_input_tokens,
+                    five_minute,
+                    output_tokens,
+                ) + (one_hour as f64)
+                    * Self::claude_input_cost_per_token_from_resolution(builtin)
+                    * 2.0
+            }
+        }
+    }
+
     pub(crate) fn claude_input_cost_per_token_from_resolution(
         resolution: ClaudePricingResolution,
     ) -> f64 {
@@ -235,13 +277,10 @@ impl CostUsagePricing {
     }
 
     /// Cost of one Claude row whose cache writes split into a five-minute
-    /// remainder and a one-hour share. Resolves the model against `snapshot`.
-    /// Models.dev resolutions use the upstream rule: the long-context tier is
-    /// chosen from total input, cache reads and all cache writes (one-hour
-    /// writes included), and the one-hour share bills at twice the selected
-    /// input rate. Built-in resolutions keep their existing per-field path, with
-    /// the one-hour share at twice the base input rate. `None` when the model
-    /// resolves to no pricing at all.
+    /// remainder and a one-hour share, with the model resolved against
+    /// `snapshot`. Pricing follows
+    /// [`Self::claude_cost_usd_u64_from_resolution_with_one_hour_writes`].
+    /// `None` when the model resolves to no pricing at all.
     pub(crate) fn claude_cost_usd_with_cache_ttl(
         model: &str,
         snapshot: &models_dev_pricing::ModelsDevPricingSnapshot,
@@ -253,34 +292,16 @@ impl CostUsagePricing {
     ) -> Option<f64> {
         let normalized = Self::normalize_claude_model(model);
         let resolution = Self::resolve_claude_pricing(model, &normalized, Some(snapshot))?;
-        if let ClaudePricingResolution::ModelsDev {
-            pricing,
-            threshold_tokens,
-        } = resolution
-        {
-            return Some(
-                claude_routed_pricing::cost_usd_from_u64_counts_with_one_hour_writes(
-                    pricing,
-                    threshold_tokens,
-                    input,
-                    cache_read,
-                    cache_write,
-                    cache_write_1h,
-                    output,
-                ),
-            );
-        }
-        let cache_write_1h = cache_write_1h.min(cache_write);
-        let cache_write_5m = cache_write - cache_write_1h;
-        let base = Self::claude_cost_usd_u64_from_resolution(
-            resolution,
-            input,
-            cache_read,
-            cache_write_5m,
-            output,
-        );
-        let input_rate = Self::claude_input_cost_per_token_from_resolution(resolution);
-        Some(base + (cache_write_1h as f64) * input_rate * 2.0)
+        Some(
+            Self::claude_cost_usd_u64_from_resolution_with_one_hour_writes(
+                resolution,
+                input,
+                cache_read,
+                cache_write,
+                cache_write_1h,
+                output,
+            ),
+        )
     }
 
     /// Base per-token input rate for a Claude model. Exposed for callers that
