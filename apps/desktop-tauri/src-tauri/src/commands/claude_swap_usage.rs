@@ -118,24 +118,40 @@ fn window(
     }
 }
 
-/// The live usage this read reported for one account, or `None` when the row
-/// carries no windows or no fetch time. A row without a fetch time cannot say
-/// how old its data is, so it is never recorded.
-fn usage_from_read(account: &ClaudeSwapAccount) -> Option<AccountUsageEntry> {
-    let fetched_at = account.usage_fetched_at?;
-    if account.five_hour.is_none() && account.seven_day.is_none() {
+fn entry_from_windows(
+    five_hour: Option<&codexbar::providers::claude::claude_swap::ClaudeSwapUsageWindowDto>,
+    seven_day: Option<&codexbar::providers::claude::claude_swap::ClaudeSwapUsageWindowDto>,
+    fetched_at: chrono::DateTime<chrono::Utc>,
+) -> Option<AccountUsageEntry> {
+    if five_hour.is_none() && seven_day.is_none() {
         return None;
     }
     Some(AccountUsageEntry {
-        primary: account
-            .five_hour
-            .as_ref()
-            .map(|w| window(w, FIVE_HOUR_MINUTES)),
-        secondary: account
-            .seven_day
-            .as_ref()
-            .map(|w| window(w, SEVEN_DAY_MINUTES)),
+        primary: five_hour.map(|w| window(w, FIVE_HOUR_MINUTES)),
+        secondary: seven_day.map(|w| window(w, SEVEN_DAY_MINUTES)),
         updated_at: fetched_at.to_rfc3339(),
+    })
+}
+
+/// The usage this read reported for one account: the live windows when they
+/// carry a fetch time, otherwise the adapter's last good usage. `None` when
+/// neither has windows. Live windows without a fetch time cannot say how old
+/// they are, so they are never recorded.
+fn usage_from_read(account: &ClaudeSwapAccount) -> Option<AccountUsageEntry> {
+    let live = account.usage_fetched_at.and_then(|fetched_at| {
+        entry_from_windows(
+            account.five_hour.as_ref(),
+            account.seven_day.as_ref(),
+            fetched_at,
+        )
+    });
+    live.or_else(|| {
+        let historical = account.historical_usage.as_ref()?;
+        entry_from_windows(
+            historical.five_hour.as_ref(),
+            historical.seven_day.as_ref(),
+            historical.fetched_at,
+        )
     })
 }
 
@@ -502,6 +518,26 @@ mod tests {
         let kept = usage.cache.accounts["claude-swap:1"].usage.clone().unwrap();
         assert_eq!(kept.primary.unwrap().used_percent, 40.0);
         assert_eq!(kept.updated_at, "2026-09-12T00:30:00+00:00");
+    }
+
+    #[test]
+    fn account_without_live_usage_records_the_adapter_last_good_usage() {
+        let mut row = expired_row(1);
+        row["lastGoodUsage"] = json!({
+            "fiveHour": { "pct": 44.0 },
+            "sevenDay": { "pct": 19.0 }
+        });
+        row["lastGoodFetchedAt"] = json!("2026-09-12T00:45:00Z");
+        let mut usage = ClaudeSwapUsageState::default();
+        apply(
+            &mut usage,
+            &pool(ClaudeSwapAccountSource::ClaudeSwap, json!([row])),
+        );
+
+        let entry = usage.cache.accounts["claude-swap:1"].usage.clone().unwrap();
+        assert_eq!(entry.primary.unwrap().used_percent, 44.0);
+        assert_eq!(entry.secondary.unwrap().used_percent, 19.0);
+        assert_eq!(entry.updated_at, "2026-09-12T00:45:00+00:00");
     }
 
     #[test]
