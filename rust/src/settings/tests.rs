@@ -202,6 +202,31 @@ fn agent_sessions_local_only_defaults_off_and_round_trips() {
 }
 
 #[test]
+fn agent_sessions_remote_discovery_requires_enabled_and_not_local_only() {
+    // Fail closed: the default (and any unreadable file) never allows remote discovery.
+    assert!(!defaulted().agent_sessions_remote_allowed());
+
+    let enabled = Settings {
+        agent_sessions_enabled: true,
+        ..Settings::default()
+    };
+    assert!(enabled.agent_sessions_remote_allowed());
+
+    let local_only = Settings {
+        agent_sessions_enabled: true,
+        agent_sessions_local_only: true,
+        ..Settings::default()
+    };
+    assert!(!local_only.agent_sessions_remote_allowed());
+
+    let local_only_while_disabled = Settings {
+        agent_sessions_local_only: true,
+        ..Settings::default()
+    };
+    assert!(!local_only_while_disabled.agent_sessions_remote_allowed());
+}
+
+#[test]
 fn cost_reporting_period_defaults_to_thirty_days_and_round_trips() {
     let defaulted = defaulted();
     assert_eq!(
