@@ -9,6 +9,7 @@ use codexbar::{atomic_file, secure_file};
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
 
+use super::ordered_save::write_in_order;
 use crate::state::AppState;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -120,9 +121,13 @@ fn update_usage(
     }
 }
 
+/// `started_revision` is the cache revision when the refresh began. An account
+/// removed after that point is not re-added, even if the account list read
+/// after the fetches still listed it.
 fn publish_results(
     state: &mut AppState,
     generation: u64,
+    started_revision: u64,
     live_accounts: &[ClaudeAccount],
     results: Vec<(String, Result<UsageSnapshot, ProviderError>)>,
 ) -> bool {
@@ -134,11 +139,19 @@ fn publish_results(
         .claude_account_usage
         .retain(|id, _| live_ids.contains_key(id.as_str()));
     for (id, result) in results {
-        if live_ids.contains_key(id.as_str()) {
-            update_usage(state.claude_account_usage.entry(id).or_default(), result);
+        if !live_ids.contains_key(id.as_str()) || removed_after(state, &id, started_revision) {
+            continue;
         }
+        update_usage(state.claude_account_usage.entry(id).or_default(), result);
     }
     true
+}
+
+fn removed_after(state: &AppState, account_id: &str, revision: u64) -> bool {
+    state
+        .removed_claude_accounts
+        .get(account_id)
+        .is_some_and(|&removed_at| removed_at > revision)
 }
 
 const ACCOUNT_USAGE_STORE_VERSION: u32 = 1;
@@ -203,10 +216,68 @@ fn save_account_usage_cache(usage: &HashMap<String, ClaudeAccountUsageState>) ->
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    // One fixed staging name is overwritten on each save, so no temp files accumulate.
+    // Saves are serialized by SAVE_GATE, so one fixed staging name is never
+    // written by two saves at once. It is overwritten on each save, so no temp
+    // files accumulate.
     let staged = path.with_extension("json.tmp");
     secure_file::write_string(&staged, &raw)?;
     atomic_file::replace_staged(&staged, &path)
+}
+
+/// Highest revision accepted for a disk write. It is held for the whole write,
+/// so an older snapshot can never land after a newer one.
+static SAVE_GATE: Mutex<u64> = Mutex::new(0);
+
+/// A cache copy taken under the state lock, tagged with its revision.
+struct CacheSnapshot {
+    revision: u64,
+    usage: HashMap<String, ClaudeAccountUsageState>,
+}
+
+/// Call under the state lock right after the cache changes. The revision and
+/// the copy are taken together, so a higher revision always holds newer data.
+fn snapshot_after_change(state: &mut AppState) -> CacheSnapshot {
+    state.claude_account_usage_revision += 1;
+    CacheSnapshot {
+        revision: state.claude_account_usage_revision,
+        usage: state.claude_account_usage.clone(),
+    }
+}
+
+/// Write a snapshot taken under the state lock. Runs after the lock is
+/// released so disk I/O never blocks other commands.
+fn persist(snapshot: &CacheSnapshot) {
+    let result = write_in_order(&SAVE_GATE, snapshot.revision, || {
+        save_account_usage_cache(&snapshot.usage)
+    });
+    if let Err(error) = result {
+        tracing::warn!("failed to persist Claude account usage: {error}");
+    }
+}
+
+/// Drop a removed managed account's usage and tombstone it at the new revision,
+/// so a refresh that is still in flight cannot add the account back.
+fn forget_managed_account_in_state(state: &mut AppState, account_id: &str) -> CacheSnapshot {
+    state.claude_account_usage.remove(account_id);
+    let snapshot = snapshot_after_change(state);
+    state
+        .removed_claude_accounts
+        .insert(account_id.to_string(), snapshot.revision);
+    snapshot
+}
+
+/// Call after a managed Claude account is removed. Always persists, so the
+/// on-disk copy never keeps an entry that the in-memory copy has dropped.
+pub(crate) fn forget_managed_account(app: &tauri::AppHandle, account_id: &str) {
+    let snapshot = app.try_state::<Mutex<AppState>>().and_then(|state| {
+        state
+            .lock()
+            .ok()
+            .map(|mut state| forget_managed_account_in_state(&mut state, account_id))
+    });
+    if let Some(snapshot) = snapshot {
+        persist(&snapshot);
+    }
 }
 
 /// Share the provider refresh cadence and permits; each request uses only the
@@ -219,6 +290,14 @@ pub(crate) async fn refresh_claude_account_lanes(
     if !codexbar::settings::Settings::load().claude_allow_reading_claude_code_credentials {
         return;
     }
+    // Read before the account list, so any removal that follows is newer than this refresh.
+    let started_revision = {
+        let state = app.state::<Mutex<AppState>>();
+        let Ok(state) = state.lock() else {
+            return;
+        };
+        state.claude_account_usage_revision
+    };
     let Ok(accounts) = super::claude_accounts_list() else {
         return;
     };
@@ -244,16 +323,14 @@ pub(crate) async fn refresh_claude_account_lanes(
         return;
     };
     let state = app.state::<Mutex<AppState>>();
-    let usage = state.lock().ok().and_then(|mut state| {
-        publish_results(&mut state, generation, &accounts, results)
-            .then(|| state.claude_account_usage.clone())
+    let snapshot = state.lock().ok().and_then(|mut state| {
+        publish_results(&mut state, generation, started_revision, &accounts, results)
+            .then(|| snapshot_after_change(&mut state))
     });
-    let Some(usage) = usage else {
+    let Some(snapshot) = snapshot else {
         return;
     };
-    if let Err(error) = save_account_usage_cache(&usage) {
-        tracing::warn!("failed to persist Claude account usage: {error}");
-    }
+    persist(&snapshot);
     let _ = app.emit("claude-accounts-updated", ());
     let handle = app.clone();
     let _ = app.run_on_main_thread(move || crate::tray_bridge::rebuild_tray_menu(&handle));
@@ -305,12 +382,20 @@ mod tests {
     fn removed_accounts_and_superseded_generations_cannot_publish() {
         let mut state = AppState::new();
         let generation = state.provider_refresh_generation;
+        let started = state.claude_account_usage_revision;
         state.provider_refresh_generation += 1;
-        assert!(!publish_results(&mut state, generation, &[], vec![]));
+        assert!(!publish_results(
+            &mut state,
+            generation,
+            started,
+            &[],
+            vec![]
+        ));
         let generation = state.provider_refresh_generation;
         assert!(publish_results(
             &mut state,
             generation,
+            started,
             &[],
             vec![(
                 "removed".into(),
@@ -318,6 +403,105 @@ mod tests {
             )]
         ));
         assert!(state.claude_account_usage.is_empty());
+    }
+
+    fn live_account(id: &str) -> ClaudeAccount {
+        ClaudeAccount {
+            id: id.into(),
+            email: "work@example.com".into(),
+            organization: None,
+            plan: None,
+            is_active: false,
+            is_saved: true,
+        }
+    }
+
+    #[test]
+    fn each_change_takes_a_higher_revision() {
+        let mut state = AppState::new();
+        let first = snapshot_after_change(&mut state).revision;
+        let second = snapshot_after_change(&mut state).revision;
+        assert!(second > first);
+        assert_eq!(state.claude_account_usage_revision, second);
+    }
+
+    #[test]
+    fn removing_an_account_drops_its_usage_and_persists_a_newer_snapshot() {
+        let mut state = AppState::new();
+        let generation = state.provider_refresh_generation;
+        let started = state.claude_account_usage_revision;
+        assert!(publish_results(
+            &mut state,
+            generation,
+            started,
+            &[live_account("acct-a"), live_account("acct-b")],
+            vec![
+                (
+                    "acct-a".into(),
+                    Ok(UsageSnapshot::new(RateWindow::new(10.0)))
+                ),
+                (
+                    "acct-b".into(),
+                    Ok(UsageSnapshot::new(RateWindow::new(20.0)))
+                ),
+            ]
+        ));
+        let before = state.claude_account_usage_revision;
+        let snapshot = forget_managed_account_in_state(&mut state, "acct-a");
+        assert!(snapshot.revision > before);
+        assert!(!snapshot.usage.contains_key("acct-a"));
+        assert!(snapshot.usage.contains_key("acct-b"));
+        assert!(!state.claude_account_usage.contains_key("acct-a"));
+    }
+
+    #[test]
+    fn removed_account_cannot_be_readded_by_an_inflight_refresh() {
+        let mut state = AppState::new();
+        let generation = state.provider_refresh_generation;
+        // The refresh starts while the account still exists.
+        let started = state.claude_account_usage_revision;
+        // The account is removed while its fetch is in flight.
+        forget_managed_account_in_state(&mut state, "acct-a");
+        // The refresh then re-reads the account list, which may still list it.
+        assert!(publish_results(
+            &mut state,
+            generation,
+            started,
+            &[live_account("acct-a"), live_account("acct-b")],
+            vec![
+                (
+                    "acct-a".into(),
+                    Ok(UsageSnapshot::new(RateWindow::new(10.0)))
+                ),
+                (
+                    "acct-b".into(),
+                    Ok(UsageSnapshot::new(RateWindow::new(20.0)))
+                ),
+            ]
+        ));
+        assert!(!state.claude_account_usage.contains_key("acct-a"));
+        assert!(state.claude_account_usage.contains_key("acct-b"));
+    }
+
+    #[test]
+    fn account_removed_before_a_refresh_starts_is_accepted_again_when_readded() {
+        let mut state = AppState::new();
+        let generation = state.provider_refresh_generation;
+        forget_managed_account_in_state(&mut state, "acct-a");
+        // A refresh that starts after the removal (for example after the same
+        // account signs in again) may publish its result.
+        let started = state.claude_account_usage_revision;
+        assert!(publish_results(
+            &mut state,
+            generation,
+            started,
+            &[live_account("acct-a")],
+            vec![(
+                "acct-a".into(),
+                Ok(UsageSnapshot::new(RateWindow::new(10.0)))
+            )]
+        ));
+        assert!(state.claude_account_usage.contains_key("acct-a"));
     }
 
     #[test]

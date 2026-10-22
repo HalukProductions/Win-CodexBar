@@ -419,6 +419,7 @@ pub async fn claude_account_remove(app: tauri::AppHandle, id: String) -> Result<
     AccountManager::new()
         .and_then(|m| m.remove(&id))
         .map_err(|e| e.to_string())?;
+    super::forget_managed_account(&app, &id);
     crate::auto_resume::clear(&app, ProviderId::Claude);
     changed(&app);
     Ok(())
