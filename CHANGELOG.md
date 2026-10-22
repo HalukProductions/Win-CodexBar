@@ -9,6 +9,13 @@
 
 ## [Windows] Unreleased
 
+- Settings > Menu bar: **Show all accounts in Overview** also shows one row per saved Claude token account, each built only from the usage last fetched while that account was active. An account never fetched shows "No usage data". Removing an account drops its row and its cached usage, and no extra fetches are made (upstream #4594).
+- **Claude**: a removed managed Claude account no longer comes back after a restart, or from a refresh that was already running when you removed it. Signing in to that account again adds it back as usual.
+- Pi: `amazon-bedrock` usage is priced from the models.dev Bedrock catalog by exact model ID. Unknown Bedrock models stay unpriced and never borrow Anthropic prices (upstream #4605).
+- OpenCode Go: `codexbar cost --provider opencodego` reports tokens as `unknown` (JSON `null`) when rows lack complete counts, instead of showing zero, and adds a per-model token breakdown (`byModelTokens` in JSON). Cost stays numeric (upstream #4606).
+- Grok: the ACP billing fallback finds the native CLI at `~/.grok/bin/grok.exe` when it isn't on `PATH`, and a server request that reuses a pending id is no longer read as the reply. Version detection uses the same lookup.
+- Vercel: the Team ID can be saved in Settings > Providers > Vercel (it used to fail with "does not expose a workspace/project id"). A saved Team ID wins over `VERCEL_TEAM_ID`. A rejected token on the user lookup now says so instead of asking for a team role.
+- Settings > Menu: with **Local sessions only** on, Agent Sessions re-checks the setting right before each SSH or Tailscale call, so a discovery already running when you turn it on starts no more remote calls and its late results are dropped.
 - Codex: the dashboard button opens the ChatGPT usage page on its **Overview** tab (`chatgpt.com/settings/usage?tab=overview`) (upstream #4607).
 - Settings > Providers: **Restore default order** is disabled while sorting is off and the sidebar is already in the built-in order. The enabled-only filter reads "Only show enabled providers" (upstream #4592).
 - Antigravity: the quota summary is read from Google's daily Cloud Code host (`daily-cloudcode-pa.googleapis.com`). Other Antigravity calls and the fallbacks are unchanged (upstream #4632).
