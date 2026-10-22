@@ -38,6 +38,8 @@ export const PROOF_SCENARIO_NAMES = [
   "claude-swap-tcr",
   "overview-claude-swap-accounts",
   "overview-claude-swap-accounts-private",
+  "overview-tcr-accounts",
+  "overview-tcr-accounts-private",
   "codex-conversations",
   "codex-conversations-private",
   "claude-reset-credits",
@@ -804,6 +806,32 @@ function overviewClaudeSwapAccountsScenario(now: Date, hidePersonalInfo: boolean
   };
 }
 
+/** The tcr pool from `claude-swap-tcr` with Overview rows on and cached usage. */
+function overviewTcrAccountsScenario(now: Date, hidePersonalInfo: boolean): ProofScenario {
+  const base = claudeSwapTcrScenario(now);
+  return {
+    ...base,
+    name: hidePersonalInfo ? "overview-tcr-accounts-private" : "overview-tcr-accounts",
+    settings: {
+      ...base.settings,
+      mergedOverviewAllAccounts: true,
+      hidePersonalInfo,
+    },
+    claudeSwapOverviewUsage: {
+      "tcr:1": {
+        primary: { usedPercent: 42, windowMinutes: 300, resetsAt: isoAfter(now, 61) },
+        secondary: { usedPercent: 18, windowMinutes: 10_080, resetsAt: isoAfter(now, 4 * DAY_MINUTES) },
+        updatedAt: isoBefore(now, 2),
+      },
+      "tcr:2": {
+        primary: { usedPercent: 7, windowMinutes: 300, resetsAt: isoAfter(now, 95) },
+        secondary: { usedPercent: 63, windowMinutes: 10_080, resetsAt: isoAfter(now, 4 * DAY_MINUTES) },
+        updatedAt: isoBefore(now, 9),
+      },
+    },
+  };
+}
+
 function codexConversation(
   now: Date,
   id: string,
@@ -965,6 +993,8 @@ const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   "claude-swap-tcr": claudeSwapTcrScenario,
   "overview-claude-swap-accounts": (now) => overviewClaudeSwapAccountsScenario(now, false),
   "overview-claude-swap-accounts-private": (now) => overviewClaudeSwapAccountsScenario(now, true),
+  "overview-tcr-accounts": (now) => overviewTcrAccountsScenario(now, false),
+  "overview-tcr-accounts-private": (now) => overviewTcrAccountsScenario(now, true),
   "codex-conversations": codexConversationsScenario,
   "codex-conversations-private": codexConversationsPrivateScenario,
   "claude-reset-credits": (now) => claudeResetCreditsScenario(now, false),
