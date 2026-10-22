@@ -160,6 +160,48 @@ impl CostUsagePricing {
         }
     }
 
+    /// Cost from a resolved Claude pricing source when the cache-write total includes a
+    /// one-hour share. Models.dev routes follow upstream `claudeCostUSD(pricing:tokens:)`: the
+    /// long-context tier is chosen from input, cache read and total cache writes, and the
+    /// one-hour share bills at twice the selected input rate. Built-in rows keep the
+    /// per-bucket split and add the one-hour share at twice the base input rate.
+    pub(crate) fn claude_cost_usd_u64_from_resolution_with_one_hour_writes(
+        resolution: ClaudePricingResolution,
+        input_tokens: u64,
+        cache_read_input_tokens: u64,
+        cache_creation_input_tokens: u64,
+        cache_creation_1h_input_tokens: u64,
+        output_tokens: u64,
+    ) -> f64 {
+        match resolution {
+            ClaudePricingResolution::ModelsDev {
+                pricing,
+                threshold_tokens,
+            } => claude_routed_pricing::cost_usd_from_u64_counts_with_one_hour_writes(
+                pricing,
+                threshold_tokens,
+                input_tokens,
+                cache_read_input_tokens,
+                cache_creation_input_tokens,
+                cache_creation_1h_input_tokens,
+                output_tokens,
+            ),
+            builtin @ ClaudePricingResolution::BuiltIn(_) => {
+                let one_hour = cache_creation_1h_input_tokens.min(cache_creation_input_tokens);
+                let five_minute = cache_creation_input_tokens - one_hour;
+                Self::claude_cost_usd_u64_from_resolution(
+                    builtin,
+                    input_tokens,
+                    cache_read_input_tokens,
+                    five_minute,
+                    output_tokens,
+                ) + (one_hour as f64)
+                    * Self::claude_input_cost_per_token_from_resolution(builtin)
+                    * 2.0
+            }
+        }
+    }
+
     pub(crate) fn claude_input_cost_per_token_from_resolution(
         resolution: ClaudePricingResolution,
     ) -> f64 {

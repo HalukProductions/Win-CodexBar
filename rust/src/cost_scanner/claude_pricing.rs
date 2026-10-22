@@ -85,26 +85,19 @@ impl ClaudeScanPricingResolver {
         cache_read: u64,
         output: u64,
     ) -> f64 {
-        let cache_create_1h = cache_create_1h.min(cache_create);
-        let cache_create_5m = cache_create.saturating_sub(cache_create_1h);
-
         let resolved = self.resolve(model);
         let billable = resolved.or_else(|| self.resolve(FALLBACK_CLAUDE_MODEL));
-        let base = billable
+        billable
             .map(|pricing| {
-                CostUsagePricing::claude_cost_usd_u64_from_resolution(
+                CostUsagePricing::claude_cost_usd_u64_from_resolution_with_one_hour_writes(
                     pricing,
                     input,
                     cache_read,
-                    cache_create_5m,
+                    cache_create,
+                    cache_create_1h,
                     output,
                 )
             })
-            .unwrap_or(0.0);
-        let input_rate = billable
-            .map(CostUsagePricing::claude_input_cost_per_token_from_resolution)
-            .unwrap_or(0.0);
-
-        base + (cache_create_1h as f64) * input_rate * 2.0
+            .unwrap_or(0.0)
     }
 }
