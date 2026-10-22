@@ -539,6 +539,110 @@ fn bedrock_one_hour_cache_writes_bill_at_twice_the_input_rate() {
 }
 
 #[test]
+fn anthropic_one_hour_cache_writes_bill_above_five_minute_writes() {
+    let cost = |usage: Value| {
+        let row = serde_json::json!({
+            "id": "a-1", "role": "assistant", "provider": "anthropic",
+            "model": "claude-sonnet-4-6", "timestamp": ROW_TIMESTAMP,
+            "usage": usage,
+        });
+        parse_pi_assistant_entry_any(&row, &empty_pricing()).unwrap()
+    };
+    let five_minute = cost(serde_json::json!({
+        "input": 100, "output": 20, "cacheRead": 10, "cacheWrite": 10
+    }));
+    let one_hour = cost(serde_json::json!({
+        "input": 100, "output": 20, "cacheRead": 10, "cacheWrite": 10, "cacheWrite1h": 6
+    }));
+    // Built-in Sonnet 4.6 rates: input 3e-6, cache write 3.75e-6, cache read
+    // 3e-7, output 1.5e-5. Four five-minute writes at 3.75e-6 plus six
+    // one-hour writes at 2 x 3e-6 replace ten writes at 3.75e-6: +6 x 2.25e-6.
+    assert_cost(five_minute.cost, 0.0006405);
+    assert_cost(one_hour.cost, 0.000654);
+    assert!(one_hour.cost > five_minute.cost);
+    assert!(one_hour.pricing_known);
+    assert_eq!(one_hour.cache_create, 10);
+    assert_eq!(five_minute.provider, Some(PiMappedProvider::Claude));
+}
+
+#[test]
+fn anthropic_one_hour_cache_writes_use_catalog_rates_for_unbuilt_in_models() {
+    let pricing = catalog(
+        r#"{"anthropic": {"models": {"claude-fixture-9": {
+            "id": "claude-fixture-9",
+            "cost": {"input": 2, "output": 4, "cache_read": 0.25, "cache_write": 3}}}}}"#,
+    );
+    let cost = |usage: Value| {
+        let row = serde_json::json!({
+            "id": "a-2", "role": "assistant", "provider": "anthropic",
+            "model": "claude-fixture-9", "timestamp": ROW_TIMESTAMP,
+            "usage": usage,
+        });
+        let entry = parse_pi_assistant_entry_any(&row, &pricing).unwrap();
+        assert!(entry.pricing_known);
+        entry.cost
+    };
+    // Catalog rates: input 2e-6, cache write 3e-6, one-hour writes 2 x 2e-6.
+    assert_cost(
+        cost(serde_json::json!({
+            "input": 100, "output": 20, "cacheRead": 10, "cacheWrite": 10
+        })),
+        0.0003125,
+    );
+    assert_cost(
+        cost(serde_json::json!({
+            "input": 100, "output": 20, "cacheRead": 10, "cacheWrite": 10,
+            "cttl": {"ephemeral1h": 6}
+        })),
+        0.0003185,
+    );
+}
+
+#[test]
+fn anthropic_one_hour_writes_count_toward_the_long_context_threshold() {
+    let pricing = catalog(
+        r#"{"anthropic": {"models": {"claude-threshold-fixture": {
+            "id": "claude-threshold-fixture",
+            "cost": {"input": 2, "output": 4, "cache_read": 0.25, "cache_write": 3,
+                "context_over_200k": {"input": 7, "output": 11, "cache_read": 0.5, "cache_write": 9}}}}}}"#,
+    );
+    let cost = |usage: Value| {
+        let row = serde_json::json!({
+            "id": "a-4", "role": "assistant", "provider": "anthropic",
+            "model": "claude-threshold-fixture", "timestamp": ROW_TIMESTAMP,
+            "usage": usage,
+        });
+        let entry = parse_pi_assistant_entry_any(&row, &pricing).unwrap();
+        assert!(entry.pricing_known);
+        entry.cost
+    };
+    // 100k input plus 150k one-hour writes is 250k total, above the 200k
+    // boundary, so every token bills at the long-context rates: input 7e-6,
+    // one-hour writes 2 x 7e-6. The ordinary 100k input alone would stay below.
+    assert_cost(
+        cost(serde_json::json!({
+            "input": 100_000, "output": 0, "cacheWrite": 150_000, "cacheWrite1h": 150_000
+        })),
+        2.8,
+    );
+}
+
+#[test]
+fn anthropic_rows_without_one_hour_key_keep_five_minute_pricing() {
+    let row = serde_json::json!({
+        "id": "a-3", "role": "assistant", "provider": "anthropic",
+        "model": "claude-sonnet-4-6", "timestamp": ROW_TIMESTAMP,
+        "usage": {"input": 100, "output": 20, "cacheRead": 10, "cacheWrite": 10}
+    });
+    let entry = parse_pi_assistant_entry_any(&row, &empty_pricing()).unwrap();
+    // Unchanged from the pre-existing all-five-minute Claude rate path.
+    assert_cost(
+        entry.cost,
+        CostUsagePricing::claude_cost_usd("claude-sonnet-4-6", 100, 10, 10, 20).unwrap(),
+    );
+}
+
+#[test]
 fn bedrock_uses_the_catalog_context_boundary() {
     let pricing = catalog(
         r#"{"amazon-bedrock": {"models": {"us.anthropic.claude-sonnet-4-6": {
