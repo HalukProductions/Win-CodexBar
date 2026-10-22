@@ -588,8 +588,8 @@ fn parse_pi_assistant_entry_any(
     if input == 0 && output == 0 && cache_read == 0 && cache_create == 0 {
         return None;
     }
-    // The one-hour share prices only Bedrock rows. The Anthropic branch keeps
-    // billing every cache write at the 5-minute rate, as before this change.
+    // The one-hour share of cache writes is priced at the one-hour rate on the
+    // Bedrock and Anthropic branches. Other rows ignore it.
     let cache_write_1h = cache_write_1h_tokens(&usage).min(cache_create);
 
     let timestamp = entry_timestamp(value);
@@ -642,35 +642,28 @@ fn parse_pi_assistant_entry_any(
             None => (0.0, false),
         },
         Some(PiMappedProvider::Claude) => {
-            // Token counts come from API usage records and fit within i32;
-            // the canonical Claude pricing table takes i32 per-token counts.
-            #[allow(
-                clippy::cast_possible_truncation,
-                reason = "token counts clamped to i32::MAX above"
-            )]
-            #[allow(
-                clippy::cast_possible_wrap,
-                reason = "token counts are non-negative; wrapping is impossible"
-            )]
-            let (input, cache_read, cache_create, output) = (
-                input.min(i32::MAX as u64) as i32,
-                cache_read.min(i32::MAX as u64) as i32,
-                cache_create.min(i32::MAX as u64) as i32,
-                output.min(i32::MAX as u64) as i32,
-            );
-            if let Some(cost) =
-                CostUsagePricing::claude_cost_usd(&model, input, cache_read, cache_create, output)
-            {
+            // Same resolution and one-hour arithmetic as the Claude scanner.
+            if let Some(cost) = CostUsagePricing::claude_cost_usd_with_cache_ttl(
+                &model,
+                pricing,
+                input,
+                cache_read,
+                cache_create,
+                cache_write_1h,
+                output,
+            ) {
                 (cost, true)
             } else {
                 // Preserve the legacy fallback amount for continuity, while
                 // marking the model unknown so callers do not present it as
                 // canonical pricing.
-                let fallback = CostUsagePricing::claude_cost_usd(
+                let fallback = CostUsagePricing::claude_cost_usd_with_cache_ttl(
                     "claude-sonnet-4-6",
+                    pricing,
                     input,
                     cache_read,
                     cache_create,
+                    cache_write_1h,
                     output,
                 )
                 .unwrap_or(0.0);
