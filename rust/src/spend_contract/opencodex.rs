@@ -11,7 +11,8 @@ use crate::core::{
 
 use super::{
     ActivityHistogram, CostCoverageCounts, CostProvenance, CustomPricing, CustomRates,
-    ImportedSpendSource, SpendDailyPoint, SpendModelRow, SpendTokenMix, add_optional,
+    ImportedSpendSource, SpendDailyPoint, SpendModelRow, SpendTokenMix, add_known_tokens,
+    add_optional,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,15 +38,28 @@ mod nous_tests;
 #[cfg(test)]
 mod pricing_tests;
 
-#[derive(Default)]
+/// Per-model token classes start at a known zero and turn unknown (`None`) as
+/// soon as one ledger row for the model lacks that count.
 struct ModelAccumulator {
-    input: u64,
-    output: u64,
-    cache_read: u64,
-    cache_creation: u64,
+    input: Option<u64>,
+    output: Option<u64>,
+    cache_read: Option<u64>,
     total: Option<u64>,
     cost: Option<f64>,
     custom_pricing: bool,
+}
+
+impl Default for ModelAccumulator {
+    fn default() -> Self {
+        Self {
+            input: Some(0),
+            output: Some(0),
+            cache_read: Some(0),
+            total: Some(0),
+            cost: None,
+            custom_pricing: false,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -269,19 +283,11 @@ fn aggregate_with_pricing(
         }
 
         let model = models.entry(entry.model.clone()).or_default();
-        model.input = model.input.saturating_add(entry.input_tokens.unwrap_or(0));
-        model.output = model
-            .output
-            .saturating_add(entry.output_tokens.unwrap_or(0));
-        model.cache_read = model
-            .cache_read
-            .saturating_add(entry.cache_read_tokens.unwrap_or(0));
-        model.cache_creation = model
-            .cache_creation
-            .saturating_add(entry.cache_creation_tokens.unwrap_or(0));
-        if let Some(total) = entry.resolved_total_tokens() {
-            model.total = Some(model.total.unwrap_or(0).saturating_add(total));
-        }
+        add_known_tokens(&mut model.input, entry.input_tokens);
+        add_known_tokens(&mut model.output, entry.output_tokens);
+        add_known_tokens(&mut model.cache_read, entry.cache_read_tokens);
+        // A row with no resolvable total makes the model total unknown.
+        add_known_tokens(&mut model.total, entry.resolved_total_tokens());
         if let Some(cost) = cost {
             model.cost = Some(model.cost.unwrap_or(0.0) + cost);
         }
@@ -296,11 +302,7 @@ fn aggregate_with_pricing(
             input_tokens: acc.input,
             output_tokens: acc.output,
             cache_read_tokens: acc.cache_read,
-            total_tokens: acc.total.unwrap_or_else(|| {
-                acc.input
-                    .saturating_add(acc.output)
-                    .saturating_add(acc.cache_creation)
-            }),
+            total_tokens: acc.total,
             custom_pricing: acc.custom_pricing,
         })
         .collect();

@@ -135,7 +135,7 @@ fn custom_nous_pricing_prices_each_fixture_row_with_input_excluding_cache() {
         assert!(source.models[0].custom_pricing);
         assert_eq!(
             source.models[0].total_tokens,
-            entry.resolved_total_tokens().unwrap()
+            Some(entry.resolved_total_tokens().unwrap())
         );
         // A ledger row without conversationId is its own session.
         assert_eq!(source.conversation_count, 1);

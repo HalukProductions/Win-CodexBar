@@ -74,6 +74,19 @@ describe("UsageSpendProviderGroups brand rows", () => {
     expect(screen.getByText("UsageSpendModels")).not.toBeNull();
   });
 
+  it("shows unknown model tokens as unknown, not zero", () => {
+    render(
+      <UsageSpendProviderGroups
+        groups={[group("glm", "GLM", [{ ...model("glm-5"), inputTokens: null, outputTokens: null, cacheReadTokens: null, totalTokens: null }])]}
+        caption="caption"
+        t={t}
+        showHeading={false}
+      />,
+    );
+    expect(screen.getByText("UsageSpendUnknown")).not.toBeNull();
+    expect(screen.queryByText(/^0\b/)).toBeNull();
+  });
+
   it("keeps the Models label for partial single-model history", () => {
     render(
       <UsageSpendProviderGroups

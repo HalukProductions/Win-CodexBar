@@ -124,7 +124,11 @@ fn aggregate_window_total_matches_model_and_daily_totals() {
 
     // 105 (authoritative) + 50 + 3 + 2 (cache_read is inside input).
     assert_eq!(source.token_total, Some(160));
-    let model_total: u64 = source.models.iter().map(|row| row.total_tokens).sum();
+    let model_total: u64 = source
+        .models
+        .iter()
+        .map(|row| row.total_tokens.expect("known model total"))
+        .sum();
     let daily_total: u64 = source
         .daily
         .iter()

@@ -203,7 +203,7 @@ fn custom_pricing_counts_cached_tokens_once_and_partial_usage_remains_unknown() 
     partial.total_tokens = Some(500);
     let unpriced = priced(vec![partial], &CustomPricing::default(), &catalog());
     assert_eq!(unpriced.daily[0].total_tokens, Some(500));
-    assert_eq!(unpriced.models[0].total_tokens, 500);
+    assert_eq!(unpriced.models[0].total_tokens, Some(500));
     assert_unpriced(&unpriced);
 }
 

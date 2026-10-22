@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { SpendProviderIcon } from "../../../components/providers/SpendProviderIcon";
-import { formatSpendMetric, formatUsd } from "../../../lib/usageSpendSharing";
+import { formatSpendMetric, formatSpendTokens, formatUsd } from "../../../lib/usageSpendSharing";
 import {
   PROVIDER_MODEL_DISPLAY_LIMIT,
   type SpendProviderGroup,
@@ -85,7 +85,7 @@ export function UsageSpendProviderGroups({ groups, caption, t, showHeading = tru
                         <span style={{ minWidth: 0 }}>
                           {model.model}
                           <span className="settings-section__caption" style={{ display: "block", margin: 0 }}>
-                            {model.totalTokens.toLocaleString()} {t("UsageSpendTokens")}
+                            {formatSpendTokens(model.totalTokens, t("UsageSpendTokens"), t("UsageSpendUnknown"))}
                             {model.customPricing ? " · " + t("UsageSpendCustomPricing") : ""}
                           </span>
                         </span>
