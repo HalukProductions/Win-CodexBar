@@ -50,12 +50,16 @@ export function buildSpendProviderGroups(
   providerName: string,
 ): SpendProviderGroup[] {
   if (contract.models.length === 0) return [];
-  const totalTokens = contract.models.reduce((sum, model) => sum + model.totalTokens, 0);
+  // One model with unknown tokens makes the provider total unknown, not a partial sum.
+  const totalTokens = contract.models.reduce<number | null>(
+    (sum, model) => (sum == null || model.totalTokens == null ? null : sum + model.totalTokens),
+    0,
+  );
   const group: SpendProviderGroup = {
     providerId: contract.providerId,
     displayName: providerName,
     costUsd: contract.knownCostUsd,
-    totalTokens: Number.isSafeInteger(totalTokens) ? totalTokens : null,
+    totalTokens: totalTokens != null && Number.isSafeInteger(totalTokens) ? totalTokens : null,
     costIsPartial: contract.priceCoverage.unpriced > 0,
     hasPartialModelHistory: !contract.historyCoverageEstablished,
     models: contract.models,

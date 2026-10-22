@@ -676,10 +676,11 @@ export interface SpendTokenMix {
 export interface SpendModelRow {
   model: string;
   costUsd: number | null;
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens: number;
-  totalTokens: number;
+  /** null = unknown (rows lacked usable token counts), never a real zero. */
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cacheReadTokens: number | null;
+  totalTokens: number | null;
   customPricing: boolean;
 }
 

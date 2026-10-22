@@ -57,6 +57,19 @@ describe("usage spend provider breakdown", () => {
     expect(codex.models.map((row) => row.model)).toEqual(["gpt-5", "gpt-5-mini"]);
   });
 
+  it("leaves the provider token total unknown when any model's tokens are unknown", () => {
+    const [codex] = buildSpendProviderGroups(
+      contract({
+        models: [
+          model("gpt-5", 3, 1000),
+          { ...model("glm-5", null, 0), inputTokens: null, outputTokens: null, cacheReadTokens: null, totalTokens: null },
+        ],
+      }),
+      "Codex",
+    );
+    expect(codex.totalTokens).toBeNull();
+  });
+
   it("returns no groups without model-level history", () => {
     expect(buildSpendProviderGroups(contract({ models: [] }), "Codex")).toEqual([]);
   });

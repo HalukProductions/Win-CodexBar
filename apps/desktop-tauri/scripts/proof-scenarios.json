@@ -484,6 +484,15 @@
       ]
     },
     {
+      "name": "settings-usage-spend-unknown-model-tokens",
+      "query": "window=settings&tab=usageSpend&fixture=usage-spend-unknown-tokens&theme=dark",
+      "size": [880, 900],
+      "steps": [
+        { "expectText": ["gpt-5-codex", "gpt-5-mini", "Unknown"] },
+        { "screenshot": "settings-usage-spend-unknown-model-tokens" }
+      ]
+    },
+    {
       "name": "settings-claude-token-account-edit-reorder",
       "query": "window=settings&tab=providers:claude&fixture=default&theme=dark",
       "size": [

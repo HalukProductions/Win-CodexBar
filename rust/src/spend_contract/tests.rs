@@ -172,7 +172,7 @@ fn included_auto_review_is_free_unless_an_explicit_custom_rate_is_set() {
     let free = model_rows("codex", &summary, &CustomPricing::default());
     assert_eq!(free[0].cost_usd, Some(0.0));
     assert!(!free[0].custom_pricing);
-    assert_eq!(free[0].input_tokens, 1_000_000);
+    assert_eq!(free[0].input_tokens, Some(1_000_000));
 
     let custom = CustomPricing::parse(br#"{"codex-auto-review": {"input": 2.0}}"#);
     let priced = model_rows("codex", &summary, &custom);
@@ -278,10 +278,10 @@ fn merge_models_combines_duplicate_models_and_sorts_priced_first() {
     let make_row = |model: &str, cost: Option<f64>, input: u64, custom: bool| SpendModelRow {
         model: model.to_string(),
         cost_usd: cost,
-        input_tokens: input,
-        output_tokens: 0,
-        cache_read_tokens: 0,
-        total_tokens: input,
+        input_tokens: Some(input),
+        output_tokens: Some(0),
+        cache_read_tokens: Some(0),
+        total_tokens: Some(input),
         custom_pricing: custom,
     };
     let merged = merge_models(
@@ -301,9 +301,104 @@ fn merge_models_combines_duplicate_models_and_sorts_priced_first() {
     );
     let beta = &merged[0];
     assert_eq!(beta.cost_usd, Some(3.0));
-    assert_eq!(beta.input_tokens, 17);
-    assert_eq!(beta.total_tokens, 17);
+    assert_eq!(beta.input_tokens, Some(17));
+    assert_eq!(beta.total_tokens, Some(17));
     assert!(beta.custom_pricing, "custom pricing flags are OR-ed");
+}
+
+#[test]
+fn merge_models_keeps_unknown_tokens_unknown_and_never_sums_them_as_zero() {
+    let known = |model: &str, input: Option<u64>| SpendModelRow {
+        model: model.to_string(),
+        cost_usd: None,
+        input_tokens: input,
+        output_tokens: input,
+        cache_read_tokens: Some(0),
+        total_tokens: input,
+        custom_pricing: false,
+    };
+    let merged = merge_models(
+        vec![known("glm-5", Some(10)), known("mimo", None)],
+        &[known("glm-5", None), known("mimo", Some(4))],
+    );
+    let glm = merged
+        .iter()
+        .find(|row| row.model == "glm-5")
+        .expect("glm-5");
+    assert_eq!(
+        glm.input_tokens, None,
+        "an unknown side makes the sum unknown"
+    );
+    assert_eq!(glm.total_tokens, None);
+    assert_eq!(glm.cache_read_tokens, Some(0));
+    let mimo = merged.iter().find(|row| row.model == "mimo").expect("mimo");
+    assert_eq!(
+        mimo.input_tokens, None,
+        "unknown stays unknown across later rows"
+    );
+    assert_eq!(mimo.total_tokens, None);
+}
+
+#[test]
+fn model_rows_report_unknown_tokens_as_none_not_zero() {
+    let mut summary = summary_with_model("kimi-k2", 1_000, 400, 50);
+    summary.by_model.insert("glm-5".to_string(), 0.5);
+    summary.unknown_token_rows = 2;
+    summary
+        .unknown_token_rows_by_model
+        .insert("glm-5".to_string(), 2);
+    let rows = model_rows("opencodego", &summary, &CustomPricing::default());
+
+    let glm = rows.iter().find(|row| row.model == "glm-5").expect("glm-5");
+    assert_eq!(glm.input_tokens, None);
+    assert_eq!(glm.output_tokens, None);
+    assert_eq!(glm.cache_read_tokens, None);
+    assert_eq!(glm.total_tokens, None);
+    assert_eq!(glm.cost_usd, Some(0.5), "the recorded cost is unaffected");
+    let glm_json = serde_json::to_value(glm).expect("model row serializes");
+    assert!(glm_json["inputTokens"].is_null());
+    assert!(glm_json["totalTokens"].is_null());
+    assert_eq!(glm_json["costUsd"], 0.5);
+
+    let kimi = rows
+        .iter()
+        .find(|row| row.model == "kimi-k2")
+        .expect("kimi-k2");
+    assert_eq!(kimi.input_tokens, Some(1_000));
+    assert_eq!(kimi.total_tokens, Some(1_450));
+}
+
+#[test]
+fn model_rows_without_unknown_rows_stay_known() {
+    let summary = summary_with_model("m", 10, 5, 0);
+    let rows = model_rows("codex", &summary, &CustomPricing::default());
+    assert_eq!(rows[0].input_tokens, Some(10));
+    assert_eq!(rows[0].total_tokens, Some(15));
+}
+
+#[test]
+fn unattributed_unknown_rows_make_every_model_unknown() {
+    let mut summary = summary_with_model("m", 10, 5, 0);
+    summary.unknown_token_rows = 1;
+    let rows = model_rows("opencodego", &summary, &CustomPricing::default());
+    assert_eq!(rows[0].input_tokens, None);
+    assert_eq!(rows[0].total_tokens, None);
+}
+
+#[test]
+fn unknown_model_tokens_do_not_price_custom_rates_from_zero() {
+    let mut summary = summary_with_model("glm-5", 1_000, 0, 0);
+    summary.unknown_token_rows = 1;
+    summary
+        .unknown_token_rows_by_model
+        .insert("glm-5".to_string(), 1);
+    let custom = CustomPricing::parse(br#"{"glm-5": {"input": 1.0, "output": 1.0}}"#);
+    let rows = model_rows("opencodego", &summary, &custom);
+    assert!(rows[0].custom_pricing);
+    assert_eq!(
+        rows[0].cost_usd, None,
+        "a custom rate must not bill zeroed unknown counts as a known free model"
+    );
 }
 
 #[test]
@@ -337,10 +432,10 @@ fn resolve_spend_preserves_merged_report_details() {
     let native_models = vec![SpendModelRow {
         model: "gpt-5".to_string(),
         cost_usd: Some(1.0),
-        input_tokens: 10,
-        output_tokens: 2,
-        cache_read_tokens: 0,
-        total_tokens: 12,
+        input_tokens: Some(10),
+        output_tokens: Some(2),
+        cache_read_tokens: Some(0),
+        total_tokens: Some(12),
         custom_pricing: false,
     }];
     let imported = ImportedSpendSource {
@@ -366,10 +461,10 @@ fn resolve_spend_preserves_merged_report_details() {
         models: vec![SpendModelRow {
             model: "gpt-5".to_string(),
             cost_usd: Some(2.0),
-            input_tokens: 5,
-            output_tokens: 0,
-            cache_read_tokens: 4,
-            total_tokens: 9,
+            input_tokens: Some(5),
+            output_tokens: Some(0),
+            cache_read_tokens: Some(4),
+            total_tokens: Some(9),
             custom_pricing: true,
         }],
         daily: vec![
@@ -435,8 +530,8 @@ fn resolve_spend_preserves_merged_report_details() {
 
     let model = &resolved.models[0];
     assert_eq!(model.cost_usd, Some(3.0));
-    assert_eq!(model.input_tokens, 15);
-    assert_eq!(model.cache_read_tokens, 4);
+    assert_eq!(model.input_tokens, Some(15));
+    assert_eq!(model.cache_read_tokens, Some(4));
     assert!(model.custom_pricing);
     assert_eq!(resolved.daily[0].cost_usd, Some(3.0));
     assert_eq!(resolved.daily[0].total_tokens, Some(21));
@@ -614,10 +709,10 @@ fn known_subtotal_sums_known_costs_only_and_needs_known_zero_for_empty() {
     let make_row = |cost: Option<f64>| SpendModelRow {
         model: String::new(),
         cost_usd: cost,
-        input_tokens: 0,
-        output_tokens: 0,
-        cache_read_tokens: 0,
-        total_tokens: 0,
+        input_tokens: Some(0),
+        output_tokens: Some(0),
+        cache_read_tokens: Some(0),
+        total_tokens: Some(0),
         custom_pricing: false,
     };
     let mut summary = CostSummary::default();
@@ -636,10 +731,10 @@ fn coverage_for_models_counts_priced_rows_as_estimated() {
     let make_row = |cost: Option<f64>| SpendModelRow {
         model: String::new(),
         cost_usd: cost,
-        input_tokens: 0,
-        output_tokens: 0,
-        cache_read_tokens: 0,
-        total_tokens: 0,
+        input_tokens: Some(0),
+        output_tokens: Some(0),
+        cache_read_tokens: Some(0),
+        total_tokens: Some(0),
         custom_pricing: false,
     };
     let coverage = coverage_for_models(&[make_row(Some(0.0)), make_row(None), make_row(Some(3.0))]);
@@ -815,7 +910,10 @@ fn native_window_total_matches_model_totals_for_each_provider() {
     for (provider, expected) in [("codex", 1_050), ("claude", 1_950)] {
         let summary = summary_with_model("m", 1_000, 50, 900);
         let rows = model_rows(provider, &summary, &CustomPricing::default());
-        let model_total: u64 = rows.iter().map(|row| row.total_tokens).sum();
+        let model_total: u64 = rows
+            .iter()
+            .map(|row| row.total_tokens.expect("known model total"))
+            .sum();
         let window_total =
             resolve_token_total(summary.total_tokens_for_provider(provider), None, false);
         assert_eq!(model_total, expected, "{provider} model total");
