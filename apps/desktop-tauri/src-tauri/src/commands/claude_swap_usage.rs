@@ -20,7 +20,6 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use chrono::{DateTime, FixedOffset};
-use codexbar::core::ProviderId;
 use codexbar::providers::claude::claude_swap::{
     self, ClaudeSwapAccount, ClaudeSwapAccountList, ClaudeSwapAccountSource, project_accounts,
 };
@@ -427,12 +426,7 @@ pub(crate) struct BackgroundPoolConfig {
 
 impl BackgroundPoolConfig {
     pub(crate) fn from_settings(settings: &Settings) -> Option<Self> {
-        if !settings.merged_overview_all_accounts
-            || !settings.claude_swap_enabled()
-            || !settings
-                .get_enabled_provider_ids()
-                .contains(&ProviderId::Claude)
-        {
+        if !settings.merged_overview_all_accounts || !settings.claude_swap_active() {
             return None;
         }
         let executable_path = settings.claude_swap_executable_path().trim();
