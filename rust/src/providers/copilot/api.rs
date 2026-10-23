@@ -503,6 +503,8 @@ impl UsableQuota {
             reset_regenerates: false,
             hidden_on_card: false,
             usage_known: true,
+            quota_limit: None,
+            quota_unit: None,
         }
     }
 }

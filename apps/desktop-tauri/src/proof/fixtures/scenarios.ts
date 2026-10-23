@@ -57,6 +57,7 @@ export const PROOF_SCENARIO_NAMES = [
   "vercel-team-id-invalid",
   "kimi-bonus-credits",
   "agent-sessions-hosts",
+  "copilot-daily-target",
 ] as const;
 
 export type ProofScenarioName = (typeof PROOF_SCENARIO_NAMES)[number];
@@ -1152,6 +1153,22 @@ function kimiBonusCreditsScenario(now: Date): ProofScenario {
   };
 }
 
+/** A monthly allowance with a daily target and no pace: 52% left over 18 days. */
+function copilotDailyTargetScenario(now: Date): ProofScenario {
+  const snapshot = copilotSnapshot(now);
+  return {
+    name: "copilot-daily-target",
+    settings: baseSettings({ enabledProviders: ["copilot"] }),
+    catalog: PROOF_PROVIDER_CATALOG,
+    providers: [
+      { ...snapshot, primary: { ...snapshot.primary, pace: null, dailyTarget: { amount: 52 / 18, unit: "%" } } },
+    ],
+    codexAccounts: emptyCodexAccounts(),
+    claudeAccounts: [],
+    localSpend: [],
+  };
+}
+
 function proofAgentSession(
   id: string,
   host: string,
@@ -1230,6 +1247,7 @@ const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   "vercel-team-id-invalid": vercelTeamIdInvalidScenario,
   "kimi-bonus-credits": kimiBonusCreditsScenario,
   "agent-sessions-hosts": agentSessionsHostsScenario,
+  "copilot-daily-target": copilotDailyTargetScenario,
 };
 
 export function isProofScenarioName(value: string): value is ProofScenarioName {

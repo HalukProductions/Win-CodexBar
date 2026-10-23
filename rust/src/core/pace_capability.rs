@@ -13,7 +13,7 @@
 //! dispatch is `provider_factory::pace_capability`, reached through
 //! [`super::ProviderId::pace_capability`].
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeZone, Utc};
 
 use super::{RateWindow, UsagePace};
 
@@ -170,6 +170,56 @@ impl ProviderPaceCapability {
             work_days,
         )
     }
+
+    /// Per-day share of a monthly allowance (upstream
+    /// `UsageMenuCardView.Model.monthlyTargetMetrics`). The window must be a
+    /// usable, non-regenerating monthly window: its length is the inferred
+    /// monthly duration, or 28 to 31 days. A window without an absolute
+    /// allowance is measured in percent. A reported allowance must be a
+    /// positive finite number in `credits` or `requests`; other units have no
+    /// target. Usage that the provider did not report has no target.
+    pub fn monthly_daily_target<Tz: TimeZone>(
+        &self,
+        window: &RateWindow,
+        now: DateTime<Utc>,
+        tz: &Tz,
+    ) -> Option<MonthlyDailyTarget> {
+        if window.is_informational || window.reset_regenerates || !window.usage_known() {
+            return None;
+        }
+        let monthly = self.uses_inferred_monthly_duration(window)
+            || window.window_minutes.is_some_and(|minutes| {
+                (28.0..=31.0).contains(&(f64::from(minutes) / 1440.0).round())
+            });
+        if !monthly {
+            return None;
+        }
+        let (limit, unit) = match (window.quota_limit, window.quota_unit.as_deref()) {
+            (None, _) => (100.0, "%"),
+            (Some(limit), Some(unit @ ("credits" | "requests")))
+                if limit.is_finite() && limit > 0.0 =>
+            {
+                (limit, unit)
+            }
+            _ => return None,
+        };
+        // Upstream `RateWindow.remainingPercent` floors at zero, so an
+        // over-quota allowance still gets a zero target.
+        let remaining = limit * window.remaining_percent().max(0.0) / 100.0;
+        let amount = UsagePace::daily_target_in(remaining, window.resets_at, now, tz)?;
+        Some(MonthlyDailyTarget {
+            amount,
+            unit: unit.to_string(),
+        })
+    }
+}
+
+/// A monthly allowance's per-day share, in the allowance's own unit
+/// (`%`, `credits` or `requests`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct MonthlyDailyTarget {
+    pub amount: f64,
+    pub unit: String,
 }
 
 #[cfg(test)]
@@ -184,6 +234,145 @@ mod tests {
 
     fn window(used: f64, minutes: Option<u32>, resets_at: DateTime<Utc>) -> RateWindow {
         RateWindow::with_details(used, minutes, Some(resets_at), None)
+    }
+
+    /// 2026-02-15 12:00 UTC with the Mar 1 reset: 14 whole local days remain.
+    fn daily_now() -> DateTime<Utc> {
+        at(2026, 2, 15, 12)
+    }
+
+    fn daily_target_of(
+        window: &RateWindow,
+        capability: ProviderPaceCapability,
+    ) -> Option<MonthlyDailyTarget> {
+        capability.monthly_daily_target(window, daily_now(), &chrono::Utc)
+    }
+
+    fn monthly_reset(used: f64) -> RateWindow {
+        window(
+            used,
+            Some(MONTHLY_WINDOW_SENTINEL_MINUTES),
+            at(2026, 3, 1, 0),
+        )
+    }
+
+    #[test]
+    fn percent_only_monthly_window_targets_remaining_percent_per_day() {
+        let target = daily_target_of(
+            &monthly_reset(58.0),
+            ProviderPaceCapability::CALENDAR_MONTH_RESET_WINDOW,
+        )
+        .expect("daily target");
+        assert_eq!(target.unit, "%");
+        assert!((target.amount - 3.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn over_quota_monthly_window_targets_zero() {
+        for used in [100.0, 125.0] {
+            let target = daily_target_of(
+                &monthly_reset(used).with_quota(300.0, "requests"),
+                ProviderPaceCapability::CALENDAR_MONTH_RESET_WINDOW,
+            )
+            .expect("exhausted allowance keeps a target");
+            assert_eq!(target.amount, 0.0, "used {used}%");
+        }
+    }
+
+    #[test]
+    fn credit_and_request_allowances_keep_their_unit() {
+        let credits = monthly_reset(40.0).with_quota(250.0, "credits");
+        let target = daily_target_of(
+            &credits,
+            ProviderPaceCapability::CALENDAR_MONTH_RESET_WINDOW,
+        )
+        .expect("credit target");
+        assert_eq!(target.unit, "credits");
+        assert!((target.amount - 150.0 / 14.0).abs() < 1e-9);
+
+        let requests = monthly_reset(0.0).with_quota(150.0, "requests");
+        let target = daily_target_of(&requests, ProviderPaceCapability::UNSUPPORTED)
+            .expect("request target");
+        assert_eq!(target.unit, "requests");
+        assert!((target.amount - 150.0 / 14.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn length_of_twenty_eight_to_thirty_one_days_counts_as_monthly() {
+        let twenty_eight_days = window(0.0, Some(28 * 1440), at(2026, 3, 1, 0));
+        assert!(daily_target_of(&twenty_eight_days, ProviderPaceCapability::UNSUPPORTED).is_some());
+        let twenty_seven_days = window(0.0, Some(27 * 1440), at(2026, 3, 1, 0));
+        assert!(daily_target_of(&twenty_seven_days, ProviderPaceCapability::UNSUPPORTED).is_none());
+    }
+
+    #[test]
+    fn weekly_and_session_windows_have_no_daily_target() {
+        let weekly = window(10.0, Some(10_080), at(2026, 2, 20, 0));
+        assert!(
+            daily_target_of(&weekly, ProviderPaceCapability::CALENDAR_MONTH_RESET_WINDOW).is_none()
+        );
+        let session = window(10.0, Some(300), at(2026, 2, 15, 17));
+        assert!(
+            daily_target_of(
+                &session,
+                ProviderPaceCapability::CALENDAR_MONTH_RESET_WINDOW
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn unknown_usage_informational_regenerating_or_missing_reset_has_no_target() {
+        let capability = ProviderPaceCapability::CALENDAR_MONTH_RESET_WINDOW;
+        assert!(
+            daily_target_of(&monthly_reset(10.0).with_usage_known(false), capability).is_none()
+        );
+        let mut informational = monthly_reset(10.0);
+        informational.is_informational = true;
+        assert!(daily_target_of(&informational, capability).is_none());
+        assert!(
+            daily_target_of(&monthly_reset(10.0).with_regenerating_reset(), capability).is_none()
+        );
+        let missing_reset =
+            RateWindow::with_details(10.0, Some(MONTHLY_WINDOW_SENTINEL_MINUTES), None, None);
+        assert!(daily_target_of(&missing_reset, capability).is_none());
+        let expired = window(
+            10.0,
+            Some(MONTHLY_WINDOW_SENTINEL_MINUTES),
+            at(2026, 2, 10, 0),
+        );
+        assert!(daily_target_of(&expired, capability).is_none());
+    }
+
+    #[test]
+    fn unit_less_or_unsupported_allowances_have_no_target() {
+        let capability = ProviderPaceCapability::CALENDAR_MONTH_RESET_WINDOW;
+        let mut unitless = monthly_reset(10.0);
+        unitless.quota_limit = Some(100.0);
+        assert!(daily_target_of(&unitless, capability).is_none());
+        assert!(
+            daily_target_of(&monthly_reset(10.0).with_quota(100.0, "tokens"), capability).is_none()
+        );
+        assert!(
+            daily_target_of(
+                &monthly_reset(10.0).with_quota(f64::INFINITY, "credits"),
+                capability
+            )
+            .is_none()
+        );
+        assert!(
+            daily_target_of(&monthly_reset(10.0).with_quota(0.0, "credits"), capability).is_none()
+        );
+    }
+
+    #[test]
+    fn exhausted_monthly_allowance_has_a_zero_target() {
+        let target = daily_target_of(
+            &monthly_reset(125.0),
+            ProviderPaceCapability::CALENDAR_MONTH_RESET_WINDOW,
+        )
+        .expect("zero target");
+        assert_eq!(target.amount, 0.0);
     }
 
     fn resolved_minutes(minutes: Option<u32>, resets_at: DateTime<Utc>) -> Option<u32> {
