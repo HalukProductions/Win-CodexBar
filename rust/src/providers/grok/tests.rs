@@ -507,3 +507,24 @@ fn account_usage_marks_informational_windows_unavailable() {
     assert!(!usage.usage_available);
     assert_eq!(usage.used_percent, None);
 }
+
+#[test]
+fn terminal_sign_in_failure_names_the_grok_login_fix() {
+    let error = sign_in_hint_for_terminal_error(ProviderError::AuthRequired);
+
+    assert!(error.to_string().contains("grok login"), "{error}");
+    assert_eq!(
+        error.state_kind(),
+        crate::core::ProviderStateKind::NeedsAuthentication
+    );
+    assert!(!matches!(error, ProviderError::AuthRequired));
+}
+
+#[test]
+fn terminal_mapping_leaves_other_errors_unchanged() {
+    let error = sign_in_hint_for_terminal_error(ProviderError::Timeout);
+
+    assert!(matches!(error, ProviderError::Timeout), "{error}");
+    let other = sign_in_hint_for_terminal_error(ProviderError::Other("kept".to_string()));
+    assert_eq!(other.to_string(), "kept");
+}

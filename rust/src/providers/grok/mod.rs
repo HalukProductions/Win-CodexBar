@@ -38,6 +38,8 @@ const CLI_SETTINGS_ENDPOINT: &str = "https://cli-chat-proxy.grok.com/v1/settings
 const RESET_CREDITS_TIMEOUT: Duration = Duration::from_secs(2);
 const RESET_CREDITS_JOIN_GRACE: Duration = Duration::from_millis(250);
 const GROK_CLI_ACP_ARGS: [&str; 2] = ["agent", "stdio"];
+/// Shown to the user when no usable Grok login is left after every auto step.
+const GROK_SIGN_IN_HINT: &str = "Grok sign-in required. Run `grok login`, then refresh CodexBar.";
 
 /// Reset-window pace (upstream `GrokProviderDescriptor.pace`, v0.70.0): weekly
 /// windows inside their length, see [`reset_window_pace_matches`].
@@ -737,49 +739,55 @@ impl Provider for GrokProvider {
     }
 
     async fn fetch_usage(&self, ctx: &FetchContext) -> Result<ProviderFetchResult, ProviderError> {
-        match ctx.source_mode {
-            SourceMode::Auto => self.fetch_auto(ctx).await,
-            SourceMode::Web if ctx.token_account_isolated => {
-                match ctx
-                    .manual_cookie_header
-                    .as_deref()
-                    .filter(|cookie| !cookie.trim().is_empty())
-                {
-                    Some(cookie_header) => self.fetch_with_cookie(cookie_header, ctx).await,
-                    None => Err(isolated_account_missing_credential()),
-                }
-            }
-            SourceMode::Web => {
-                if let Some(cookie_header) = &ctx.manual_cookie_header {
-                    return self.fetch_with_cookie(cookie_header, ctx).await;
-                }
-                self.fetch_with_cookie_refresh(ctx).await
-            }
-            SourceMode::Cli | SourceMode::OAuth if ctx.token_account_isolated => {
-                self.fetch_isolated_account(ctx).await
-            }
-            SourceMode::Cli => match Self::load_credentials(GrokAuthKind::Cli).await {
-                Ok(credentials) => {
-                    self.fetch_with_auth(&credentials, GrokAuthKind::Cli, ctx)
-                        .await
-                }
-                Err(error) => self.fetch_cli_acp_without_login(error, ctx).await,
-            },
-            SourceMode::OAuth => {
-                // Prefer the switched ~/.grok/auth.json over a leftover token
-                // account so Weekly/notifications follow Grok account Switch.
-                let credentials = match Self::load_credentials(GrokAuthKind::OAuth).await {
-                    Ok(credentials) => credentials,
-                    Err(error) => {
-                        let Some(token) = ctx.api_key.as_deref() else {
-                            return Err(error);
-                        };
-                        GrokCredentials::from_bearer(token)
+        // The sign-in hint is applied to the final result only: auto steps
+        // inside the block still match on `AuthRequired` to fall through.
+        let result: Result<ProviderFetchResult, ProviderError> = async {
+            match ctx.source_mode {
+                SourceMode::Auto => self.fetch_auto(ctx).await,
+                SourceMode::Web if ctx.token_account_isolated => {
+                    match ctx
+                        .manual_cookie_header
+                        .as_deref()
+                        .filter(|cookie| !cookie.trim().is_empty())
+                    {
+                        Some(cookie_header) => self.fetch_with_cookie(cookie_header, ctx).await,
+                        None => Err(isolated_account_missing_credential()),
                     }
-                };
-                self.fetch_with_oauth_fallback(&credentials, ctx).await
+                }
+                SourceMode::Web => {
+                    if let Some(cookie_header) = &ctx.manual_cookie_header {
+                        return self.fetch_with_cookie(cookie_header, ctx).await;
+                    }
+                    self.fetch_with_cookie_refresh(ctx).await
+                }
+                SourceMode::Cli | SourceMode::OAuth if ctx.token_account_isolated => {
+                    self.fetch_isolated_account(ctx).await
+                }
+                SourceMode::Cli => match Self::load_credentials(GrokAuthKind::Cli).await {
+                    Ok(credentials) => {
+                        self.fetch_with_auth(&credentials, GrokAuthKind::Cli, ctx)
+                            .await
+                    }
+                    Err(error) => self.fetch_cli_acp_without_login(error, ctx).await,
+                },
+                SourceMode::OAuth => {
+                    // Prefer the switched ~/.grok/auth.json over a leftover token
+                    // account so Weekly/notifications follow Grok account Switch.
+                    let credentials = match Self::load_credentials(GrokAuthKind::OAuth).await {
+                        Ok(credentials) => credentials,
+                        Err(error) => {
+                            let Some(token) = ctx.api_key.as_deref() else {
+                                return Err(error);
+                            };
+                            GrokCredentials::from_bearer(token)
+                        }
+                    };
+                    self.fetch_with_oauth_fallback(&credentials, ctx).await
+                }
             }
         }
+        .await;
+        result.map_err(sign_in_hint_for_terminal_error)
     }
 
     fn available_sources(&self) -> Vec<SourceMode> {
@@ -1145,6 +1153,16 @@ fn is_missing_or_expired_login(err: &ProviderError) -> bool {
         err,
         ProviderError::AuthRequired | ProviderError::NotInstalled(_)
     )
+}
+
+/// Maps a sign-in failure that reaches the caller to an error that names the
+/// fix. `OAuth` keeps the NeedsAuthentication state and the auth error
+/// category (the shape Claude uses for a missing login), unlike `NotInstalled`.
+fn sign_in_hint_for_terminal_error(error: ProviderError) -> ProviderError {
+    match error {
+        ProviderError::AuthRequired => ProviderError::OAuth(GROK_SIGN_IN_HINT.to_string()),
+        other => other,
+    }
 }
 
 /// Whether a cookie-path error should invalidate the cached browser session.
