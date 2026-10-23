@@ -482,9 +482,11 @@ fn build_tooltip(
     format!("CodexBar\n{}", lines.join("\n"))
 }
 
-/// `NOTIFYICONDATAW.szTip` holds 128 UTF-16 units including the trailing NUL,
-/// and tray-icon copies at most 127 of them, cutting mid-line without a marker.
-const TRAY_TOOLTIP_MAX_UTF16: usize = 127;
+/// `NOTIFYICONDATAW.szTip` holds 128 UTF-16 units, but tray-icon 0.21 leaves
+/// `cbSize` zeroed, so Explorer reads the pre-Windows 2000 layout and shows
+/// only the first 64 units, cutting mid-line without a marker. 63 leaves room
+/// for the terminating NUL of that legacy `szTip[64]`.
+const TRAY_TOOLTIP_MAX_UTF16: usize = 63;
 
 fn utf16_len(text: &str) -> usize {
     text.encode_utf16().count()
@@ -1054,6 +1056,9 @@ mod tests {
         assert!(japanese_label.contains("リセットまで"), "{japanese_label}");
     }
 
+    /// The full `szTip[128]` budget, so layout tests can use realistic line lengths.
+    const WIDE_BUDGET: usize = 127;
+
     #[test]
     fn fit_tooltip_keeps_short_tooltips_unchanged() {
         let tooltip = "CodexBar\nClaude: 87% left\nCodex: 92% left";
@@ -1070,9 +1075,9 @@ mod tests {
         }
         let tooltip = lines.join("\n");
 
-        let fitted = fit_tooltip(&tooltip, TRAY_TOOLTIP_MAX_UTF16);
+        let fitted = fit_tooltip(&tooltip, WIDE_BUDGET);
 
-        assert!(utf16_len(&fitted) <= TRAY_TOOLTIP_MAX_UTF16, "{fitted}");
+        assert!(utf16_len(&fitted) <= WIDE_BUDGET, "{fitted}");
         let shown: Vec<&str> = fitted.split('\n').collect();
         assert_eq!(shown[0], "CodexBar", "{fitted}");
         assert!(shown.len() > 2, "{fitted}");
@@ -1090,9 +1095,9 @@ mod tests {
         let long = "A".repeat(115);
         let tooltip = format!("CodexBar\n{long}\nB line that is dropped entirely here");
 
-        let fitted = fit_tooltip(&tooltip, TRAY_TOOLTIP_MAX_UTF16);
+        let fitted = fit_tooltip(&tooltip, WIDE_BUDGET);
 
-        assert!(utf16_len(&fitted) <= TRAY_TOOLTIP_MAX_UTF16, "{fitted}");
+        assert!(utf16_len(&fitted) <= WIDE_BUDGET, "{fitted}");
         assert_eq!(fitted, format!("CodexBar\n{long}…"));
     }
 
@@ -1106,10 +1111,10 @@ mod tests {
         ]
         .join("\n");
 
-        let fitted = fit_tooltip(&tooltip, TRAY_TOOLTIP_MAX_UTF16);
+        let fitted = fit_tooltip(&tooltip, WIDE_BUDGET);
 
         assert_eq!(fitted, "CodexBar\nOpenAI: Major outage\nClaude: 87% left…");
-        assert!(utf16_len(&fitted) <= TRAY_TOOLTIP_MAX_UTF16);
+        assert!(utf16_len(&fitted) <= WIDE_BUDGET);
     }
 
     #[test]
@@ -1127,12 +1132,23 @@ mod tests {
         // Each emoji is two UTF-16 units; a char-count cut would overflow or split a pair.
         let tooltip = format!("{}\nCodexBar", "🙂".repeat(100));
 
-        let fitted = fit_tooltip(&tooltip, TRAY_TOOLTIP_MAX_UTF16);
+        let fitted = fit_tooltip(&tooltip, WIDE_BUDGET);
 
-        assert!(utf16_len(&fitted) <= TRAY_TOOLTIP_MAX_UTF16, "{fitted}");
+        assert!(utf16_len(&fitted) <= WIDE_BUDGET, "{fitted}");
         assert_eq!(fitted.chars().filter(|ch| *ch == '🙂').count(), 63);
         assert!(fitted.ends_with('…'), "{fitted}");
         assert!(!fitted.contains('\n'), "{fitted}");
+    }
+
+    #[test]
+    fn fit_tooltip_keeps_whole_provider_lines_within_the_legacy_tip_limit() {
+        let tooltip =
+            "CodexBar\nClaude: 58% left • Resets in 2h 59m\nCodex: 82% left • Resets in 4d 3h";
+
+        let fitted = fit_tooltip(tooltip, TRAY_TOOLTIP_MAX_UTF16);
+
+        assert!(utf16_len(&fitted) <= 63, "{fitted}");
+        assert_eq!(fitted, "CodexBar\nClaude: 58% left • Resets in 2h 59m…");
     }
 
     #[test]
