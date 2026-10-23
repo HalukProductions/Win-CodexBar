@@ -1,4 +1,5 @@
 use crate::core::{ClaudePricingResolution, CostUsagePricing, ModelsDevPricingSnapshot};
+use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 
 pub(super) const FALLBACK_CLAUDE_MODEL: &str = "claude-sonnet-4-6";
@@ -76,9 +77,14 @@ impl ClaudeScanPricingResolver {
         self.resolve(model).is_some()
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "one row's five token counters plus its model and date"
+    )]
     pub(super) fn cost_usd_with_cache_ttl(
         &mut self,
         model: &str,
+        pricing_date: Option<DateTime<Utc>>,
         input: u64,
         cache_create: u64,
         cache_create_1h: u64,
@@ -91,6 +97,7 @@ impl ClaudeScanPricingResolver {
             .map(|pricing| {
                 CostUsagePricing::claude_cost_usd_u64_from_resolution_with_one_hour_writes(
                     pricing,
+                    pricing_date,
                     input,
                     cache_read,
                     cache_create,

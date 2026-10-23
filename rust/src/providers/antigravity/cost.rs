@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, HashSet};
 use std::future::Future;
 
+use chrono::{DateTime, Utc};
+
 use crate::core::CostUsagePricing;
 use crate::spend_contract::LocalCostEstimate;
 
@@ -67,6 +69,7 @@ async fn refresh_pricing_targets(targets: BTreeMap<&'static str, HashSet<String>
 }
 
 pub(super) fn estimate_cost_usd(
+    pricing_date: DateTime<Utc>,
     model: Option<&str>,
     input: u64,
     cache_read: u64,
@@ -79,7 +82,16 @@ pub(super) fn estimate_cost_usd(
         cache_read,
         cache_write,
         output,
-        CostUsagePricing::claude_cost_usd,
+        |model, input, cache_read, cache_write, output| {
+            CostUsagePricing::claude_cost_usd_at_date(
+                model,
+                Some(pricing_date),
+                input,
+                cache_read,
+                cache_write,
+                output,
+            )
+        },
     )
 }
 
@@ -139,6 +151,11 @@ mod tests {
         estimate_cost_usd, pricing_base_model, refresh_targets, unpriced_model_pricing_refresh,
     };
     use crate::spend_contract::LocalCostEstimate;
+    use chrono::{DateTime, TimeZone, Utc};
+
+    fn at() -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(2026, 6, 1, 0, 0, 0).unwrap()
+    }
 
     fn ids(values: &[&str]) -> HashSet<String> {
         values.iter().map(|value| value.to_string()).collect()
@@ -189,17 +206,24 @@ mod tests {
 
     #[test]
     fn prices_known_models_and_provider_local_routing_variants() {
-        let direct = estimate_cost_usd(Some("claude-sonnet-4-6"), 1_000, 200, 100, 500)
+        let direct = estimate_cost_usd(at(), Some("claude-sonnet-4-6"), 1_000, 200, 100, 500)
             .expect("known public price");
-        let routed = estimate_cost_usd(Some("claude-sonnet-4-6-thinking"), 1_000, 200, 100, 500)
-            .expect("routing suffix uses the base public price");
+        let routed = estimate_cost_usd(
+            at(),
+            Some("claude-sonnet-4-6-thinking"),
+            1_000,
+            200,
+            100,
+            500,
+        )
+        .expect("routing suffix uses the base public price");
         assert!(direct > 0.0);
         assert_eq!(direct, routed);
     }
 
     #[test]
     fn routing_suffixes_match_case_insensitively() {
-        let direct = estimate_cost_usd(Some("claude-sonnet-4-6"), 1_000, 200, 100, 500)
+        let direct = estimate_cost_usd(at(), Some("claude-sonnet-4-6"), 1_000, 200, 100, 500)
             .expect("known public price");
         for model in [
             "claude-sonnet-4-6-Thinking",
@@ -207,7 +231,7 @@ mod tests {
             "claude-sonnet-4-6-Tiered",
         ] {
             assert_eq!(
-                estimate_cost_usd(Some(model), 1_000, 200, 100, 500),
+                estimate_cost_usd(at(), Some(model), 1_000, 200, 100, 500),
                 Some(direct),
                 "{model}"
             );
@@ -222,17 +246,43 @@ mod tests {
 
     #[test]
     fn unknown_or_oversized_pricing_inputs_fail_closed() {
-        assert_eq!(estimate_cost_usd(Some("unknown"), 1, 2, 3, 4), None);
+        assert_eq!(estimate_cost_usd(at(), Some("unknown"), 1, 2, 3, 4), None);
         assert_eq!(
-            estimate_cost_usd(Some("unknown-thinking"), 1, 2, 3, 4),
+            estimate_cost_usd(at(), Some("unknown-thinking"), 1, 2, 3, 4),
             None
         );
-        assert_eq!(estimate_cost_usd(Some("  "), 1, 2, 3, 4), None);
-        assert_eq!(estimate_cost_usd(None, 1, 2, 3, 4), None);
+        assert_eq!(estimate_cost_usd(at(), Some("  "), 1, 2, 3, 4), None);
+        assert_eq!(estimate_cost_usd(at(), None, 1, 2, 3, 4), None);
         assert_eq!(
-            estimate_cost_usd(Some("claude-sonnet-4-6"), i32::MAX as u64 + 1, 0, 0, 0),
+            estimate_cost_usd(
+                at(),
+                Some("claude-sonnet-4-6"),
+                i32::MAX as u64 + 1,
+                0,
+                0,
+                0
+            ),
             None
         );
+    }
+    #[test]
+    fn sonnet_4_6_long_context_is_priced_at_the_row_date() {
+        // Upstream full-context standard pricing cutoff (2026-03-13T00:00:00Z).
+        let before_cutoff = Utc.with_ymd_and_hms(2026, 3, 12, 23, 59, 59).unwrap();
+        // 240k input + 1k output: $6/$22.5 per million before the cutoff, $3/$15 after.
+        let tiered = estimate_cost_usd(
+            before_cutoff,
+            Some("claude-sonnet-4-6"),
+            240_000,
+            0,
+            0,
+            1_000,
+        )
+        .expect("dated Sonnet 4.6 price");
+        let standard = estimate_cost_usd(at(), Some("claude-sonnet-4-6"), 240_000, 0, 0, 1_000)
+            .expect("current Sonnet 4.6 price");
+        assert!((tiered - 1.4625).abs() < 1e-9, "{tiered}");
+        assert!((standard - 0.735).abs() < 1e-9, "{standard}");
     }
 }
 

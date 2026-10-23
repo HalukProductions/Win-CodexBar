@@ -646,6 +646,7 @@ fn parse_pi_assistant_entry_any(
             if let Some(cost) = CostUsagePricing::claude_cost_usd_with_cache_ttl(
                 &model,
                 pricing,
+                timestamp,
                 input,
                 cache_read,
                 cache_create,
@@ -660,6 +661,7 @@ fn parse_pi_assistant_entry_any(
                 let fallback = CostUsagePricing::claude_cost_usd_with_cache_ttl(
                     "claude-sonnet-4-6",
                     pricing,
+                    timestamp,
                     input,
                     cache_read,
                     cache_create,

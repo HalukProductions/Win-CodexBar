@@ -169,8 +169,10 @@ pub(super) fn claude_usage_record_from_event_with_pricing(
 
     let cache_create_1h = usage.one_hour_cache_creation_tokens(cache_create);
     let pricing_known = pricing.is_known(model);
+    let timestamp = event.parsed_timestamp();
     let computed_cost = pricing.cost_usd_with_cache_ttl(
         model,
+        timestamp,
         input,
         cache_create,
         cache_create_1h,
@@ -182,7 +184,7 @@ pub(super) fn claude_usage_record_from_event_with_pricing(
     Some(ClaudeUsageRecord {
         model: model.to_string(),
         pricing_known,
-        timestamp: event.parsed_timestamp(),
+        timestamp,
         dedup_key: claude_usage_dedup_key(
             message.id.as_deref(),
             event.request_id.as_deref(),
