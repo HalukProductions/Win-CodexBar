@@ -8,13 +8,14 @@ import {
 
 interface Props {
   t: (key: LocaleKey) => string;
+  onChanged?: () => void;
 }
 
 /**
  * Optional Vercel access token for the personal AI Gateway budget. Stored
  * through the provider's secret slot; the value is never read back to the UI.
  */
-export function VercelAccessTokenCreds({ t }: Props) {
+export function VercelAccessTokenCreds({ t, onChanged }: Props) {
   const [configured, setConfigured] = useState(false);
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
@@ -43,6 +44,7 @@ export function VercelAccessTokenCreds({ t }: Props) {
       await setVercelAccessToken(next);
       setConfigured(true);
       setValue("");
+      onChanged?.();
     } catch (cause: unknown) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -57,6 +59,7 @@ export function VercelAccessTokenCreds({ t }: Props) {
       await removeVercelAccessToken();
       setConfigured(false);
       setValue("");
+      onChanged?.();
     } catch (cause: unknown) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {

@@ -83,6 +83,31 @@ describe("CookieSourceSection manual cookie hint", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("renders the picker for a cookie provider and nothing without options", () => {
+    const { unmount } = render(
+      <CookieSourceSection
+        providerId="claude"
+        currentValue="auto"
+        options={OPTIONS}
+        t={(key) => key}
+        onChanged={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("radiogroup", { name: "ProviderCookieSource" })).toBeInTheDocument();
+    unmount();
+
+    const { container } = render(
+      <CookieSourceSection
+        providerId="vercel"
+        currentValue={null}
+        options={[]}
+        t={(key) => key}
+        onChanged={vi.fn()}
+      />,
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
+
   it("wraps the segmented options inside the narrow detail pane", () => {
     const rule = ruleBlock(loadStyles(), ".provider-detail-segmented");
     expect(rule).toMatch(/flex-wrap:\s*wrap;/);

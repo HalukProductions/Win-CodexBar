@@ -515,6 +515,38 @@ mod tests {
         assert!(!pace.reset_window);
     }
 
+    /// A spend budget (Vercel's personal budget) opts out of pace in its
+    /// fetch result, so the card gets neither a pace marker nor a reserve.
+    #[test]
+    fn non_authoritative_spend_budget_has_no_pace_or_reserve() {
+        let metadata = instantiate_provider(ProviderId::Vercel).metadata().clone();
+        let mut budget = monthly(50.0, Some(40_320));
+        budget.reset_description = Some("$42.00 / $84.00".into());
+        budget.description_is_detail = true;
+        let result = ProviderFetchResult::new(UsageSnapshot::new(budget), "api")
+            .with_non_authoritative_pace();
+
+        let snap = ProviderUsageSnapshot::from_fetch_result_at(
+            ProviderId::Vercel,
+            &metadata,
+            &result,
+            None,
+            None,
+            february_now(),
+        );
+
+        assert_eq!(snap.primary.pace, None);
+        assert_eq!(snap.primary.reserve_percent, None);
+        assert!(!snap.primary.reserve_will_last_to_reset);
+        assert!(snap.pace.is_none());
+        // The frontend derives on-pace budgets from window timing, so it
+        // needs the flag as well.
+        let json = serde_json::to_value(&snap).unwrap();
+        assert_eq!(json["paceAuthoritative"], serde_json::Value::Bool(false));
+        let cached: ProviderUsageSnapshot = serde_json::from_value(json).unwrap();
+        assert!(!cached.pace_authoritative);
+    }
+
     #[test]
     fn exhausted_reset_window_has_no_pace() {
         let usage = UsageSnapshot::new(monthly(100.0, None));

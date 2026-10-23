@@ -284,7 +284,9 @@ export default function MenuCard({
   const metricDisplay = {
     resetTimeRelative,
     showResetWhenExhausted,
-    showPace: showPace && providerAllowsPace(provider.providerId, provider.sourceLabel),
+    showPace:
+      showPace &&
+      providerAllowsPace(provider.providerId, provider.sourceLabel, provider.paceAuthoritative),
     showAsUsed,
     compactOverview,
     monthlyLimitBlockNow,

@@ -890,6 +890,7 @@ CredentialRevokeStored = Revoke Stored Credentials
 CredentialApiKeys = API keys
 CredentialManualCookies = Manual cookies
 CredentialTokenAccounts = Token accounts
+CredentialAccessTokens = Access tokens
 CredentialProtectedPrefix = Protected
 CredentialStatusNotCreated = Not created
 CredentialStatusPlaintext = Plaintext

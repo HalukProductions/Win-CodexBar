@@ -209,7 +209,11 @@ export function UsageDetailsSection({
     ) : null;
   }
 
-  const paceAllowed = providerAllowsPace(provider.providerId, provider.sourceLabel);
+  const paceAllowed = providerAllowsPace(
+    provider.providerId,
+    provider.sourceLabel,
+    provider.paceAuthoritative,
+  );
   const budgets = paceAllowed ? weeklyBudgets(provider, t, language, monthlyLimitBlockNow) : [];
   const forecast = paceAllowed
     ? formatSessionEquivalentEstimate(provider.sessionEquivalentForecast)

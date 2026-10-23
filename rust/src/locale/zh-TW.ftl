@@ -858,6 +858,7 @@ CredentialRevokeStored = 撤銷已儲存的憑證
 CredentialApiKeys = API 金鑰
 CredentialManualCookies = 手動 Cookie
 CredentialTokenAccounts = 權杖賬戶
+CredentialAccessTokens = 存取權杖
 CredentialProtectedPrefix = 受保護
 CredentialStatusNotCreated = 未建立
 CredentialStatusPlaintext = 明文

@@ -156,15 +156,16 @@ export function UsageSection({
               {localizeProviderLabel(group.title, t)}
             </div>
           )}
-          {group.rows.map((detail) => (
-            <ProviderDisplayRow
-              key={detail.id}
-              detail={detail}
-              lineClassName="provider-usage-inventory"
-              trackClassName="provider-usage-bar__track"
-              fillClassName="provider-usage-bar__fill"
-            />
-          ))}
+          <dl className="provider-detail-grid provider-detail-grid--usage">
+            {group.rows.map((detail) => (
+              <ProviderDisplayRow
+                key={detail.id}
+                detail={detail}
+                trackClassName="provider-usage-bar__track"
+                fillClassName="provider-usage-bar__fill"
+              />
+            ))}
+          </dl>
         </div>
       ))}
     </section>

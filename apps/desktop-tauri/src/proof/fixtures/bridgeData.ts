@@ -108,6 +108,8 @@ export function providerDetail(
     namedExtraMetrics:
       providerId === "cursor" ? [{ id: "cursor-grok-bot", label: "Grok Bot" }] : [],
     extraRateWindows: snapshot?.extraRateWindows ?? [],
+    inventory: snapshot?.inventory ?? [],
+    displayDetails: snapshot?.displayDetails ?? [],
     usageItems: [],
     hiddenUsageItemIds: [],
     cost: snapshot?.cost ?? null,

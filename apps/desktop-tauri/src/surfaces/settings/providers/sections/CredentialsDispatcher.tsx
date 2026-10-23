@@ -10,6 +10,8 @@ import { VercelAccessTokenCreds } from "./credentials/VercelAccessTokenCreds";
 interface Props {
   providerId: string;
   t: (key: LocaleKey) => string;
+  /** Called after a stored secret was saved or removed. */
+  onCredentialsChanged?: () => void;
 }
 
 /**
@@ -17,7 +19,7 @@ interface Props {
  * current provider. Providers without a bespoke credentials UI render
  * nothing. Claude and Codex switches live in the Options group instead.
  */
-export function CredentialsDispatcher({ providerId, t }: Props) {
+export function CredentialsDispatcher({ providerId, t, onCredentialsChanged }: Props) {
   switch (providerId) {
     case "gemini":
       return <GeminiCliCreds providerId={providerId} t={t} />;
@@ -28,11 +30,11 @@ export function CredentialsDispatcher({ providerId, t }: Props) {
     case "kiro":
       return <KiroCreds t={t} />;
     case "openrouter":
-      return <OpenRouterManagementCreds t={t} />;
+      return <OpenRouterManagementCreds t={t} onChanged={onCredentialsChanged} />;
     case "vercel":
       return (
         <>
-          <VercelAccessTokenCreds t={t} />
+          <VercelAccessTokenCreds t={t} onChanged={onCredentialsChanged} />
           <OpenAiExtras providerId={providerId} t={t} />
         </>
       );

@@ -117,6 +117,40 @@ fn credential_status_labels_do_not_include_error_details() {
 }
 
 #[test]
+fn access_token_status_reports_settings_file_only_while_a_token_is_stored() {
+    let mut settings = codexbar::settings::Settings::default();
+    assert_eq!(
+        super::access_token_status(&settings, || unreachable!("no token stored")),
+        "missing"
+    );
+
+    settings.set_management_api_token(ProviderId::Vercel, Some("vercel-test-token".into()));
+    let status =
+        super::access_token_status(&settings, || "protected:windows-dpapi-user".to_string());
+    assert_eq!(status, "protected:windows-dpapi-user");
+    assert!(!status.contains("vercel-test-token"));
+
+    settings.set_management_api_token(ProviderId::Vercel, None);
+    settings.set_management_api_token(ProviderId::OpenRouter, Some("or-test-key".into()));
+    assert_eq!(
+        super::access_token_status(&settings, || "plaintext".to_string()),
+        "plaintext"
+    );
+}
+
+#[test]
+fn credential_storage_status_serializes_access_tokens() {
+    let json = serde_json::to_value(super::CredentialStorageStatusBridge {
+        manual_cookies: "missing".into(),
+        api_keys: "missing".into(),
+        token_accounts: "missing".into(),
+        access_tokens: "protected:windows-dpapi-user".into(),
+    })
+    .expect("serialize");
+    assert_eq!(json["accessTokens"], "protected:windows-dpapi-user");
+}
+
+#[test]
 fn command_inputs_reject_invalid_provider_ids_before_storage_writes() {
     assert!(super::set_api_key("not-a-provider".into(), "sk-test".into(), None).is_err());
     assert!(super::set_manual_cookie("not-a-provider".into(), "a=b".into()).is_err());

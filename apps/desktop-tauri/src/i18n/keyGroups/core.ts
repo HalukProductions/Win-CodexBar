@@ -1117,6 +1117,7 @@ export const CORE_LOCALE_KEYS = [
   "CredentialApiKeys",
   "CredentialManualCookies",
   "CredentialTokenAccounts",
+  "CredentialAccessTokens",
   "CredentialProtectedPrefix",
   "CredentialStatusNotCreated",
   "CredentialStatusPlaintext",

@@ -858,6 +858,7 @@ CredentialRevokeStored = 保存済み認証情報を取り消し
 CredentialApiKeys = API キー
 CredentialManualCookies = 手動 Cookie
 CredentialTokenAccounts = トークンアカウント
+CredentialAccessTokens = アクセストークン
 CredentialProtectedPrefix = 保護
 CredentialStatusNotCreated = 未作成
 CredentialStatusPlaintext = 平文

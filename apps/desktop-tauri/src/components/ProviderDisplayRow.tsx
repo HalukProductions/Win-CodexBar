@@ -33,21 +33,20 @@ export function groupProviderDisplayDetails(
 }
 
 /**
- * One transient provider detail line: "{title}: {value} [secondary]"
- * plus an optional clamped progress bar.
+ * One transient provider detail row for a `<dl>`: the title as `<dt>`, the
+ * value [secondary] and an optional clamped progress bar as `<dd>`.
  *
- * Used by the settings provider detail (`UsageSection`); the tray card renders
- * the same data as key-value rows in `card/DetailSections`.
+ * Used by the settings provider detail (`UsageSection`) inside a
+ * `provider-detail-grid`; the tray card renders the same data as key-value
+ * rows in `card/DetailSections`.
  */
 export function ProviderDisplayRow({
   detail,
-  lineClassName,
   secondaryClassName,
   trackClassName,
   fillClassName,
 }: {
   detail: ProviderDisplayDetail;
-  lineClassName: string;
   secondaryClassName?: string;
   trackClassName: string;
   fillClassName: string;
@@ -64,9 +63,10 @@ export function ProviderDisplayRow({
       : null;
 
   return (
-    <div>
-      <div className={lineClassName}>
-        <span>{title}: {localizeProviderText(detail.value, t)}</span>
+    <div style={{ display: "contents" }}>
+      <dt>{title}</dt>
+      <dd>
+        {localizeProviderText(detail.value, t)}
         {detail.secondaryValue && secondaryClassName && (
           <>
             {" "}
@@ -75,19 +75,19 @@ export function ProviderDisplayRow({
             </span>
           </>
         )}
-      </div>
-      {progressPercent != null && (
-        <div
-          className={trackClassName}
-          role="progressbar"
-          aria-label={title}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={progressPercent}
-        >
-          <div className={fillClassName} style={{ width: `${progressPercent}%` }} />
-        </div>
-      )}
+        {progressPercent != null && (
+          <div
+            className={trackClassName}
+            role="progressbar"
+            aria-label={title}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progressPercent}
+          >
+            <div className={fillClassName} style={{ width: `${progressPercent}%` }} />
+          </div>
+        )}
+      </dd>
     </div>
   );
 }

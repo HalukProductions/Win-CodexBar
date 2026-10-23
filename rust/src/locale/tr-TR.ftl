@@ -890,6 +890,7 @@ CredentialRevokeStored = Kayıtlı Kimlik Bilgilerini İptal Et
 CredentialApiKeys = API anahtarları
 CredentialManualCookies = Elle eklenen çerezler
 CredentialTokenAccounts = Token hesapları
+CredentialAccessTokens = Erişim tokenları
 CredentialProtectedPrefix = Korumalı
 CredentialStatusNotCreated = Oluşturulmadı
 CredentialStatusPlaintext = Düz metin

@@ -222,6 +222,11 @@ export interface ProviderUsageSnapshot {
    * estimated percentages with `~`.
    */
   quotaEstimated?: boolean;
+  /**
+   * Sent only as `false`, when the fetch does not support pace advice (for
+   * example a spend budget). Absent means pace is allowed.
+   */
+  paceAuthoritative?: boolean;
   updatedAt: string;
   error: string | null;
   errorState: ProviderStateKind;
@@ -388,4 +393,6 @@ export interface CredentialStorageStatus {
   manualCookies: string;
   apiKeys: string;
   tokenAccounts: string;
+  /** Provider access tokens stored in settings (Vercel, OpenRouter management). */
+  accessTokens: string;
 }

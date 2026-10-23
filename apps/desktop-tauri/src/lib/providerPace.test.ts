@@ -11,5 +11,11 @@ describe("providerAllowsPace", () => {
     expect(providerAllowsPace("opencodego", "web")).toBe(true);
     expect(providerAllowsPace("claude", "local estimate")).toBe(true);
     expect(providerAllowsPace("opencodego", null)).toBe(true);
+    expect(providerAllowsPace("claude", "oauth", true)).toBe(true);
+    expect(providerAllowsPace("claude", "oauth", undefined)).toBe(true);
+  });
+
+  it("rejects snapshots the backend marks as not pace-authoritative", () => {
+    expect(providerAllowsPace("vercel", "api", false)).toBe(false);
   });
 });
