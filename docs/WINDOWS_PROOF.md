@@ -86,6 +86,16 @@ When it is set in proof mode:
 
 The app ignores the variable outside proof mode. It logs a warning and uses normal placement when the value isn't two whole numbers separated by a comma, or when no monitor contains the point.
 
+### Report a fixed system theme
+
+`CODEXBAR_PROOF_SYSTEM_THEME` makes the app report a fixed Windows app theme to `get_system_theme`. The `auto` theme in Settings then follows that value, so both directions can be proven without changing the real OS setting.
+
+```powershell
+$env:CODEXBAR_PROOF_SYSTEM_THEME = 'light'   # or 'dark'
+```
+
+It takes effect only in proof mode and accepts `light` or `dark`, case-insensitive. Outside proof mode the app logs a warning and reads the OS setting. An unset or blank value, or any other value, is ignored, and the app reads the OS setting. The override changes only what the app reports. It does not change the Windows setting, so the DWM caption, scrollbars and `<select>` popups keep their pinned dark theme.
+
 ## Drive the app
 
 Drive the app without taking the user's focus or keyboard. Don't use cua-driver's `bring_to_front`, foreground mode, `hotkey` or `type_text`.

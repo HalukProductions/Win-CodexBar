@@ -209,9 +209,13 @@ fn abgr_to_hex(value: u32) -> String {
 ///
 /// Every native window is pinned to Dark (see `shell/settings_window.rs`), so
 /// `prefers-color-scheme` inside the webview always reports dark. This reads
-/// the OS setting directly instead.
+/// the OS setting directly instead. In proof mode, `CODEXBAR_PROOF_SYSTEM_THEME`
+/// replaces the OS read so the `auto` theme can be proven in both directions.
 #[tauri::command]
 pub fn get_system_theme() -> String {
+    if let Some(theme) = crate::proof_harness::system_theme_override() {
+        return theme.to_string();
+    }
     theme_from_apps_use_light(apps_use_light_theme_value()).to_string()
 }
 
