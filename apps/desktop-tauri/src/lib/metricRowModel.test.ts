@@ -513,14 +513,22 @@ describe("metricRowPresentation bar", () => {
 
 describe("monthly daily target", () => {
   // A calendar-month allowance on the secondary lane with a synthetic target.
-  function monthly(dailyTarget: WindowPaceSnapshot["dailyTarget"]): RateWindowSnapshot {
+  function monthly(dailyTarget: RateWindowSnapshot["dailyTarget"]): RateWindowSnapshot {
     return rateWindow({
       usedPercent: 79,
       remainingPercent: 21,
       windowMinutes: 43_200,
-      pace: pace({ dailyTarget }),
+      pace: pace(),
+      dailyTarget,
     });
   }
+
+  it("shows the per-day share when the window has no pace", () => {
+    const snap = { ...monthly({ amount: 0, unit: "%" }), pace: null };
+    expect(metricRowPresentation(input({ lane: "secondary", snap }), en).metaText).toContain(
+      "≈ 0% / day to last until reset",
+    );
+  });
 
   it("shows a credit allowance's per-day share in the allowance's unit", () => {
     const row = metricRowPresentation(
@@ -531,7 +539,7 @@ describe("monthly daily target", () => {
   });
 
   it("formats percent, request and unknown units", () => {
-    const text = (dailyTarget: WindowPaceSnapshot["dailyTarget"]) =>
+    const text = (dailyTarget: RateWindowSnapshot["dailyTarget"]) =>
       metricRowPresentation(input({ lane: "secondary", snap: monthly(dailyTarget) }), en).metaText ?? "";
 
     expect(text({ amount: 2.46, unit: "%" })).toContain("≈ 2.5% / day to last until reset");

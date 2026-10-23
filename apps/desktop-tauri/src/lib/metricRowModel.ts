@@ -365,8 +365,8 @@ export function metricRowPresentation(input: MetricRowInput, t: Translate): Metr
   const markers = barMarkers(input);
   // The daily target shares the pace setting and the non-compact meta line.
   const dailyTarget =
-    input.paceEnabled && !input.compact && snap.pace?.dailyTarget
-      ? dailyTargetText(snap.pace.dailyTarget, t)
+    input.paceEnabled && !input.compact && snap.dailyTarget
+      ? dailyTargetText(snap.dailyTarget, t)
       : null;
   const metaParts = [
     visible && !input.compact ? paceMetaText(visible.pace, visible.kind, t) : null,

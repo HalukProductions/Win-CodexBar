@@ -36,10 +36,6 @@ pub struct WindowPaceSnapshot {
     /// pace on any card lane, whatever the window's length.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub reset_window: bool,
-    /// Per-day share of a monthly allowance (upstream `monthlyTargetMetrics`).
-    /// Absent outside monthly windows and when usage or the reset is unknown.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub daily_target: Option<DailyTargetSnapshot>,
 }
 
 /// Remaining allowance divided by the local calendar days left, in the
@@ -106,13 +102,7 @@ impl WindowPaceSnapshot {
             default_window_minutes,
             work_days,
         )?;
-        let mut snapshot = Self::from_pace(&pace, false);
-        snapshot.daily_target = daily_target(
-            &codexbar::core::ProviderPaceCapability::UNSUPPORTED,
-            window,
-            now,
-        );
-        Some(snapshot)
+        Some(Self::from_pace(&pace, false))
     }
 
     /// Lane pace with the provider's reset-window capability applied.
@@ -129,9 +119,7 @@ impl WindowPaceSnapshot {
         }
         let (pace, reset_window) =
             lane_usage_pace(id, lane, window, default_window_minutes, now, work_days)?;
-        let mut snapshot = Self::from_pace(&pace, reset_window);
-        snapshot.daily_target = daily_target(&id.pace_capability(), window, now);
-        Some(snapshot)
+        Some(Self::from_pace(&pace, reset_window))
     }
 
     fn from_pace(pace: &codexbar::core::UsagePace, reset_window: bool) -> Self {
@@ -143,19 +131,23 @@ impl WindowPaceSnapshot {
             eta_seconds: pace.eta_seconds,
             will_last_to_reset: pace.will_last_to_reset,
             reset_window,
-            daily_target: None,
         }
     }
 }
 
 /// Daily target of a monthly window in local calendar days (the Mac uses
 /// `Calendar.current`). Upstream `monthlyTargetMetrics` reads the same
-/// window, so the target never estimates today's consumption.
-fn daily_target(
-    capability: &codexbar::core::ProviderPaceCapability,
+/// window, so the target never estimates today's consumption. It does not
+/// depend on a lane pace: an exhausted allowance has no pace but still has
+/// a target.
+pub(crate) fn daily_target(
+    id: Option<ProviderId>,
     window: &RateWindow,
     now: DateTime<Utc>,
 ) -> Option<DailyTargetSnapshot> {
+    let capability = id.map_or(codexbar::core::ProviderPaceCapability::UNSUPPORTED, |id| {
+        id.pace_capability()
+    });
     capability
         .monthly_daily_target(window, now, &chrono::Local)
         .map(DailyTargetSnapshot::from)
@@ -211,7 +203,6 @@ mod tests {
                 eta_seconds: None,
                 will_last_to_reset: true,
                 reset_window: false,
-                daily_target: None,
             })
         );
     }
@@ -598,20 +589,31 @@ mod tests {
     #[test]
     fn monthly_credit_allowance_carries_a_daily_target_on_the_card_lane() {
         let window = monthly(20.0, Some(43_200)).with_quota(250.0, "credits");
-        let pace = WindowPaceSnapshot::for_lane(
-            ProviderId::Notion,
-            PaceLane::Card,
-            &window,
-            WEEKLY_FALLBACK_MINUTES,
-            february_now(),
-            None,
-        )
-        .expect("pace");
 
-        let target = pace.daily_target.expect("daily target");
+        let snap = snapshot_at(ProviderId::Notion, UsageSnapshot::new(window));
+
+        let target = snap.primary.daily_target.expect("daily target");
         assert_eq!(target.unit, "credits");
         let days = 200.0 / target.amount;
         assert!((13.0..=15.0).contains(&days), "{days}");
+    }
+
+    /// An exhausted allowance has no lane pace, but the card still shows its
+    /// target, as upstream computes the target apart from pace.
+    #[test]
+    fn exhausted_monthly_allowance_keeps_a_zero_daily_target_without_pace() {
+        let window = monthly(100.0, Some(43_200)).with_quota(250.0, "credits");
+
+        let snap = snapshot_at(ProviderId::Notion, UsageSnapshot::new(window));
+
+        assert_eq!(snap.primary.pace, None);
+        assert_eq!(
+            snap.primary.daily_target,
+            Some(DailyTargetSnapshot {
+                amount: 0.0,
+                unit: "credits".to_string(),
+            })
+        );
     }
 
     #[test]
@@ -620,17 +622,11 @@ mod tests {
         let reset = Utc.with_ymd_and_hms(2026, 2, 20, 0, 0, 0).unwrap();
         let window = RateWindow::with_details(20.0, Some(10_080), Some(reset), None)
             .with_quota(250.0, "credits");
-        let pace = WindowPaceSnapshot::for_lane(
-            ProviderId::Notion,
-            PaceLane::Card,
-            &window,
-            WEEKLY_FALLBACK_MINUTES,
-            february_now(),
-            None,
-        )
-        .expect("pace");
 
-        assert_eq!(pace.daily_target, None);
+        let snap = snapshot_at(ProviderId::Notion, UsageSnapshot::new(window));
+
+        assert!(snap.primary.pace.is_some());
+        assert_eq!(snap.primary.daily_target, None);
     }
 
     /// A provider that opts out of pace gets no daily target either, so the
@@ -652,6 +648,7 @@ mod tests {
         );
 
         assert_eq!(snap.primary.pace, None);
+        assert_eq!(snap.primary.daily_target, None);
     }
 
     #[test]

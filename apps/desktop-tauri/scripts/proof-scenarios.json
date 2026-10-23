@@ -498,6 +498,15 @@
       ]
     },
     {
+      "name": "flyout-copilot-daily-target",
+      "query": "window=flyout&fixture=copilot-daily-target&theme=dark",
+      "size": [310, 1032],
+      "steps": [
+        { "expectText": ["Copilot", "Premium", "≈ 2.9% / day to last until reset"] },
+        { "screenshot": "flyout-copilot-daily-target", "clip": "panel" }
+      ]
+    },
+    {
       "name": "settings-gemini-usage-source",
       "query": "window=settings&tab=providers:gemini&fixture=default&theme=dark",
       "size": [880, 620],

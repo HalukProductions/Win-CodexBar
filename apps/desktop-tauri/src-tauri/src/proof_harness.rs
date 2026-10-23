@@ -627,7 +627,7 @@ fn fill_window_pace(
     now: chrono::DateTime<chrono::Utc>,
     work_days: Option<u8>,
 ) {
-    if w.pace.is_some() || w.is_informational {
+    if (w.pace.is_some() && w.daily_target.is_some()) || w.is_informational {
         return;
     }
     let Some(resets_at) = w
@@ -643,6 +643,12 @@ fn fill_window_pace(
         Some(resets_at.with_timezone(&chrono::Utc)),
         w.reset_description.clone(),
     );
+    if w.daily_target.is_none() {
+        w.daily_target = crate::commands::pace::daily_target(id, &window, now);
+    }
+    if w.pace.is_some() {
+        return;
+    }
     w.pace = match id {
         Some(id) => crate::commands::pace::WindowPaceSnapshot::for_lane(
             id,
