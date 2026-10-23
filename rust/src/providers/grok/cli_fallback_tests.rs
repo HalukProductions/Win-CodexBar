@@ -622,3 +622,49 @@ async fn acp_wallet_answer_is_enriched_on_the_fallback_path() {
     assert_eq!(answer.billing.used_percent, None);
     assert_eq!(answer.prepaid_balance_usd, Some(12.5));
 }
+
+#[tokio::test]
+async fn acp_wallet_answer_adopts_the_enriched_percent_on_the_fallback_path() {
+    let mut server = mockito::Server::new_async().await;
+    server
+        .mock("GET", "/credits")
+        .with_status(500)
+        .create_async()
+        .await;
+    // mockito serves the first matching mock that still expects hits, so the
+    // bearer phase gets the failure and the enrichment gets the percent.
+    let bearer_billing = server
+        .mock("POST", "/billing")
+        .with_status(500)
+        .expect(1)
+        .create_async()
+        .await;
+    let enrichment = server
+        .mock("POST", "/billing")
+        .with_status(200)
+        .with_body(billing_response_with_percent(37.0))
+        .expect(1)
+        .create_async()
+        .await;
+    let (calls, run) = counting_cli(|| Ok(wallet_only_answer(Utc::now())));
+    let provider = GrokProvider::new()
+        .with_billing_endpoint_for_tests(format!("{}/billing", server.url()))
+        .with_credits_proxy_endpoint_for_tests(format!("{}/credits", server.url()))
+        .with_cli_billing_for_tests(run);
+
+    let answer = provider
+        .fetch_bearer_or_cli_billing(
+            &GrokCredentials::from_bearer("token"),
+            GrokAuthKind::Cli,
+            &FetchContext::default(),
+        )
+        .await
+        .unwrap();
+
+    bearer_billing.assert_async().await;
+    enrichment.assert_async().await;
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(answer.billing.used_percent, Some(37.0));
+    assert!(answer.billing.used_percent_is_wire_published);
+    assert_eq!(answer.prepaid_balance_usd, Some(12.5));
+}
