@@ -125,6 +125,27 @@ describe("CardHeader", () => {
     expect(screen.getByRole("button", { name: "Copy error" })).toBeInTheDocument();
   });
 
+  it("advances the update subtitle while the data stays unchanged", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse("2026-10-11T12:00:00Z"));
+    render(
+      <CardHeader
+        name="Codex"
+        email={null}
+        plan={null}
+        error={null}
+        updatedAt="2026-10-11T11:59:30Z"
+        isRefreshing={false}
+      />,
+    );
+    expect(screen.getByText("Updated just now")).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(60_000);
+    });
+    expect(screen.getByText("Updated 1m ago")).toBeInTheDocument();
+  });
+
   it("omits the email and plan when there are none", () => {
     const { container } = render(
       <CardHeader name="Cursor" email={null} plan={null} error={null} updatedAt="" isRefreshing />,

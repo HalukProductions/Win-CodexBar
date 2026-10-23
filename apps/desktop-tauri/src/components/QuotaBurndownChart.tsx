@@ -1,6 +1,7 @@
 import type { QuotaBurndownSnapshot, QuotaBurndownPoint } from "../types/bridge";
 import type { LocaleKey } from "../i18n/keys";
 import { formatRelativeUpdated } from "../lib/relativeTime";
+import { useNow } from "../hooks/useNow";
 
 const CHART_WIDTH = 300;
 const CHART_HEIGHT = 76;
@@ -42,12 +43,14 @@ function polyline(points: QuotaBurndownPoint[], startMs: number, endMs: number):
 export default function QuotaBurndownChart({
   burndown,
   t,
-  nowMs = Date.now(),
+  nowMs,
 }: {
   burndown: QuotaBurndownSnapshot;
   t: (key: LocaleKey) => string;
   nowMs?: number;
 }) {
+  // Called before the early returns below; keeps the capture age advancing.
+  const liveNowMs = useNow();
   if (burndown.samples.length === 0) return null;
 
   const startMs = Date.parse(burndown.start);
@@ -63,7 +66,7 @@ export default function QuotaBurndownChart({
   const idealEndX = xFor(Date.parse(burndown.ideal[1].capturedAt), startMs, resetMs);
   const idealEndY = yFor(burndown.ideal[1].remainingPercent);
   const remaining = Math.round(last.remainingPercent);
-  const captureAge = formatRelativeUpdated(lastMs, t, nowMs);
+  const captureAge = formatRelativeUpdated(lastMs, t, nowMs ?? liveNowMs);
 
   return (
     <div className="quota-burndown-chart">
