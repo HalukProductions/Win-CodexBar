@@ -747,6 +747,7 @@ export const CORE_LOCALE_KEYS = [
   "AgentSessionsSshHostsHelper",
   "AgentSessionsLoading",
   "AgentSessionsEmpty",
+  "AgentSessionsHostUnreachable",
   "UpdatesTitle",
   "AboutBuilt",
   "SectionLinks",

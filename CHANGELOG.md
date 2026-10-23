@@ -9,6 +9,7 @@
 
 ## [Windows] Unreleased
 
+- Charts: the Muse token chart, the OpenAI API daily history and the Groq console history keep every day of the 30-day window, so idle days show as zero bars instead of disappearing. Unpriced or incomplete days stay unknown (upstream #4689).
 - Pace: a monthly allowance shows a per-day target, the remaining allowance divided by the local days left including today, in its own unit (credits, requests or %). It appears on the pace line when pace is on, and shows nothing when usage or the reset is unknown or the reset has passed. Notion's credit allowances and FutureAGI's credit and request allowances report their limits (upstream #4692).
 - Overview: disabling a provider, in Settings or from the tray menu, removes its card and account rows at once instead of after a relaunch. claude-swap and tcr Overview rows now fill from a background read during refresh (at most every 5 minutes), so you no longer need to open Settings first.
 - **Claude**: built-in price rows choose one long-context tier per request from input plus all cache tokens and bill the whole request at that tier, as upstream does. Opus 4.6 and Sonnet 4.6 use long-context rates only for usage dated before the upstream cutoff.

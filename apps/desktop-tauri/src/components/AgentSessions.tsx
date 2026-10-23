@@ -33,9 +33,6 @@ export default function AgentSessions() {
   if (result?.status === "disabled") return null;
   const hosts = result?.status === "hosts" ? result.hosts : [];
   const sessions = hosts.flatMap((host) => host.sessions);
-  const hostErrors = hosts.flatMap((host) =>
-    host.error ? [`${host.host}: ${host.error}`] : [],
-  );
 
   const focus = (session: AgentSession) => {
     void focusAgentSession(session).then((focusResult) => {
@@ -53,26 +50,41 @@ export default function AgentSessions() {
       {result && sessions.length === 0 && (
         <p>{t("AgentSessionsEmpty")}</p>
       )}
-      {sessions.map((session) => (
-        <button
-          type="button"
-          className="agent-sessions__row"
-          key={`${session.host}:${session.provider}:${session.id}`}
-          onClick={() => focus(session)}
-        >
-          <span>{sessionLabel(session)}</span>
-          <span
-            className="agent-sessions__name"
-            title={session.sessionName ?? session.workspace.projectName ?? session.host}
+      {hosts.map((host) => (
+        <div className="agent-sessions__host" key={host.host}>
+          {/* Upstream agentSessionsSection: one header per host, then its rows. */}
+          <div
+            className={
+              host.error
+                ? "agent-sessions__host-header agent-sessions__host-header--unreachable"
+                : "agent-sessions__host-header"
+            }
           >
-            {session.sessionName ?? session.workspace.projectName ?? session.host}
-          </span>
-          <span>{session.state}</span>
-        </button>
+            {host.error
+              ? `${host.host} — ${t("AgentSessionsHostUnreachable")}`
+              : `${host.host} — ${host.sessions.length}`}
+          </div>
+          {host.error && <p className="agent-sessions__error">{host.error}</p>}
+          {host.sessions.map((session) => (
+            <button
+              type="button"
+              className="agent-sessions__row"
+              key={`${session.host}:${session.provider}:${session.id}`}
+              onClick={() => focus(session)}
+            >
+              <span>{sessionLabel(session)}</span>
+              <span
+                className="agent-sessions__name"
+                title={session.sessionName ?? session.workspace.projectName ?? session.host}
+              >
+                {session.sessionName ?? session.workspace.projectName ?? session.host}
+              </span>
+              <span>{session.state}</span>
+            </button>
+          ))}
+        </div>
       ))}
-      {[...hostErrors, ...(error ? [error] : [])].map((message) => (
-        <p className="agent-sessions__error" key={message}>{message}</p>
-      ))}
+      {error && <p className="agent-sessions__error">{error}</p>}
     </section>
   );
 }
