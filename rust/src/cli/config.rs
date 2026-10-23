@@ -846,7 +846,11 @@ async fn run_copilot_login(
         saved = copilot_steps(flow, api, store, json, out) => saved,
     };
     let result = result.and_then(|mut saved| {
-        enable().map_err(ConfigLoginError::other)?;
+        enable().map_err(|error| {
+            ConfigLoginError::other(format!(
+                "Signed in and saved the account, but could not enable Copilot: {error}"
+            ))
+        })?;
         saved.enabled = true;
         Ok(saved)
     });

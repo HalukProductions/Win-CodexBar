@@ -544,6 +544,15 @@ mod copilot_login_output {
         json: bool,
         cancel: impl Future<Output = ()>,
     ) -> Run {
+        run_with_options(fake, json, cancel, false).await
+    }
+
+    async fn run_with_options(
+        fake: &FakeGitHub,
+        json: bool,
+        cancel: impl Future<Output = ()>,
+        enable_fails: bool,
+    ) -> Run {
         let endpoints = GitHubEndpoints::with_origin(&fake.origin).expect("loopback origin");
         let flow = CopilotDeviceFlow::with_endpoints(&endpoints);
         let api = CopilotApi::with_endpoints(endpoints);
@@ -553,6 +562,9 @@ mod copilot_login_output {
         let enable_calls = Cell::new(0);
         let result = run_copilot_login(&flow, &api, &store, json, &mut out, cancel, || {
             enable_calls.set(enable_calls.get() + 1);
+            if enable_fails {
+                anyhow::bail!("settings write failed");
+            }
             Ok(())
         })
         .await;
@@ -587,6 +599,28 @@ mod copilot_login_output {
 
         let data = store.load_provider(ProviderId::Copilot).expect("load");
         assert_eq!(data.accounts[0].token, "gho_example_token");
+    }
+
+    #[tokio::test]
+    async fn failed_enable_reports_that_the_account_was_saved() {
+        let fake = fake(vec![ok(TOKEN_JSON)]);
+        let Run {
+            result,
+            store,
+            enable_calls,
+            _dir,
+            ..
+        } = run_with_options(&fake, false, std::future::pending(), true).await;
+
+        let error = result.expect_err("enable failure fails the login");
+        assert_eq!(enable_calls, 1);
+        assert_eq!(error.exit_code(), 1);
+        assert_eq!(
+            error.to_string(),
+            "Signed in and saved the account, but could not enable Copilot: settings write failed"
+        );
+        let data = store.load_provider(ProviderId::Copilot).expect("load");
+        assert_eq!(data.accounts.len(), 1, "the account stays saved");
     }
 
     #[tokio::test]

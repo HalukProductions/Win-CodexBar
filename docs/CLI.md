@@ -419,13 +419,13 @@ Text mode prints the URL and code, then `Connected` on success. Errors go to std
 | Exit code | Meaning | Final `--json` line |
 | --- | --- | --- |
 | `0` | Signed in. The account is saved and Copilot is enabled. | `{"status":"authorized"}` |
-| `1` | Any other failure: network error, GitHub server error, or a settings or token store write error. Nothing is saved. | `{"status":"failed","reason":"error",...}` |
+| `1` | Any other failure: network error, GitHub server error, or a settings or token store write error. Usually nothing is saved. If only the settings write that enables Copilot fails, the account is already saved and the error says `Signed in and saved the account, but could not enable Copilot`; running the login again updates that account. | `{"status":"failed","reason":"error",...}` |
 | `5` | The user denied the request on GitHub (`access_denied`). Nothing is saved. | `{"status":"failed","reason":"denied",...}` |
 | `6` | The device code expired before approval (`expired_token`). Nothing is saved. | `{"status":"failed","reason":"expired",...}` |
 | `7` | Stopped with Ctrl-C before the account was saved. Nothing is saved. | `{"status":"cancelled"}` |
 | `64` | Invalid arguments, including an unsupported `--provider`. No network call is made. | None; the error goes to stderr |
 
-Exit code `0` means the credential was saved. Any other code means it was not.
+Only exit code `0` guarantees both that the credential was saved and that Copilot is enabled. Codes `5`, `6`, `7` and `64` mean nothing was saved; code `1` can follow a saved account, as described above.
 
 Polling follows the interval GitHub returns. Each `slow_down` response adds 5 seconds for the rest of the login. GitHub's `access_denied` and `expired_token` responses end the login with the friendly errors above, and nothing is saved.
 
