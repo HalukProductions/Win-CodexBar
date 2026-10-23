@@ -911,6 +911,7 @@ CredentialRevokeStored = 저장된 자격 증명 해제
 CredentialApiKeys = API 키
 CredentialManualCookies = 수동 쿠키
 CredentialTokenAccounts = 토큰 계정
+CredentialAccessTokens = 액세스 토큰
 CredentialProtectedPrefix = 보호됨
 CredentialStatusNotCreated = 생성되지 않음
 CredentialStatusPlaintext = 일반 텍스트

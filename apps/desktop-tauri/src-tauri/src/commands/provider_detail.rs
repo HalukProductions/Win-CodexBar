@@ -309,6 +309,12 @@ pub fn revoke_provider_credentials(
         .collect();
     forget_provider_accounts(&app, id, &removed_ids);
 
+    let mut settings = Settings::load();
+    if settings.management_api_token(id).is_some() {
+        settings.set_management_api_token(id, None);
+        settings.save().map_err(|e| e.to_string())?;
+    }
+
     Ok(())
 }
 
@@ -318,6 +324,9 @@ pub struct CredentialStorageStatusBridge {
     pub manual_cookies: String,
     pub api_keys: String,
     pub token_accounts: String,
+    /// Provider access tokens kept in `settings.json` (Vercel personal budget,
+    /// OpenRouter management key).
+    pub access_tokens: String,
 }
 
 pub(crate) fn credential_file_status_label(status: SecureFileStatus) -> String {
@@ -334,6 +343,23 @@ fn optional_credential_status(path: Option<std::path::PathBuf>) -> String {
         .unwrap_or_else(|| "unavailable".to_string())
 }
 
+/// Access tokens share `settings.json` with ordinary preferences, so the file
+/// existing says nothing about them; report its protection only while a token
+/// is actually stored.
+pub(crate) fn access_token_status(
+    settings: &Settings,
+    settings_file_status: impl FnOnce() -> String,
+) -> String {
+    let any_stored = ProviderId::all()
+        .iter()
+        .any(|id| settings.management_api_token(*id).is_some());
+    if any_stored {
+        settings_file_status()
+    } else {
+        "missing".to_string()
+    }
+}
+
 #[tauri::command]
 pub fn get_credential_storage_status() -> CredentialStorageStatusBridge {
     CredentialStorageStatusBridge {
@@ -342,5 +368,8 @@ pub fn get_credential_storage_status() -> CredentialStorageStatusBridge {
         token_accounts: credential_file_status_label(secure_file::status(
             &TokenAccountStore::default_path(),
         )),
+        access_tokens: access_token_status(&Settings::load(), || {
+            optional_credential_status(Settings::settings_path())
+        }),
     }
 }

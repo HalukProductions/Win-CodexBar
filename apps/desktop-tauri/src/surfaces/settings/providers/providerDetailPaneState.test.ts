@@ -59,6 +59,7 @@ const credentialStatus: CredentialStorageStatus = {
   manualCookies: "ok",
   apiKeys: "none",
   tokenAccounts: "none",
+  accessTokens: "none",
 };
 
 describe("initialState", () => {

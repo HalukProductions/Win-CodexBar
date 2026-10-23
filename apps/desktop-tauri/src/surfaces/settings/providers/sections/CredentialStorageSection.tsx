@@ -36,6 +36,8 @@ export function CredentialStorageSection({
         <dd>{storageLabel(status.manualCookies, t)}</dd>
         <dt>{t("CredentialTokenAccounts")}</dt>
         <dd>{storageLabel(status.tokenAccounts, t)}</dd>
+        <dt>{t("CredentialAccessTokens")}</dt>
+        <dd>{storageLabel(status.accessTokens, t)}</dd>
       </dl>
     </section>
   );

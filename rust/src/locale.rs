@@ -1404,6 +1404,7 @@ locale_keys! {
     CredentialApiKeys,
     CredentialManualCookies,
     CredentialTokenAccounts,
+    CredentialAccessTokens,
     CredentialProtectedPrefix,
     CredentialStatusNotCreated,
     CredentialStatusPlaintext,

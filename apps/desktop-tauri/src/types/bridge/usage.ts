@@ -393,4 +393,6 @@ export interface CredentialStorageStatus {
   manualCookies: string;
   apiKeys: string;
   tokenAccounts: string;
+  /** Provider access tokens stored in settings (Vercel, OpenRouter management). */
+  accessTokens: string;
 }

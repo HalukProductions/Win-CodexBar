@@ -890,6 +890,7 @@ CredentialRevokeStored = Отозвать сохраненные учетные 
 CredentialApiKeys = Ключи API
 CredentialManualCookies = Ручные куки
 CredentialTokenAccounts = Токен-аккаунты
+CredentialAccessTokens = Токены доступа
 CredentialProtectedPrefix = Защищено
 CredentialStatusNotCreated = Не создано
 CredentialStatusPlaintext = Открытый текст
