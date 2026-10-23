@@ -61,9 +61,30 @@ The app fills fields that the file leaves out:
 - `updatedAt` from the current time;
 - the pace for any window that has `resetsAt` but no `pace`, with the same math and work-days setting as a live refresh.
 
-A file the app can't read or parse logs a warning, and the app starts without the seed. A normal refresh doesn't replace seeded data while the cache holds every provider the refresh asks for. A forced refresh, such as **Refresh All**, fetches live data.
+A file the app can't read or parse logs a warning, and the app starts without the seed.
+
+Seeded data is pinned per provider. A normal refresh skips every seeded provider and fetches only the enabled providers that have no seed, so seeding `codex` alone with `codex` and `claude` enabled keeps the Codex seed and refreshes Claude. A forced refresh, such as **Refresh All**, fetches live data for every provider and drops their pins.
+
+The tray icon and tooltip show the seeded data from launch, even when every enabled provider is seeded and the startup refresh is skipped.
 
 `CODEXBAR_SEED_CLAUDE_ACCOUNTS_JSON` works the same way for the saved Claude account list. It takes effect only in proof mode. A file the app can't parse logs a warning, and the app uses the real account list.
+
+### Place proof windows
+
+`CODEXBAR_PROOF_WINDOW_ORIGIN` sets where proof windows open, as `<x>,<y>` in physical pixels on the virtual desktop. Negative values are fine for monitors left of or above the primary one.
+
+```powershell
+$env:CODEXBAR_PROOF_WINDOW_ORIGIN = '-3600,-1188'
+```
+
+When it is set in proof mode:
+
+- the tray panel flyout, Settings, the float bar and the `trayPanel` proof surface open with their top-left corner at that point, instead of next to the tray or centered on the primary monitor;
+- the window goes on the monitor whose bounds contain the point and is moved, if needed, so it stays at least 8 px inside that monitor's work area;
+- the flyout stays there when its content resizes;
+- the float bar treats the point as its placement, so it isn't moved back, and the app doesn't save it as your float bar position.
+
+The app ignores the variable outside proof mode. It logs a warning and uses normal placement when the value isn't two whole numbers separated by a comma, or when no monitor contains the point.
 
 ## Drive the app
 
