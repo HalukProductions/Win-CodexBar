@@ -999,6 +999,7 @@ locale_keys! {
     AgentSessionsSshHostsHelper,
     AgentSessionsLoading,
     AgentSessionsEmpty,
+    AgentSessionsHostUnreachable,
     UpdatesTitle,
     AboutBuilt,
     SectionLinks,

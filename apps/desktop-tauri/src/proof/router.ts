@@ -424,7 +424,7 @@ export function createProofRouter(
     },
     grok_accounts_list: () => [],
     get_hooks_config: proofHooksConfig,
-    list_agent_sessions: () => ({ status: "disabled" }),
+    list_agent_sessions: () => scenario.agentSessions ?? { status: "disabled" },
     get_gemini_cli_signed_in: () => ({ signedIn: true, credentialsPath: null }),
     get_vertexai_status: () => ({ hasCredentials: false, credentialsPath: null }),
     list_jetbrains_detected_ides: () => [],

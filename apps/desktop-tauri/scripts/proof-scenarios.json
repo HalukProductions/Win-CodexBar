@@ -705,6 +705,16 @@
         { "expectText": "%" },
         { "screenshot": "floatbar" }
       ]
+    },
+    {
+      "name": "tray-agent-sessions-hosts",
+      "query": "window=main&fixture=agent-sessions-hosts",
+      "size": [310, 1032],
+      "steps": [
+        { "expectText": ["WORKSTATION-A — 2", "BUILD-BOX — 1", "LAB-HOST — unreachable", "ssh: connection timed out", "example-project"] },
+        { "expectNoText": "LAB-HOST — 0" },
+        { "screenshot": "tray-agent-sessions-hosts", "clip": "panel" }
+      ]
     }
   ]
 }

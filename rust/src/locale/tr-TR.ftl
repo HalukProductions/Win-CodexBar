@@ -565,6 +565,7 @@ AgentSessionsSshHostsLabel = SSH sunucuları
 AgentSessionsSshHostsHelper = Virgülle ayrılmış SSH hedefleri. Bağlantılar etkileşimsiz modu ve kısa zaman aşımlarını kullanır.
 AgentSessionsLoading = Aracı oturumları aranıyor...
 AgentSessionsEmpty = Etkin aracı oturumu yok.
+AgentSessionsHostUnreachable = ulaşılamıyor
 UpdatesTitle = Güncellemeler
 AboutBuilt = Derleme tarihi { "{}" }
 SectionLinks = Bağlantılar
