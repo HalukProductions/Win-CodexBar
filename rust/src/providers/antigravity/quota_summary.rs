@@ -361,11 +361,22 @@ fn group_rank(group: &QuotaSummaryGroup) -> u8 {
     group_family(group).1
 }
 
+/// Upstream `displayTitle(forQuotaGroup:)`. A Gemini group reads "Gemini" only
+/// when its title has no digit, so a versioned group such as "Gemini 4 Argon"
+/// keeps its own name. Claude and GPT groups read "Claude/GPT"; any other group
+/// keeps its trimmed name, or "Quota" when the name is blank.
 fn group_title(group: &QuotaSummaryGroup) -> String {
-    match group_family(group) {
-        (_, 0) => "Gemini".into(),
-        (_, 1) => "Claude/GPT".into(),
-        (title, _) => title.unwrap_or("Quota").to_string(),
+    let (title, _) = group_family(group);
+    let title = title.unwrap_or_default();
+    let lower = title.to_ascii_lowercase();
+    if lower.contains("gemini") && !title.chars().any(char::is_numeric) {
+        "Gemini".into()
+    } else if lower.contains("claude") || lower.contains("gpt") {
+        "Claude/GPT".into()
+    } else if title.is_empty() {
+        "Quota".into()
+    } else {
+        title.into()
     }
 }
 
@@ -703,10 +714,43 @@ mod tests {
     }
 
     #[test]
+    fn cli_report_keeps_a_versioned_gemini_group_name_distinct() {
+        // Upstream #4585: "Gemini 4 Argon" is its own quota, not a second "Gemini".
+        let data = br#"{
+          "status": "SUCCESS",
+          "command": {"name": "usage", "data": {"groups": [
+            {"name": "Gemini Models", "buckets": [
+              {"id": "gemini-weekly", "name": "Weekly Limit Remaining", "window": "weekly", "remaining_fraction": 0.99}
+            ]},
+            {"name": "Gemini 4 Argon", "description": "For paid Pro plans, Argon quota is separate.", "buckets": [
+              {"id": "gemini-argon-wtu-weekly", "name": "Gemini 4 Argon Weekly Limit", "window": "weekly", "remaining_fraction": 0.53, "reset_time": "2026-10-23T10:24:14Z"}
+            ]}
+          ]}}
+        }"#;
+
+        let snapshot = parse_cli_usage_report(data).expect("CLI report");
+
+        assert_eq!(snapshot.secondary_label.as_deref(), Some("Gemini Weekly"));
+        let extra_titles: Vec<&str> = snapshot
+            .extra_rate_windows
+            .iter()
+            .map(|window| window.title.as_str())
+            .collect();
+        assert_eq!(extra_titles, ["Gemini 4 Argon weekly"]);
+    }
+
+    #[test]
     fn group_rank_title_and_scope_follow_the_group_family() {
         // (displayName, name, rank, title, scope)
         let cases = [
             (Some("Gemini Pro"), None, 0, "Gemini", "gemini"),
+            (
+                Some("Gemini 4 Argon"),
+                None,
+                0,
+                "Gemini 4 Argon",
+                "gemini-4-argon",
+            ),
             (None, Some("claude & GPT"), 1, "Claude/GPT", "claude-gpt"),
             (
                 Some("OpenAI gpt-oss"),

@@ -932,6 +932,7 @@ The Antigravity quota summary picks one Gemini row for the primary and secondary
 - The ordinary Gemini buckets win: `gemini-5h` (or a session alias such as `gemini-session`) and `gemini-weekly`. Their IDs are matched after lowercasing, with `_` read as `-` and a trailing ` limit` ignored. Display labels never decide this.
 - A model-specific Gemini allowance, such as `gemini-2.5-pro-5h`, represents Gemini only when the ordinary bucket of that cadence is absent, unknown or disabled.
 - Every bucket stays visible as an extra window with its own usage and reset.
+- A group named like "Gemini" with no digit is shown as **Gemini** (for example **Gemini weekly**). A versioned Gemini group keeps its own name from the usage response, so a separate Gemini 4 Argon group is shown as **Gemini 4 Argon weekly**, alongside the ordinary **Gemini weekly** quota (upstream #4585).
 
 ## Window lengths that match the Mac
 
