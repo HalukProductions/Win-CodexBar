@@ -444,7 +444,9 @@ Configure the API key in Settings → Providers → Tavily (or `TAVILY_API_KEY`)
   usage percentage. Remaining credits are the nonnegative difference between
   reported cap and usage.
 - Pay-as-you-go totals, when present (`account.paygo_usage` and
-  `account.paygo_limit`), appear in a separate detail section.
+  `account.paygo_limit`), appear in a separate detail section. A null
+  pay-as-you-go limit leaves the cap unspecified: the section shows only the
+  reported usage, with no Limit or Remaining row.
 - The plan name (`account.current_plan`) identifies the account plan. No email
   or account ID is inferred; unknown plans do not create a phantom identity.
 - Non-200 responses report "Tavily returned HTTP <status>."; response bodies
