@@ -18,8 +18,8 @@ use std::process::{Output, Stdio};
 use tokio::process::Command;
 
 use crate::core::{
-    FetchContext, Provider, ProviderError, ProviderFetchResult, ProviderId, RateWindow, SourceMode,
-    UsageSnapshot,
+    FetchContext, Provider, ProviderError, ProviderFetchResult, ProviderId, RateWindow,
+    RefreshInteraction, SourceMode, UsageSnapshot, current_refresh_interaction,
 };
 
 /// Upstream `KiroProviderDescriptor.pace` (`.calendarMonthResetWindow`): the
@@ -101,6 +101,12 @@ impl KiroProvider {
                 "kiro-cli not found. Install from https://kiro.dev".to_string(),
             )
         })?;
+        // Background refreshes check the usage host before any CLI command runs,
+        // including `whoami`. Offline, the CLI's sign-in attempt opens browser tabs.
+        // Manual refreshes skip the check and keep the existing path.
+        if current_refresh_interaction() == RefreshInteraction::Background {
+            usage_limits::ensure_reachable().await?;
+        }
         Self::ensure_logged_in(&cli_path).await?;
 
         // Windows intentionally uses pipe-first (stdout/stderr Stdio::piped) rather than a dual
@@ -427,6 +433,14 @@ impl Provider for KiroProvider {
     // Plan credits (primary) represent Kiro; the bonus pool (secondary)
     // only takes over once a lane is exhausted.
     fn automatic_metric_follows_lane_order(&self) -> bool {
+        true
+    }
+
+    // A background refresh that fails its reachability check keeps the last good
+    // usage instead of showing an error. Note: the shared transport classification
+    // also covers timeouts and connection failures from any refresh, including manual
+    // ones; Kiro's CLI parse and auth errors are unaffected.
+    fn retains_last_good_on_transport_failure(&self) -> bool {
         true
     }
 

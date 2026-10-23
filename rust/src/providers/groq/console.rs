@@ -18,6 +18,7 @@ use crate::core::{
     CostSnapshot, OpenAiApiDailyUsage, OpenAiApiModelUsage, OpenAiApiUsageHistory,
     ProviderDisplayDetail, ProviderError, ProviderFetchResult, RateWindow, UsageSnapshot,
 };
+use crate::providers::openaiapi::history::fill_missing_days;
 
 pub(super) const SESSION_COOKIE: &str = "stytch_session";
 pub(super) const JWT_COOKIE: &str = "stytch_session_jwt";
@@ -229,7 +230,12 @@ async fn fetch_usage(
     let url = activity_url(&endpoints.api_base, &org, start, end)?;
     let rows = fetch_activity(client, url, &jwt).await?;
     let organization = organization_name(&rows);
-    let daily = daily_usage(&rows, &local);
+    let mut daily = daily_usage(&rows, &local);
+    // The activity fetch covered the whole window, so a local day with no rows is zero.
+    fill_missing_days(
+        &mut daily,
+        history_day_starts(&now.with_timezone(&local), HISTORY_DAYS),
+    );
     Ok(build_result(daily, organization, now))
 }
 
@@ -391,6 +397,17 @@ pub(super) fn activity_url(
         .append_pair("start_date", &start.to_string())
         .append_pair("end_date", &end.to_string());
     Ok(url)
+}
+
+/// UTC-midnight stamps of the last `days` local calendar days, today included, newest
+/// first. Groq stamps each local day at UTC midnight of its local date, so these
+/// match the daily buckets.
+pub(super) fn history_day_starts<Tz: TimeZone>(now: &DateTime<Tz>, days: u32) -> Vec<i64> {
+    let today = now.date_naive();
+    (0..days.clamp(1, 365))
+        .filter_map(|ago| today.checked_sub_days(Days::new(u64::from(ago))))
+        .map(|day| day.and_time(NaiveTime::MIN).and_utc().timestamp())
+        .collect()
 }
 
 /// Unix seconds bounding the last `days` local calendar days, today included.

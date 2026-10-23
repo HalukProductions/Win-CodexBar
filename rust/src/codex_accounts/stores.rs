@@ -15,6 +15,7 @@ use crate::secure_file;
 
 use super::file_locations::{accounts_file, snapshots_file};
 use super::models::{CodexAccount, RemovedAccountIdentity};
+use super::registry_log::{RegistryOperation, log_registry_write, registry_write_log};
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 struct AccountsFile {
@@ -69,6 +70,32 @@ impl AccountStore {
     }
 
     pub fn save(
+        &self,
+        accounts: &[CodexAccount],
+        removed_accounts: Option<&[RemovedAccountIdentity]>,
+    ) -> io::Result<()> {
+        self.save_with_operation(accounts, removed_accounts, RegistryOperation::RegistryWrite)
+    }
+
+    /// Write the accounts file and log one redacted registry-write entry.
+    pub fn save_with_operation(
+        &self,
+        accounts: &[CodexAccount],
+        removed_accounts: Option<&[RemovedAccountIdentity]>,
+        operation: RegistryOperation,
+    ) -> io::Result<()> {
+        let rows_before = self.load().ok().map(|(existing, _)| existing.len());
+        let result = self.write_accounts_file(accounts, removed_accounts);
+        log_registry_write(&registry_write_log(
+            operation,
+            rows_before,
+            accounts.len(),
+            result.is_ok(),
+        ));
+        result
+    }
+
+    fn write_accounts_file(
         &self,
         accounts: &[CodexAccount],
         removed_accounts: Option<&[RemovedAccountIdentity]>,
