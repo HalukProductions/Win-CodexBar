@@ -442,3 +442,7 @@ ClaudePlatform cli=claudeplatform display="Claude Platform" cookie=Some("platfor
   map=["claude-platform", "claudeplatform"]
   metadata=ProviderMetadata { id: ClaudePlatform, display_name: "Claude Platform", session_label: "API credit", weekly_label: "Purchased credit", supports_opus: false, supports_credits: false, default_enabled: false, is_primary: false, dashboard_url: Some("https://platform.claude.com/settings/billing"), status_page_url: Some("https://status.claude.com/"), tertiary_label_key: None }
   sources=[Auto, Web] oauth=false web=true cli=false
+Soniox cli=soniox display="Soniox" cookie=None color=#253772 deprecated=false blocking=None
+  map=["soniox"]
+  metadata=ProviderMetadata { id: Soniox, display_name: "Soniox", session_label: "Monthly budget", weekly_label: "Usage", supports_opus: false, supports_credits: false, default_enabled: false, is_primary: false, dashboard_url: Some("https://console.soniox.com"), status_page_url: Some("https://status.soniox.com"), tertiary_label_key: None }
+  sources=[Auto, OAuth] oauth=false web=false cli=false

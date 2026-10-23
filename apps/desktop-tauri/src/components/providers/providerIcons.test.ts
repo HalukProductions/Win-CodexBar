@@ -174,6 +174,7 @@ describe("provider icon registry", () => {
       "manus",
       "parallel",
       "replicate",
+      "soniox",
       "synthetic",
       "typesafe",
       "v0",

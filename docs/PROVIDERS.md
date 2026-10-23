@@ -719,6 +719,48 @@ and name are missing.
   an ISO 8601 timestamp; anything else fails parsing. Response bodies are never
   echoed in errors.
 
+### Soniox
+
+Soniox is disabled by default. In Settings → Providers → Soniox, enter an
+**organization API key** with the "Balance and spend" and "Usage and limits"
+permissions, or set `SONIOX_ORG_API_KEY`. Project API keys cannot read
+organization billing. Create keys in the
+[organization API guide](https://soniox.com/docs/guides/organization-api#organization-api-keys).
+The key is stored with the other API keys and is never written to logs.
+
+For proof runs and fake servers, `SONIOX_BASE_URL` replaces the organization API
+base (default `https://api.soniox.com/v1/organization`). It accepts `https://`,
+or `http://` only for a loopback host (`127.0.0.1`, `localhost`, `[::1]`), with
+no credentials, query, or fragment. The path must end in `/v1/organization`.
+Any other value, including a blank one, is ignored with a warning.
+
+The provider makes two read-only requests in order. Refresh never submits
+transcription or synthesis work:
+
+```text
+GET https://api.soniox.com/v1/organization/balance
+GET https://api.soniox.com/v1/organization/usage/monthly
+Authorization: Bearer <organization API key>
+```
+
+- The **Spend** section shows **Monthly budget** as `$used of $budget` with a
+  progress bar when the budget is positive. The budget meter itself is hidden on
+  the card and only feeds the tray and float-bar percentages. Upstream hides it
+  from the card by default; Windows has no default-hidden usage item, so the
+  card shows the same numbers as this Spend detail row instead.
+- The **Billing** section shows **Prepaid** or **Invoice billing** (value `USD`).
+  With a zero budget it also shows **Monthly budget** as `$0.00`, and no progress
+  bar or percentage.
+- Cost is this month's spend against the budget, reset at the start of the next
+  UTC month. Prepaid accounts also report the remaining balance. Invoice billing
+  accounts omit the balance so a zero prepaid amount is not shown as exhausted
+  credits. A negative prepaid balance is accepted but not shown.
+- 401 reports that authentication is required. 403 reports that the key needs
+  organization permissions. 429 reports rate limiting. Other HTTP errors report
+  the status. Amounts must be plain decimal strings, `month` must be `YYYY-MM`,
+  and `invoice_billing_enabled` must be a boolean; anything else fails parsing.
+  Response bodies are never echoed in errors.
+
 ### Claude Platform
 
 Claude Platform is disabled by default and shows the prepaid API credits of a

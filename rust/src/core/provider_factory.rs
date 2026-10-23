@@ -42,10 +42,10 @@ use crate::providers::{
     NousProvider, OllamaProvider, OpenAIApiProvider, OpenCodeGoProvider, OpenCodeProvider,
     OpenRouterProvider, PerplexityProvider, PiProvider, PoeProvider, QoderProvider,
     QwenCloudProvider, RaycastProvider, ReplicateProvider, SailResearchProvider, SakanaProvider,
-    SofyaProvider, StepFunProvider, Sub2ApiProvider, T3ChatProvider, TinyApiProvider,
-    TypeSafeProvider, V0Provider, VeniceProvider, VercelProvider, VertexAIProvider, WarpProvider,
-    WayfinderProvider, WindsurfProvider, XKiroProvider, XaiProvider, XapiProvider, ZaiProvider,
-    ZedProvider, ZenMuxProvider, ZoomMateProvider,
+    SofyaProvider, SonioxProvider, StepFunProvider, Sub2ApiProvider, T3ChatProvider,
+    TinyApiProvider, TypeSafeProvider, V0Provider, VeniceProvider, VercelProvider,
+    VertexAIProvider, WarpProvider, WayfinderProvider, WindsurfProvider, XKiroProvider,
+    XaiProvider, XapiProvider, ZaiProvider, ZedProvider, ZenMuxProvider, ZoomMateProvider,
 };
 
 /// Instantiate the concrete [`Provider`] implementation for a given [`ProviderId`].
@@ -164,6 +164,7 @@ pub fn instantiate(id: ProviderId) -> Box<dyn Provider> {
         ProviderId::Flora => Box::new(FloraProvider::new()),
         ProviderId::FutureAgi => Box::new(FutureAgiProvider::new()),
         ProviderId::Munito => Box::new(MunitoProvider::new()),
+        ProviderId::Soniox => Box::new(SonioxProvider::new()),
         ProviderId::ClaudePlatform => Box::new(ClaudePlatformProvider::new()),
     }
 }
@@ -285,6 +286,7 @@ pub fn pace_capability(id: ProviderId) -> ProviderPaceCapability {
         | ProviderId::Flora
         | ProviderId::FutureAgi
         | ProviderId::Munito
+        | ProviderId::Soniox
         | ProviderId::ClaudePlatform => ProviderPaceCapability::UNSUPPORTED,
     }
 }
@@ -406,6 +408,7 @@ pub fn limit_reset_policy(id: ProviderId) -> ProviderLimitResetPolicy {
         | ProviderId::Flora
         | ProviderId::FutureAgi
         | ProviderId::Munito
+        | ProviderId::Soniox
         | ProviderId::ClaudePlatform => ProviderLimitResetPolicy::DEFAULT,
     }
 }
@@ -527,6 +530,7 @@ pub(crate) fn cost_cli_extension_for(id: ProviderId) -> Option<&'static dyn Cost
         | ProviderId::Flora
         | ProviderId::FutureAgi
         | ProviderId::Munito
+        | ProviderId::Soniox
         | ProviderId::ClaudePlatform => None,
     }
 }
