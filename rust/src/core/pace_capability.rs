@@ -203,7 +203,9 @@ impl ProviderPaceCapability {
             }
             _ => return None,
         };
-        let remaining = limit * window.remaining_percent() / 100.0;
+        // Upstream `RateWindow.remainingPercent` floors at zero, so an
+        // over-quota allowance still gets a zero target.
+        let remaining = limit * window.remaining_percent().max(0.0) / 100.0;
         let amount = UsagePace::daily_target_in(remaining, window.resets_at, now, tz)?;
         Some(MonthlyDailyTarget {
             amount,
@@ -263,6 +265,18 @@ mod tests {
         .expect("daily target");
         assert_eq!(target.unit, "%");
         assert!((target.amount - 3.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn over_quota_monthly_window_targets_zero() {
+        for used in [100.0, 125.0] {
+            let target = daily_target_of(
+                &monthly_reset(used).with_quota(300.0, "requests"),
+                ProviderPaceCapability::CALENDAR_MONTH_RESET_WINDOW,
+            )
+            .expect("exhausted allowance keeps a target");
+            assert_eq!(target.amount, 0.0, "used {used}%");
+        }
     }
 
     #[test]
