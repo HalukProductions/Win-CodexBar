@@ -393,8 +393,10 @@ pub(crate) fn rebuild_tray_menu(app: &AppHandle) {
     if let Ok(menu) = build_native_tray_menu(app, &catalog, &status_labels)
         && let Some(tray) = app.tray_by_id("codexbar-main")
     {
-        let _ = tray.set_menu(Some(menu.clone()));
-        crate::proof_tray_menu::write_if_enabled(app, &menu);
+        match tray.set_menu(Some(menu.clone())) {
+            Ok(()) => crate::proof_tray_menu::write_if_enabled(app, &menu),
+            Err(error) => tracing::warn!("Failed to install tray menu: {error}"),
+        }
     }
 }
 
@@ -414,8 +416,10 @@ pub fn update_tray_status_items(
     if let Ok(menu) = build_native_tray_menu(app, &catalog, &status_labels)
         && let Some(tray) = app.tray_by_id("codexbar-main")
     {
-        let _ = tray.set_menu(Some(menu.clone()));
-        crate::proof_tray_menu::write_if_enabled(app, &menu);
+        match tray.set_menu(Some(menu.clone())) {
+            Ok(()) => crate::proof_tray_menu::write_if_enabled(app, &menu),
+            Err(error) => tracing::warn!("Failed to install tray menu: {error}"),
+        }
     }
 }
 
