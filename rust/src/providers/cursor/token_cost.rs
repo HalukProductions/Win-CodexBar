@@ -447,10 +447,8 @@ fn estimated_list_price_cents(
         return None;
     }
     let (input, output, cache_write, cache_read) = usage.validated_counts()?;
-    let pricing_day = Utc
-        .timestamp_millis_opt(timestamp_ms)
-        .single()?
-        .date_naive();
+    let event_at = Utc.timestamp_millis_opt(timestamp_ms).single()?;
+    let pricing_day = event_at.date_naive();
 
     let codex_input = input.checked_add(cache_read)?.checked_add(cache_write)?;
     if let Some(usd) = CostUsagePricing::codex_cost_usd_at_date(
@@ -469,12 +467,18 @@ fn estimated_list_price_cents(
     let output = i32::try_from(output).ok()?;
     let cache_write = i32::try_from(cache_write).ok()?;
     let cache_read = i32::try_from(cache_read).ok()?;
-    CostUsagePricing::claude_cost_usd(&alias, input, cache_read, cache_write, output).and_then(
-        |usd| {
-            let cents = usd * 100.0;
-            cents.is_finite().then_some(cents)
-        },
+    CostUsagePricing::claude_cost_usd_at_date(
+        &alias,
+        Some(event_at),
+        input,
+        cache_read,
+        cache_write,
+        output,
     )
+    .and_then(|usd| {
+        let cents = usd * 100.0;
+        cents.is_finite().then_some(cents)
+    })
 }
 
 fn cursor_claude_catalog_model(model: &str) -> String {
