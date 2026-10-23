@@ -346,6 +346,7 @@ codexbar config disable cursor --json
 codexbar config set-source --provider codex --source cli
 printf '%s' $env:OPENROUTER_API_KEY | codexbar config set-api-key -p openrouter --stdin
 codexbar config claude-code-credentials status --json
+codexbar config login --provider copilot
 codexbar config preferences export --file C:\temp\codexbar-preferences.json
 codexbar config preferences import --file C:\temp\codexbar-preferences.json
 codexbar config validate
@@ -361,6 +362,7 @@ codexbar config validate
 | `enable`, `disable` | Turns a provider on or off and saves the setting. |
 | `set-source` | Saves a provider's usage source (`--source auto\|web\|cli\|oauth`) without changing whether it is enabled. `auto` returns to the default. |
 | `set-api-key` | Stores a provider API key. `--stdin` reads it from stdin. `--no-enable` stores it without enabling the provider. |
+| `login` | Signs in to GitHub Copilot with GitHub's device-code flow. Only `--provider copilot` is supported. See [Sign in to Copilot from the CLI](#sign-in-to-copilot-from-the-cli). |
 | `path` | Shows the configuration file paths. |
 | `preferences export`, `preferences import` | Exports or imports portable preferences. See [CONFIGURATION.md](./CONFIGURATION.md#portable-preferences). |
 | `claude-code-credentials` | `allow`, `deny` or `status`. |
@@ -379,6 +381,59 @@ codexbar config validate
 `claude-code-credentials` controls whether CodexBar may read and refresh Claude Code's own OAuth credentials (`~/.claude/.credentials.json` or Windows Credential Manager). It is the same choice as the desktop setting, and it is off by default. While it is off, Claude Auto falls back to CLI usage, which has less detail. `allow` and `deny` save the choice. `status` only reports it.
 
 `config preferences import` changes the saved settings. Restart a running CodexBar afterwards.
+
+### Sign in to Copilot from the CLI
+
+```powershell
+codexbar config login --provider copilot
+codexbar config login --provider copilot --json
+```
+
+`config login` starts GitHub's device-code flow for GitHub Copilot. It prints the verification URL and a one-time code, then waits while you approve the code in your browser. The code expires after the lifetime GitHub returns, and the command stops when it does.
+
+Text output is two lines and then a confirmation:
+
+```text
+https://github.com/login/device
+ABCD-1234
+Connected
+```
+
+The token is never printed. Once you approve the code, the account is saved the same way the desktop app's Copilot sign-in saves it. The account is matched by GitHub identity, so signing in again updates the existing account instead of adding a second one. Its label is the GitHub login, with the plan in brackets when GitHub reports one.
+
+A successful login also turns the Copilot provider on in settings, as the macOS app does. The desktop app's sign-in does not change the enabled state, so enable Copilot there yourself if you use that path.
+
+`--json` prints one JSON object per line, using upstream's field names:
+
+| Line | Shape |
+| --- | --- |
+| Code issued | `{"status":"authorization_pending","verificationURI":"https://github.com/login/device","userCode":"ABCD-1234","expiresIn":900}` |
+| Approved and saved | `{"status":"authorized"}`. This line is written only after the account is saved and Copilot is enabled. |
+| Cancelled (Ctrl-C) | `{"status":"cancelled"}` |
+| Failed | `{"status":"failed","reason":"denied","error":"GitHub device login failed: Access denied by user"}`. `reason` is one of the values in the exit code table below. |
+
+Text mode prints the URL and code, then `Connected` on success. Errors go to stderr as `Error: <message>`. Ctrl-C ends the login with `Error: Login cancelled.` and exit code `7`.
+
+### Exit codes
+
+| Exit code | Meaning | Final `--json` line |
+| --- | --- | --- |
+| `0` | Signed in. The account is saved and Copilot is enabled. | `{"status":"authorized"}` |
+| `1` | Any other failure: network error, GitHub server error, or a settings or token store write error. Usually nothing is saved. If only the settings write that enables Copilot fails, the account is already saved and the error says `Signed in and saved the account, but could not enable Copilot`; running the login again updates that account. | `{"status":"failed","reason":"error",...}` |
+| `5` | The user denied the request on GitHub (`access_denied`). Nothing is saved. | `{"status":"failed","reason":"denied",...}` |
+| `6` | The device code expired before approval (`expired_token`). Nothing is saved. | `{"status":"failed","reason":"expired",...}` |
+| `7` | Stopped with Ctrl-C before the account was saved. Nothing is saved. | `{"status":"cancelled"}` |
+| `64` | Invalid arguments, including an unsupported `--provider`. No network call is made. | None; the error goes to stderr |
+
+Only exit code `0` guarantees both that the credential was saved and that Copilot is enabled. Codes `5`, `6`, `7` and `64` mean nothing was saved; code `1` can follow a saved account, as described above.
+
+Polling follows the interval GitHub returns. Each `slow_down` response adds 5 seconds for the rest of the login. GitHub's `access_denied` and `expired_token` responses end the login with the friendly errors above, and nothing is saved.
+
+Other providers fail before any network call: `Login is only supported for copilot. Use --provider copilot.`
+
+The login always signs in on github.com. This port has no GitHub Enterprise host option for the login flow, and the desktop app's sign-in behaves the same way.
+
+For tests and proof runs, `CODEXBAR_GITHUB_BASE_URL` replaces both GitHub roots with one origin. The device-code requests (`/login/device/code`, `/login/oauth/access_token`) and the identity and usage requests (`/user`, `/copilot_internal/user`) all go there. Only `https://` URLs, or loopback `http://` URLs (`127.0.0.1`, `localhost`, `[::1]`), with no path, query or credentials are accepted. Anything else is ignored with a warning, and the default GitHub roots are used. The variable also applies to the desktop app's Copilot sign-in and usage fetches, so unset it for normal use.
 
 ### Separate config file (`CODEXBAR_CONFIG`)
 

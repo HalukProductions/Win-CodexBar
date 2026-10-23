@@ -3,6 +3,7 @@
 //! Implements GitHub's OAuth Device Flow for authenticating GitHub Copilot.
 //! This allows the user to authorize the app via browser while the app polls for the token.
 
+use super::endpoints::GitHubEndpoints;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Duration;
@@ -95,12 +96,23 @@ impl std::error::Error for DeviceFlowError {}
 /// Copilot Device Flow OAuth client
 pub struct CopilotDeviceFlow {
     client: reqwest::Client,
+    web_root: String,
 }
 
 impl CopilotDeviceFlow {
     pub fn new() -> Self {
+        Self::with_endpoints(&GitHubEndpoints::from_env())
+    }
+
+    pub(crate) fn with_endpoints(endpoints: &GitHubEndpoints) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            // A stalled poll would otherwise never reach the expiry check.
+            client: crate::core::credentialed_http_client_builder()
+                .use_rustls_tls()
+                .timeout(Duration::from_secs(30))
+                .build()
+                .unwrap_or_else(|_| reqwest::Client::new()),
+            web_root: endpoints.web_root.clone(),
         }
     }
 
@@ -118,7 +130,7 @@ impl CopilotDeviceFlow {
 
         let response = self
             .client
-            .post("https://github.com/login/device/code")
+            .post(format!("{}/login/device/code", self.web_root))
             .header("Accept", "application/json")
             .form(&params)
             .send()
@@ -151,7 +163,7 @@ impl CopilotDeviceFlow {
 
         let response = self
             .client
-            .post("https://github.com/login/oauth/access_token")
+            .post(format!("{}/login/oauth/access_token", self.web_root))
             .header("Accept", "application/json")
             .form(&params)
             .send()
@@ -200,6 +212,25 @@ impl CopilotDeviceFlow {
         initial_interval: u32,
         expires_in: u32,
     ) -> Result<String, DeviceFlowError> {
+        self.wait_for_token_with_sleep(device_code, initial_interval, expires_in, |delay| {
+            tokio::time::sleep(delay)
+        })
+        .await
+    }
+
+    /// `wait_for_token` with the delay injected, so tests can record the
+    /// backoff schedule without real waits.
+    async fn wait_for_token_with_sleep<S, Fut>(
+        &self,
+        device_code: &str,
+        initial_interval: u32,
+        expires_in: u32,
+        mut sleep: S,
+    ) -> Result<String, DeviceFlowError>
+    where
+        S: FnMut(Duration) -> Fut,
+        Fut: std::future::Future<Output = ()>,
+    {
         let mut interval = initial_interval;
         let start = std::time::Instant::now();
         let timeout = Duration::from_secs(u64::from(expires_in));
@@ -211,7 +242,7 @@ impl CopilotDeviceFlow {
             }
 
             // Wait the required interval
-            tokio::time::sleep(Duration::from_secs(u64::from(interval))).await;
+            sleep(Duration::from_secs(u64::from(interval))).await;
 
             match self.poll_for_token(device_code).await {
                 Ok(token) => return Ok(token),
@@ -252,5 +283,151 @@ mod tests {
 
         let err = DeviceFlowError::ExpiredToken;
         assert_eq!(err.to_string(), "Device code expired");
+    }
+
+    use crate::providers::copilot::test_server::{FakeGitHub, Reply, ok};
+    use std::future::ready;
+
+    const DEVICE_JSON: &str = r#"{"device_code":"device-example","user_code":"ABCD-1234","verification_uri":"https://github.com/login/device","expires_in":900,"interval":1}"#;
+    const TOKEN_JSON: &str =
+        r#"{"access_token":"gho_example_token","token_type":"bearer","scope":"read:user"}"#;
+    const PENDING: &str = r#"{"error":"authorization_pending"}"#;
+    const SLOW_DOWN: &str = r#"{"error":"slow_down"}"#;
+
+    fn flow_for(fake: &FakeGitHub) -> CopilotDeviceFlow {
+        let endpoints = GitHubEndpoints::with_origin(&fake.origin).expect("loopback origin");
+        CopilotDeviceFlow::with_endpoints(&endpoints)
+    }
+
+    fn token_fake(replies: Vec<Reply>) -> FakeGitHub {
+        FakeGitHub::start(vec![
+            ("/login/device/code", vec![ok(DEVICE_JSON)]),
+            ("/login/oauth/access_token", replies),
+        ])
+    }
+
+    #[tokio::test]
+    async fn device_code_then_poll_succeeds_after_pending() {
+        let fake = token_fake(vec![ok(PENDING), ok(TOKEN_JSON)]);
+        let flow = flow_for(&fake);
+
+        let device = flow.start_flow().await.expect("device code");
+        assert_eq!(device.user_code, "ABCD-1234");
+        assert_eq!(
+            device.verification_url_to_open(),
+            "https://github.com/login/device"
+        );
+
+        let mut sleeps = Vec::new();
+        let token = flow
+            .wait_for_token_with_sleep(
+                &device.device_code,
+                device.interval,
+                device.expires_in,
+                |d| {
+                    sleeps.push(d);
+                    ready(())
+                },
+            )
+            .await
+            .expect("token");
+
+        assert_eq!(token, "gho_example_token");
+        assert_eq!(sleeps, vec![Duration::from_secs(1), Duration::from_secs(1)]);
+        assert_eq!(
+            fake.requests(),
+            vec![
+                "POST /login/device/code",
+                "POST /login/oauth/access_token",
+                "POST /login/oauth/access_token",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn slow_down_adds_five_seconds_and_keeps_the_longer_interval() {
+        let fake = token_fake(vec![ok(SLOW_DOWN), ok(PENDING), ok(TOKEN_JSON)]);
+        let flow = flow_for(&fake);
+
+        let mut sleeps = Vec::new();
+        let token = flow
+            .wait_for_token_with_sleep("device-example", 1, 900, |d| {
+                sleeps.push(d);
+                ready(())
+            })
+            .await
+            .expect("token");
+
+        assert_eq!(token, "gho_example_token");
+        // slow_down raises the interval from 1s to 6s, and the next pending
+        // poll keeps 6s instead of resetting to the original 1s.
+        assert_eq!(
+            sleeps,
+            vec![
+                Duration::from_secs(1),
+                Duration::from_secs(6),
+                Duration::from_secs(6),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn repeated_slow_down_accumulates() {
+        let fake = token_fake(vec![ok(SLOW_DOWN), ok(SLOW_DOWN), ok(TOKEN_JSON)]);
+        let flow = flow_for(&fake);
+
+        let mut sleeps = Vec::new();
+        flow.wait_for_token_with_sleep("device-example", 1, 900, |d| {
+            sleeps.push(d);
+            ready(())
+        })
+        .await
+        .expect("token");
+
+        assert_eq!(
+            sleeps,
+            vec![
+                Duration::from_secs(1),
+                Duration::from_secs(6),
+                Duration::from_secs(11),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn expired_token_response_ends_the_flow() {
+        let fake = token_fake(vec![ok(r#"{"error":"expired_token"}"#)]);
+        let flow = flow_for(&fake);
+
+        let result = flow
+            .wait_for_token_with_sleep("device-example", 1, 900, |_| ready(()))
+            .await;
+
+        assert!(matches!(result, Err(DeviceFlowError::ExpiredToken)));
+    }
+
+    #[tokio::test]
+    async fn denied_authorization_ends_the_flow() {
+        let fake = token_fake(vec![ok(r#"{"error":"access_denied"}"#)]);
+        let flow = flow_for(&fake);
+
+        let result = flow
+            .wait_for_token_with_sleep("device-example", 1, 900, |_| ready(()))
+            .await;
+
+        assert!(matches!(result, Err(DeviceFlowError::AccessDenied)));
+    }
+
+    #[tokio::test]
+    async fn zero_lifetime_stops_before_polling() {
+        let fake = token_fake(vec![ok(TOKEN_JSON)]);
+        let flow = flow_for(&fake);
+
+        let result = flow
+            .wait_for_token_with_sleep("device-example", 1, 0, |_| ready(()))
+            .await;
+
+        assert!(matches!(result, Err(DeviceFlowError::ExpiredToken)));
+        assert!(fake.requests().is_empty());
     }
 }

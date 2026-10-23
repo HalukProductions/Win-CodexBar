@@ -5,11 +5,23 @@
 use clap::{Parser, Subcommand};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+use std::future::Future;
+use std::io::Write;
 use std::path::Path;
 
 use super::usage::OutputFormat;
 use crate::core::{ProviderId, SourceMode, TokenAccountStore, instantiate_provider};
+use crate::providers::copilot::CopilotApi;
+use crate::providers::copilot::device_flow::CopilotDeviceFlow;
+use crate::providers::copilot::login::{
+    SavedCopilotAccount, finish_device_login, start_device_login,
+};
 use crate::settings::{ApiKeys, ManualCookies, PreferencesDocument, Settings};
+
+mod login;
+
+pub use login::ConfigLoginError;
+use login::{ConfigLoginEvent, LoginFailure, report_outcome, write_event};
 
 /// Arguments for the config command
 #[derive(Parser, Debug)]
@@ -73,6 +85,13 @@ pub enum ConfigCommand {
         /// Store the key without enabling the provider
         #[arg(long = "no-enable")]
         no_enable: bool,
+    },
+    /// Log in to a provider through its own device flow (GitHub Copilot only)
+    Login {
+        #[command(flatten)]
+        target: ConfigProviderArg,
+        #[command(flatten)]
+        output: ConfigOutputArgs,
     },
     /// Show configuration file paths
     Path,
@@ -202,6 +221,9 @@ pub async fn run(args: ConfigArgs) -> anyhow::Result<()> {
             stdin,
             no_enable,
         } => set_api_key(target.name(), api_key.as_deref(), stdin, !no_enable).await,
+        ConfigCommand::Login { target, output } => login(target.name(), output)
+            .await
+            .map_err(anyhow::Error::from),
         ConfigCommand::Path => show_paths().await,
         ConfigCommand::Preferences { action } => transfer_preferences(action),
         ConfigCommand::ClaudeCodeCredentials { action, output } => {
@@ -769,6 +791,90 @@ fn resolve_api_key_input(api_key: Option<&str>, read_from_stdin: bool) -> anyhow
         anyhow::bail!("Missing API key. Pass --api-key <key> or use --stdin.");
     }
     Ok(value)
+}
+
+/// Run `config login`. Only GitHub Copilot has a CLI login flow.
+async fn login(provider: &str, output: ConfigOutputArgs) -> Result<(), ConfigLoginError> {
+    let id = parse_provider(provider).map_err(ConfigLoginError::usage)?;
+    if id != ProviderId::Copilot {
+        return Err(ConfigLoginError::usage(
+            "Login is only supported for copilot. Use --provider copilot.",
+        ));
+    }
+    let flow = CopilotDeviceFlow::new();
+    let api = CopilotApi::new();
+    let store = TokenAccountStore::new();
+    run_copilot_login(
+        &flow,
+        &api,
+        &store,
+        output.is_json(),
+        &mut std::io::stdout().lock(),
+        login::ctrl_c(),
+        enable_copilot,
+    )
+    .await
+    .map(|_| ())
+}
+
+/// Turns the Copilot provider on after a saved login. Only `config login`
+/// does this; the desktop sign-in keeps its current behavior.
+fn enable_copilot() -> anyhow::Result<()> {
+    let mut settings = Settings::load();
+    settings.enable_provider(ProviderId::Copilot);
+    settings.save()
+}
+
+/// Runs the Copilot device login and writes progress to `out`. In JSON mode
+/// each event is one line; in text mode the URL and code are two lines.
+///
+/// The account is saved before `enable` runs, and `enable` runs before the
+/// `authorized` event. `cancel` (Ctrl-C in the CLI) is checked first, so once
+/// it fires the flow stops before it can save anything else.
+async fn run_copilot_login(
+    flow: &CopilotDeviceFlow,
+    api: &CopilotApi,
+    store: &TokenAccountStore,
+    json: bool,
+    out: &mut impl Write,
+    cancel: impl Future<Output = ()>,
+    enable: impl FnOnce() -> anyhow::Result<()>,
+) -> Result<SavedCopilotAccount, ConfigLoginError> {
+    let result = tokio::select! {
+        biased;
+        () = cancel => Err(ConfigLoginError::new(LoginFailure::Cancelled, "Login cancelled.")),
+        saved = copilot_steps(flow, api, store, json, out) => saved,
+    };
+    let result = result.and_then(|mut saved| {
+        enable().map_err(|error| {
+            ConfigLoginError::other(format!(
+                "Signed in and saved the account, but could not enable Copilot: {error}"
+            ))
+        })?;
+        saved.enabled = true;
+        Ok(saved)
+    });
+    report_outcome(json, out, result)
+}
+
+async fn copilot_steps(
+    flow: &CopilotDeviceFlow,
+    api: &CopilotApi,
+    store: &TokenAccountStore,
+    json: bool,
+    out: &mut impl Write,
+) -> Result<SavedCopilotAccount, ConfigLoginError> {
+    let device = start_device_login(flow).await?;
+    write_event(
+        out,
+        json,
+        &ConfigLoginEvent::pending(
+            &device.verification_uri,
+            &device.user_code,
+            device.expires_in,
+        ),
+    )?;
+    Ok(finish_device_login(flow, api, store, &device).await?)
 }
 
 /// Show configuration file paths

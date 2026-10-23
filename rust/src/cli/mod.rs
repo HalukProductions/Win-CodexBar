@@ -40,6 +40,14 @@ pub mod exit_codes {
     pub const USAGE_ERROR: i32 = 64;
     /// Quota could not be checked (`EX_UNAVAILABLE`); used by `codexbar guard`.
     pub const UNAVAILABLE: i32 = 69;
+    /// `config login`: the user denied the device or sign-in request.
+    pub const LOGIN_DENIED: i32 = 5;
+    /// `config login`: the device code expired before it was approved.
+    pub const LOGIN_EXPIRED: i32 = 6;
+    /// `config login`: stopped with Ctrl-C before the credential was saved.
+    pub const LOGIN_CANCELLED: i32 = 7;
+    /// `config login --provider grok|kiro`: the provider's CLI is not installed.
+    pub const LOGIN_MISSING_BINARY: i32 = 8;
 }
 
 /// CodexBar - Monitor AI provider usage limits
