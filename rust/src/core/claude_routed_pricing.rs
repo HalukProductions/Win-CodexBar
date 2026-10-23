@@ -192,29 +192,63 @@ pub(crate) fn cost_usd_from_u64_counts_with_one_hour_writes(
     cache_write_1h: u64,
     output: u64,
 ) -> f64 {
-    let use_tier = threshold_tokens.is_some_and(|threshold| {
+    let use_tier = exceeds_long_context_threshold(threshold_tokens, input, cache_read, cache_write);
+    selected_cost_rates(pricing, use_tier).cost_usd(
+        input,
+        cache_read,
+        cache_write,
+        cache_write_1h,
+        output,
+    )
+}
+
+/// Whole-request long-context decision shared by built-in and models.dev Claude
+/// rows (upstream `claudeCostUSD(pricing:tokens:)`): input, cache reads and all
+/// cache writes count toward the boundary, and output does not.
+pub(crate) fn exceeds_long_context_threshold(
+    threshold_tokens: Option<u64>,
+    input: u64,
+    cache_read: u64,
+    cache_write: u64,
+) -> bool {
+    threshold_tokens.is_some_and(|threshold| {
+        // Nonnegative counters that overflow exceed every representable threshold.
         input
             .checked_add(cache_read)
             .and_then(|total| total.checked_add(cache_write))
             .is_none_or(|total| total > threshold)
-    });
-    let rates = selected_cost_rates(pricing, use_tier);
-    let cache_write_1h = cache_write_1h.min(cache_write);
-    let cache_write_5m = cache_write - cache_write_1h;
-
-    (input as f64) * rates.input
-        + (cache_read as f64) * rates.cache_read
-        + (cache_write_5m as f64) * rates.cache_write
-        + (cache_write_1h as f64) * rates.input * 2.0
-        + (output as f64) * rates.output
+    })
 }
 
+/// Per-token rates for one request after the long-context tier is chosen.
 #[derive(Debug, Clone, Copy)]
-struct SelectedCostRates {
-    input: f64,
-    cache_read: f64,
-    cache_write: f64,
-    output: f64,
+pub(crate) struct SelectedCostRates {
+    pub(crate) input: f64,
+    pub(crate) cache_read: f64,
+    pub(crate) cache_write: f64,
+    pub(crate) output: f64,
+}
+
+impl SelectedCostRates {
+    /// `cache_write` is the total; the one-hour share is clamped to it and bills
+    /// at twice the selected input rate, the rest at the 5-minute rate.
+    pub(crate) fn cost_usd(
+        self,
+        input: u64,
+        cache_read: u64,
+        cache_write: u64,
+        cache_write_1h: u64,
+        output: u64,
+    ) -> f64 {
+        let cache_write_1h = cache_write_1h.min(cache_write);
+        let cache_write_5m = cache_write - cache_write_1h;
+
+        (input as f64) * self.input
+            + (cache_read as f64) * self.cache_read
+            + (cache_write_5m as f64) * self.cache_write
+            + (cache_write_1h as f64) * self.input * 2.0
+            + (output as f64) * self.output
+    }
 }
 
 fn selected_cost_rates(

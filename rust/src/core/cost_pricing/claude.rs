@@ -12,6 +12,37 @@ pub(crate) fn bundled_codex_long_context_threshold(model: &str) -> Option<u64> {
     })
 }
 
+fn builtin_selected_rates(
+    pricing: ClaudePricing,
+    use_tier: bool,
+) -> claude_routed_pricing::SelectedCostRates {
+    let pick = |base: f64, above: Option<f64>| {
+        if use_tier {
+            above.unwrap_or(base)
+        } else {
+            base
+        }
+    };
+    claude_routed_pricing::SelectedCostRates {
+        input: pick(
+            pricing.input_cost_per_token,
+            pricing.input_cost_per_token_above_threshold,
+        ),
+        cache_read: pick(
+            pricing.cache_read_input_cost_per_token,
+            pricing.cache_read_input_cost_per_token_above_threshold,
+        ),
+        cache_write: pick(
+            pricing.cache_creation_input_cost_per_token,
+            pricing.cache_creation_input_cost_per_token_above_threshold,
+        ),
+        output: pick(
+            pricing.output_cost_per_token,
+            pricing.output_cost_per_token_above_threshold,
+        ),
+    }
+}
+
 /// Resolved Claude pricing source used by the local scanner's invocation memo.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum ClaudePricingResolution {
@@ -105,66 +136,21 @@ impl CostUsagePricing {
         cache_creation_input_tokens: u64,
         output_tokens: u64,
     ) -> f64 {
-        match resolution {
-            ClaudePricingResolution::BuiltIn(pricing) => {
-                fn tiered(
-                    tokens: u64,
-                    base: f64,
-                    above: Option<f64>,
-                    threshold: Option<i32>,
-                ) -> f64 {
-                    match (threshold, above) {
-                        (Some(thresh), Some(above_rate)) => {
-                            let thresh = u64::try_from(thresh).unwrap_or(0);
-                            let below = tokens.min(thresh);
-                            let over = tokens.saturating_sub(thresh);
-                            (below as f64) * base + (over as f64) * above_rate
-                        }
-                        _ => (tokens as f64) * base,
-                    }
-                }
-
-                tiered(
-                    input_tokens,
-                    pricing.input_cost_per_token,
-                    pricing.input_cost_per_token_above_threshold,
-                    pricing.threshold_tokens,
-                ) + tiered(
-                    cache_read_input_tokens,
-                    pricing.cache_read_input_cost_per_token,
-                    pricing.cache_read_input_cost_per_token_above_threshold,
-                    pricing.threshold_tokens,
-                ) + tiered(
-                    cache_creation_input_tokens,
-                    pricing.cache_creation_input_cost_per_token,
-                    pricing.cache_creation_input_cost_per_token_above_threshold,
-                    pricing.threshold_tokens,
-                ) + tiered(
-                    output_tokens,
-                    pricing.output_cost_per_token,
-                    pricing.output_cost_per_token_above_threshold,
-                    pricing.threshold_tokens,
-                )
-            }
-            ClaudePricingResolution::ModelsDev {
-                pricing,
-                threshold_tokens,
-            } => claude_routed_pricing::cost_usd_from_u64_counts_with_threshold(
-                pricing,
-                threshold_tokens,
-                input_tokens,
-                cache_read_input_tokens,
-                cache_creation_input_tokens,
-                output_tokens,
-            ),
-        }
+        Self::claude_cost_usd_u64_from_resolution_with_one_hour_writes(
+            resolution,
+            input_tokens,
+            cache_read_input_tokens,
+            cache_creation_input_tokens,
+            0,
+            output_tokens,
+        )
     }
 
     /// Cost from a resolved Claude pricing source when the cache-write total includes a
-    /// one-hour share. Models.dev routes follow upstream `claudeCostUSD(pricing:tokens:)`: the
-    /// long-context tier is chosen from input, cache read and total cache writes, and the
-    /// one-hour share bills at twice the selected input rate. Built-in rows keep the
-    /// per-bucket split and add the one-hour share at twice the base input rate.
+    /// one-hour share. Built-in and models.dev rows both follow upstream
+    /// `claudeCostUSD(pricing:tokens:)`: one long-context decision for the whole request,
+    /// from input, cache read and total cache writes, then every bucket (output included)
+    /// bills at that tier's rate, and the one-hour share at twice the selected input rate.
     pub(crate) fn claude_cost_usd_u64_from_resolution_with_one_hour_writes(
         resolution: ClaudePricingResolution,
         input_tokens: u64,
@@ -186,28 +172,23 @@ impl CostUsagePricing {
                 cache_creation_1h_input_tokens,
                 output_tokens,
             ),
-            builtin @ ClaudePricingResolution::BuiltIn(_) => {
-                let one_hour = cache_creation_1h_input_tokens.min(cache_creation_input_tokens);
-                let five_minute = cache_creation_input_tokens - one_hour;
-                Self::claude_cost_usd_u64_from_resolution(
-                    builtin,
+            ClaudePricingResolution::BuiltIn(pricing) => {
+                let use_tier = claude_routed_pricing::exceeds_long_context_threshold(
+                    pricing
+                        .threshold_tokens
+                        .and_then(|threshold| u64::try_from(threshold).ok()),
                     input_tokens,
                     cache_read_input_tokens,
-                    five_minute,
+                    cache_creation_input_tokens,
+                );
+                builtin_selected_rates(pricing, use_tier).cost_usd(
+                    input_tokens,
+                    cache_read_input_tokens,
+                    cache_creation_input_tokens,
+                    cache_creation_1h_input_tokens,
                     output_tokens,
-                ) + (one_hour as f64)
-                    * Self::claude_input_cost_per_token_from_resolution(builtin)
-                    * 2.0
+                )
             }
-        }
-    }
-
-    pub(crate) fn claude_input_cost_per_token_from_resolution(
-        resolution: ClaudePricingResolution,
-    ) -> f64 {
-        match resolution {
-            ClaudePricingResolution::BuiltIn(pricing) => pricing.input_cost_per_token,
-            ClaudePricingResolution::ModelsDev { pricing, .. } => pricing.input_cost_per_token,
         }
     }
 

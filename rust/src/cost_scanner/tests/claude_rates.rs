@@ -194,14 +194,14 @@ fn claude_fable_5_prices_five_minute_and_one_hour_cache_writes() {
 
 #[test]
 fn claude_scan_pricing_follows_the_canonical_table() {
-    // Sonnet 4.6 honors the 200k tier: 200k @ $3/M + 40k @ $6/M = 0.84 (the
-    // scanner's old inline table applied a flat $3/M = 0.72). Opus 4.5-4.8
+    // Sonnet 4.6 honors the 200k tier for the whole request: 240k @ $6/M = 1.44
+    // (the scanner's old inline table applied a flat $3/M = 0.72). Opus 4.5-4.8
     // bill $5 in + $25 out; opus-4-8 must resolve through the canonical table.
     // Legacy Opus 4.0/4.1 stay at $15 + $75 (retired IDs absent from the
     // table, e.g. `claude-3-opus-...`, fall back to Sonnet). Haiku 4.5 bills
     // $1 + $5, not the Haiku 3 rate.
     for (model, input, output, expected) in [
-        ("claude-sonnet-4-6", 240_000, 0, 0.84),
+        ("claude-sonnet-4-6", 240_000, 0, 1.44),
         ("claude-opus-4-5", 1_000_000, 1_000_000, 30.00),
         ("claude-opus-4-6", 1_000_000, 1_000_000, 30.00),
         ("claude-opus-4-7", 1_000_000, 1_000_000, 30.00),
@@ -216,6 +216,74 @@ fn claude_scan_pricing_follows_the_canonical_table() {
             "{model} should bill ${expected}, got {cost}"
         );
     }
+}
+
+/// Built-in Sonnet 4 rows, per million tokens: base input $3, cache read $0.30, 5-minute
+/// cache write $3.75, output $15; above 200k: input $6, cache read $0.60, cache write
+/// $7.50, output $22.50. One tier decision covers the whole request (input + cache read +
+/// all cache writes > 200k), and the 1h share bills at twice the selected input rate.
+#[test]
+fn builtin_long_context_tier_is_chosen_for_the_whole_request() {
+    // (input, cache write, 1h share of it, cache read, output, expected USD).
+    for (input, cache_create, cache_create_1h, cache_read, output, expected) in [
+        // 199,999 total stays below: 0.30 + 29,999 * $3.75 + 20k * $6 + 0.015 + 0.15.
+        (100_000, 49_999, 20_000, 50_000, 10_000, 0.697_496_25),
+        // Exactly 200k is not above the boundary.
+        (100_000, 50_000, 20_000, 50_000, 10_000, 0.6975),
+        // 210k crosses only because of cache reads and writes; every bucket, output
+        // included, takes the tier: 0.60 + 0.375 + 0.036 + 0.225. The old per-bucket
+        // split (each count against 200k on its own) gave 0.6555.
+        (100_000, 50_000, 0, 60_000, 10_000, 1.236),
+        // One-hour writes push the total to 210k: 120k * $6 + 90k * $12. The old path
+        // gave 120k * $3 + 90k * $6 = 0.90.
+        (120_000, 90_000, 90_000, 0, 0, 1.80),
+        // Mixed TTLs above the tier: 0.72 + 60k * $7.50 + 30k * $12 + 1k * $22.50.
+        (120_000, 90_000, 30_000, 0, 1_000, 1.5525),
+        // Input alone above 200k bills all of it at the tier, not just the excess.
+        (240_000, 0, 0, 0, 0, 1.44),
+    ] {
+        for model in [
+            "claude-sonnet-4-6",
+            "claude-sonnet-4-5",
+            "claude-sonnet-4-20250514",
+        ] {
+            let cost = ClaudePricing::cost_usd_with_cache_ttl(
+                model,
+                input,
+                cache_create,
+                cache_create_1h,
+                cache_read,
+                output,
+            );
+            assert!(
+                (cost - expected).abs() < 1e-9,
+                "{model} {input}/{cache_create}/{cache_create_1h}/{cache_read}/{output}: {cost}"
+            );
+        }
+    }
+}
+
+#[test]
+fn builtin_public_claude_cost_uses_the_whole_request_tier() {
+    // 150k + 40k + 20k = 210k: 150k * $6 + 40k * $0.60 + 20k * $7.50 + 1k * $22.50.
+    let cost =
+        CostUsagePricing::claude_cost_usd("claude-sonnet-4-5", 150_000, 40_000, 20_000, 1_000)
+            .expect("built-in pricing");
+    assert!((cost - 1.0965).abs() < 1e-9, "{cost}");
+}
+
+#[test]
+fn builtin_untiered_rows_ignore_the_long_context_boundary() {
+    // Opus 4.5 has no tier: 300k * $5 + 100k 1h * $10 + 10k * $25.
+    let cost = ClaudePricing::cost_usd_with_cache_ttl(
+        "claude-opus-4-5",
+        300_000,
+        100_000,
+        100_000,
+        0,
+        10_000,
+    );
+    assert!((cost - 2.75).abs() < 1e-9, "{cost}");
 }
 
 /// Models.dev fixture with a 200k long-context tier. Per million tokens: base input $2,
