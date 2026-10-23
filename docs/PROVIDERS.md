@@ -917,6 +917,11 @@ or an OAuth principal, so it can never read a different account's usage:
   `monthlyLimit` and `usage.totalUsed` is still read.
 - A prepaid balance counts as an answer without a quota percent. A result with
   neither a percent nor a balance is unavailable.
+- When the ACP answer from a bearer login has no quota percent, grok.com gets
+  the same bounded 6-second retry as the credits proxy (upstream #4679). Only a
+  wire-published percent or a validated zero is adopted, and the ACP period,
+  plan and balance stay. Expired or slow enrichment keeps usage unknown. A
+  missing or expired login has no bearer to send, so this retry does not run.
 - A JSON-RPC `-32601` error means this CLI does not provide billing over ACP.
   An error that says authentication is required, or mentions `grok login`, is
   an auth failure. In both cases the bearer path's original error is shown, so
