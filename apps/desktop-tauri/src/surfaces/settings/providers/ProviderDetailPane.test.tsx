@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProviderDetail, SettingsSnapshot } from "../../../types/bridge";
 
@@ -34,7 +34,13 @@ vi.mock("./sections/UsageDetailsSection", () => ({ UsageDetailsSection: () => nu
 vi.mock("./sections/UsageSourceSection", () => ({ UsageSourceSection: stub("usage-source") }));
 vi.mock("./sections/CookieSourceSection", () => ({ CookieSourceSection: () => null }));
 vi.mock("./sections/RegionSection", () => ({ RegionSection: () => null }));
-vi.mock("./sections/CredentialsDispatcher", () => ({ CredentialsDispatcher: () => null }));
+vi.mock("./sections/CredentialsDispatcher", () => ({
+  CredentialsDispatcher: ({ onCredentialsChanged }: { onCredentialsChanged?: () => void }) => (
+    <button type="button" onClick={onCredentialsChanged}>
+      stub-token-saved
+    </button>
+  ),
+}));
 vi.mock("./ApiKeySection", () => ({ ApiKeySection: stub("api-key") }));
 vi.mock("./CookieSection", () => ({ CookieSection: () => null }));
 vi.mock("../tokens/TokenAccountsPanel", () => ({ TokenAccountsPanel: () => null }));
@@ -250,6 +256,30 @@ describe("ProviderDetailPane", () => {
     expect(toggleRow.nextElementSibling).toBe(input.closest(".settings-field"));
     expect(screen.getByTestId("claude-accounts")).toHaveAttribute("data-swap", "true");
     expect(screen.getByTestId("claude-accounts")).toHaveAttribute("data-path", "C:/tools/cswap.exe");
+  });
+
+  it("reloads the credential storage summary after a stored token changes", async () => {
+    const storage = (accessTokens: string) => ({
+      apiKeys: "missing",
+      manualCookies: "missing",
+      tokenAccounts: "missing",
+      accessTokens,
+    });
+    tauri.getProviderDetail.mockResolvedValue(detail("codex"));
+    tauri.getCredentialStorageStatus.mockResolvedValue(storage("missing"));
+    await renderPane("codex");
+    const accessTokens = () => screen.getByText("CredentialAccessTokens").nextElementSibling;
+    expect(accessTokens()).toHaveTextContent("CredentialStatusNotCreated");
+
+    tauri.getCredentialStorageStatus.mockResolvedValue(storage("protected:windows-dpapi-user"));
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "stub-token-saved" })),
+    );
+
+    await waitFor(() =>
+      expect(accessTokens()).toHaveTextContent("CredentialProtectedPrefix (windows-dpapi-user)"),
+    );
+    expect(tauri.getCredentialStorageStatus).toHaveBeenCalledTimes(2);
   });
 
   it("locks Avoid keychain prompts while Credential Manager access is disabled", async () => {

@@ -510,7 +510,11 @@ export function ProviderDetailPane({
       </SettingsGroup>
 
       <SettingsGroup className="provider-detail-group provider-fields-group">
-        <CredentialsDispatcher providerId={detail.id} t={t} />
+        <CredentialsDispatcher
+          providerId={detail.id}
+          t={t}
+          onCredentialsChanged={reload}
+        />
         <ApiKeySection key={`api-${credKey}`} providerId={detail.id} />
         <CookieSection
           key={`cookie-${credKey}`}

@@ -8,9 +8,10 @@ import {
 
 interface Props {
   t: (key: LocaleKey) => string;
+  onChanged?: () => void;
 }
 
-export function OpenRouterManagementCreds({ t }: Props) {
+export function OpenRouterManagementCreds({ t, onChanged }: Props) {
   const [configured, setConfigured] = useState(false);
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
@@ -39,6 +40,7 @@ export function OpenRouterManagementCreds({ t }: Props) {
       await setOpenRouterManagementApiKey(next);
       setConfigured(true);
       setValue("");
+      onChanged?.();
     } catch (cause: unknown) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -53,6 +55,7 @@ export function OpenRouterManagementCreds({ t }: Props) {
       await removeOpenRouterManagementApiKey();
       setConfigured(false);
       setValue("");
+      onChanged?.();
     } catch (cause: unknown) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
