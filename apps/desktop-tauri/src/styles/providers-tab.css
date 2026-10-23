@@ -168,6 +168,25 @@
   margin-top: 4px;
 }
 
+.provider-detail-grid--usage {
+  margin: 4px 0 8px;
+}
+
+.provider-detail-grid--usage dd {
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+.provider-detail-grid--usage .provider-usage-bar__track {
+  margin-top: 3px;
+}
+
+.provider-usage-inventory {
+  margin: 4px 0;
+  font-size: 0.78rem;
+  color: var(--text-primary);
+}
+
 @media (max-width: 560px) {
   .provider-split {
     gap: 10px;

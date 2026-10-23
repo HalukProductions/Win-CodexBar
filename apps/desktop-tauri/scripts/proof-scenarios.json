@@ -438,6 +438,7 @@
       "size": [880, 1400],
       "steps": [
         { "expectText": ["Vercel personal budget", "Access token", "Vercel team", "Team ID"] },
+        { "expectText": ["Spend", "Limit", "Remaining", "$42.00", "$100.00", "$58.00"] },
         { "expectNoText": "Remove" },
         { "expectNoText": ["On-pace budget", "in reserve"] },
         { "screenshot": "settings-vercel-budget" }

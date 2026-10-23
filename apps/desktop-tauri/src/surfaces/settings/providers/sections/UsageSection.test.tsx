@@ -68,6 +68,7 @@ describe("UsageSection", () => {
         UsageBarQuotaWarnings: "Quota warnings",
         ProviderLabelLimitResetCredits: "Limit reset credits",
         ProviderTextTokens: "{} tokens",
+        UsageSpendSpend: "Spend",
       }),
     );
     eventMocks.listen.mockResolvedValue(() => {});
@@ -341,9 +342,70 @@ describe("UsageSection", () => {
       </LocaleProvider>,
     );
 
-    expect(await screen.findByText(/fixture-alpha: 60 tokens/)).toBeInTheDocument();
+    const alpha = await screen.findByText("fixture-alpha");
+    expect(alpha.tagName).toBe("DT");
+    expect(alpha.closest("dl")).toHaveClass("provider-detail-grid");
+    expect(screen.getByText("60 tokens").tagName).toBe("DD");
     expect(screen.getAllByRole("heading", { name: "Model activity" })).toHaveLength(1);
-    expect(screen.getByText(/Plain: 1/)).toBeInTheDocument();
+    expect(screen.getByText("Plain").tagName).toBe("DT");
+    expect(screen.getByText("1").tagName).toBe("DD");
+  });
+
+  it("lays out spend budget details in the styled detail grid", async () => {
+    const detail = provider();
+    detail.id = "vercel";
+    detail.session = null;
+    detail.extraRateWindows = [];
+    detail.displayDetails = [
+      {
+        id: "spend",
+        sectionTitle: null,
+        title: "Spend",
+        value: "$42.00",
+        secondaryValue: null,
+        progress: { used: 42, total: 100 },
+      },
+      {
+        id: "limit",
+        sectionTitle: null,
+        title: "Limit",
+        value: "$100.00",
+        secondaryValue: null,
+        progress: null,
+      },
+      {
+        id: "remaining",
+        sectionTitle: null,
+        title: "Remaining",
+        value: "$58.00",
+        secondaryValue: null,
+        progress: null,
+      },
+    ];
+
+    const { container } = render(
+      <LocaleProvider>
+        <UsageSection provider={detail} resetTimeRelative={true} t={(key) => key} />
+      </LocaleProvider>,
+    );
+
+    await screen.findByText("Spend");
+    const grid = container.querySelector("dl.provider-detail-grid");
+    expect(grid).not.toBeNull();
+    expect(Array.from(grid?.querySelectorAll("dt") ?? []).map((dt) => dt.textContent)).toEqual([
+      "Spend",
+      "Limit",
+      "Remaining",
+    ]);
+    expect(Array.from(grid?.querySelectorAll("dd") ?? []).map((dd) => dd.textContent)).toEqual([
+      "$42.00",
+      "$100.00",
+      "$58.00",
+    ]);
+    const bar = screen.getByRole("progressbar", { name: "Spend" });
+    expect(bar.closest("dd")).not.toBeNull();
+    expect(bar).toHaveAttribute("aria-valuenow", "42");
+    expect(container.querySelector(".provider-usage-inventory")).toBeNull();
   });
 
   it("draws Custom quota-warning markers at % left and follows show-as-used", async () => {
