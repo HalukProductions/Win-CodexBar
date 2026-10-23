@@ -148,6 +148,7 @@ impl TrayIcon {
     pub fn set_icon(&mut self, icon: Option<Icon>) -> crate::Result<()> {
         unsafe {
             let mut nid = NOTIFYICONDATAW {
+                cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
                 uFlags: NIF_ICON,
                 hWnd: self.hwnd,
                 uID: self.internal_id,
@@ -199,6 +200,7 @@ impl TrayIcon {
     pub fn set_tooltip<S: AsRef<str>>(&mut self, tooltip: Option<S>) -> crate::Result<()> {
         unsafe {
             let mut nid = NOTIFYICONDATAW {
+                cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
                 uFlags: NIF_TIP,
                 hWnd: self.hwnd,
                 uID: self.internal_id,
@@ -207,7 +209,7 @@ impl TrayIcon {
             if let Some(tooltip) = &tooltip {
                 let tip = util::encode_wide(tooltip.as_ref());
                 #[allow(clippy::manual_memcpy)]
-                for i in 0..tip.len().min(128) {
+                for i in 0..tip.len().min(127) {
                     nid.szTip[i] = tip[i];
                 }
             }
@@ -545,12 +547,13 @@ unsafe fn register_tray_icon(
         flags |= NIF_TIP;
         let tip = util::encode_wide(tooltip);
         #[allow(clippy::manual_memcpy)]
-        for i in 0..tip.len().min(128) {
+        for i in 0..tip.len().min(127) {
             sz_tip[i] = tip[i];
         }
     }
 
     let mut nid = NOTIFYICONDATAW {
+        cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
         uFlags: flags,
         hWnd: hwnd,
         uID: tray_id,
@@ -566,6 +569,7 @@ unsafe fn register_tray_icon(
 #[inline]
 unsafe fn remove_tray_icon(hwnd: HWND, id: u32) {
     let mut nid = NOTIFYICONDATAW {
+        cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
         uFlags: NIF_ICON,
         hWnd: hwnd,
         uID: id,
