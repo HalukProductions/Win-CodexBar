@@ -93,7 +93,6 @@ export const INERT_ACTIONS = [
   "set_provider_optional_details",
   "set_provider_region",
   "set_provider_usage_source",
-  "set_provider_workspace_id",
   "set_vercel_access_token",
   "trigger_provider_login",
   "unregister_global_shortcut",
@@ -168,6 +167,7 @@ export function createProofRouter(
   // Cookie-source picks persist for the session, as the real bridge persists
   // them to settings; `get_provider_detail` then reports the chosen source.
   const cookieSources = new Map<string, string>();
+  const workspaceIds = new Map<string, string>(Object.entries(scenario.workspaceIds ?? {}));
   const warned = new Set<string>();
   let httpServer: HttpServerSnapshot = {
     config: {
@@ -308,7 +308,15 @@ export function createProofRouter(
       { value: "off", label: "Off" },
     ],
     get_provider_region_options: () => [],
-    get_provider_workspace_id: () => null,
+    get_provider_workspace_id: (args) => workspaceIds.get(stringArg(args, "providerId")) ?? null,
+    // The shell rejects with a plain string, which the UI shows as-is.
+    set_provider_workspace_id: (args) => {
+      const providerId = stringArg(args, "providerId");
+      const error = scenario.workspaceIdSaveErrors?.[providerId];
+      if (error !== undefined) throw error;
+      workspaceIds.set(providerId, stringArg(args, "workspaceId"));
+      return null;
+    },
     get_provider_gateway_url: () => "",
     get_provider_azure_api_version: () => null,
     get_api_keys: () => [],

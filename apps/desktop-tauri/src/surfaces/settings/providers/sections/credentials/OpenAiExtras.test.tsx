@@ -82,6 +82,36 @@ describe("OpenAiExtras", () => {
     expect(setProviderWorkspaceId).toHaveBeenCalledWith("vercel", "team_abc123");
   });
 
+  it("clears a failed save error once the field is edited, even back to the saved value", async () => {
+    vi.mocked(getProviderWorkspaceId).mockResolvedValue("team_saved");
+    vi.mocked(setProviderWorkspaceId).mockRejectedValueOnce("Vercel Team ID is invalid");
+    renderExtras("vercel");
+
+    const input = (await screen.findByRole("textbox")) as HTMLInputElement;
+    await vi.waitFor(() => expect(input.value).toBe("team_saved"));
+    expect(input).not.toHaveAttribute("aria-invalid");
+
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "bad id" } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    });
+
+    const error = await screen.findByText("Vercel Team ID is invalid");
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(input).toHaveAttribute("aria-describedby", error.id);
+
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "team_saved" } });
+    });
+
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(screen.queryByText("Vercel Team ID is invalid")).not.toBeInTheDocument();
+    expect(input).not.toHaveAttribute("aria-invalid");
+    expect(input).not.toHaveAttribute("aria-describedby");
+  });
+
   it("renders help text for Cosmic Project ID", async () => {
     renderExtras("cosmic");
     expect(

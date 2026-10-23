@@ -443,6 +443,24 @@
       ]
     },
     {
+      "name": "settings-vercel-team-id-error-clears",
+      "query": "window=settings&tab=providers:vercel&fixture=vercel-team-id-invalid&theme=dark",
+      "size": [880, 1400],
+      "steps": [
+        { "expectSelector": "input[placeholder=\"team_...\"][value=\"team_proof\"]:not([aria-invalid])" },
+        { "type": { "selector": "input", "label": "team_...", "text": "bad id" } },
+        { "click": { "selector": "button", "label": "Save", "near": "VERCEL_TEAM_ID" } },
+        { "expectCall": { "cmd": "set_provider_workspace_id", "args": { "providerId": "vercel", "workspaceId": "bad id" } } },
+        { "expectText": "Vercel Team ID is invalid" },
+        { "expectSelector": "input[placeholder=\"team_...\"][aria-invalid=\"true\"]" },
+        { "screenshot": "settings-vercel-team-id-error" },
+        { "type": { "selector": "input", "label": "team_...", "text": "team_proof" } },
+        { "expectNoText": "Vercel Team ID is invalid" },
+        { "expectSelector": "input[placeholder=\"team_...\"]:not([aria-invalid])" },
+        { "screenshot": "settings-vercel-team-id-error-cleared" }
+      ]
+    },
+    {
       "name": "settings-gemini-usage-source",
       "query": "window=settings&tab=providers:gemini&fixture=default&theme=dark",
       "size": [880, 620],

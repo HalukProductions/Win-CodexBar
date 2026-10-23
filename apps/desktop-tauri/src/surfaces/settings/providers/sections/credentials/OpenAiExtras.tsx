@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { LocaleKey } from "../../../../../i18n/keys";
 import {
   getProviderWorkspaceId,
@@ -23,6 +23,7 @@ export function OpenAiExtras({ providerId = "openaiapi", t }: Props) {
   const [savedProjectId, setSavedProjectId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const errorId = useId();
   const config = extraConfig(providerId, t);
 
   useEffect(() => {
@@ -73,7 +74,12 @@ export function OpenAiExtras({ providerId = "openaiapi", t }: Props) {
             value={projectId}
             placeholder={config.placeholder}
             spellCheck={false}
-            onChange={(event) => setProjectId(event.target.value)}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? errorId : undefined}
+            onChange={(event) => {
+              setProjectId(event.target.value);
+              setError(null);
+            }}
           />
         </label>
         <div className="provider-detail-helper">
@@ -89,7 +95,11 @@ export function OpenAiExtras({ providerId = "openaiapi", t }: Props) {
             {t("Save")}
           </button>
         </div>
-        {error && <div className="provider-detail-error">{error}</div>}
+        {error && (
+          <div id={errorId} className="provider-detail-error">
+            {error}
+          </div>
+        )}
       </section>
     );
   }
