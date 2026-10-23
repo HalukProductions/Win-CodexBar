@@ -190,7 +190,7 @@ JSON output adds:
 
 ### Remote and summary reports
 
-`--remote <host>` adds one separate native Codex report, fetched over non-interactive SSH. Local and remote histories are never merged. `--summary-only` prints the versioned, path-free JSON contract that the remote comparison uses. It accepts only `--provider codex --format json`. Both modes reject project or session grouping and other providers.
+`--remote <host>` adds one separate native Codex report, fetched over non-interactive SSH. Local and remote histories are never merged. `--summary-only` prints the versioned, path-free JSON contract that the remote comparison uses. It accepts only `--provider codex --format json`. Both modes reject project or session grouping and other providers. The remote host can run this CLI or upstream macOS CodexBar; both print the same `--summary-only` array. When the remote report says its history coverage is incomplete, its totals are dropped and the report is shown as partial.
 
 `--provider-native-only` leaves out pi/OMP agent session mirrors. This Windows build has no such mirrors, so the flag is accepted but changes nothing here.
 
@@ -444,6 +444,13 @@ codexbar sessions --ssh-host user@host
 `--json` prints the legacy v1 format, Codex and Claude only. `--json-v2` adds Pi-family sessions. `--ssh-host` reads a configured SSH host, and you can repeat it or pass a comma-separated list. `--brief` prints one line per session.
 
 The CLI always runs its remote discovery: each `--ssh-host` and any online Tailscale peer (standalone `tailscale.exe` on `PATH`). It does not read the desktop **Agent sessions** switch or **Local sessions only** setting, so those settings do not change CLI output. Use the desktop app's settings to limit remote discovery there.
+
+Each SSH host runs `sh -lc '<chain>'` in BatchMode, where the chain tries `codexbar sessions --json-v2`, then `codexbar sessions --json`, then the same two commands with the bundled macOS CLI (`/Applications/CodexBar.app/Contents/Helpers/CodexBarCLI`). Two remote outputs are decoded:
+
+- Upstream macOS CodexBar prints a flat JSON array of sessions with `cwd`, `projectName`, `startedAt` and `lastActivityAt` at the top level of each row.
+- This Windows CLI prints `{"sessions": [...], "errors": [...]}`, where each row nests `workspace`, `activity` and `focusTarget`.
+
+Every remote session is shown under the SSH host you configured, whatever host name the remote payload carries. Entries in the remote `errors` list are shown as that host's error, and its sessions are still listed. Output that is not JSON, or a row with a missing or unknown provider, source or state, fails that host with a message to update CodexBar on the remote host.
 
 ## List Codex workspaces
 

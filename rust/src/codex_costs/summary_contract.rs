@@ -188,10 +188,19 @@ pub(crate) fn decode_remote_codex_summary(
         return Err(REMOTE_CODEX_COST_INVALID.to_string());
     }
 
-    let report = reports
+    let mut report = reports
         .into_iter()
         .next()
         .ok_or_else(|| REMOTE_CODEX_COST_INVALID.to_string())?;
+    // Upstream macOS hosts still report the totals they have while history coverage
+    // is incomplete; this side never shows partial totals, so drop them instead of
+    // rejecting an otherwise valid report.
+    if !report.history_coverage_is_established {
+        for window in [&mut report.today, &mut report.history] {
+            window.total_tokens = None;
+            window.cost_usd = None;
+        }
+    }
     report.validate(history_days)?;
     Ok(report)
 }
