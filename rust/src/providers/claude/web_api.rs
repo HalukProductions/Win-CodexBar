@@ -755,6 +755,7 @@ impl ClaudeWebApiFetcher {
         let model_specific = usage
             .seven_day_opus
             .as_ref()
+            .or(usage.seven_day_sonnet.as_ref())
             .map(|w| self.to_rate_window(w, Some(10080)));
 
         (primary, secondary, model_specific)

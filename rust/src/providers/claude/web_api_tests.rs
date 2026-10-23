@@ -637,6 +637,32 @@ fn weekly_only_web_answer_keeps_the_no_session_placeholder() {
 }
 
 #[test]
+fn sonnet_only_web_answer_keeps_its_weekly_lane_available() {
+    let (snapshot, _) = web_snapshot_for(
+        r#"{"five_hour":null,"seven_day":null,"seven_day_sonnet":{"utilization":37}}"#,
+        None,
+    );
+
+    let model = snapshot.model_specific.expect("sonnet weekly lane");
+    assert!((model.used_percent - 37.0).abs() < f64::EPSILON);
+    assert_eq!(
+        snapshot.primary.reset_description.as_deref(),
+        Some("No active 5h session")
+    );
+}
+
+#[test]
+fn opus_stays_the_model_lane_when_sonnet_is_also_reported() {
+    let (snapshot, _) = web_snapshot_for(
+        r#"{"seven_day_opus":{"utilization":11},"seven_day_sonnet":{"utilization":37}}"#,
+        None,
+    );
+
+    let model = snapshot.model_specific.expect("model lane");
+    assert!((model.used_percent - 11.0).abs() < f64::EPSILON);
+}
+
+#[test]
 fn measured_session_web_answer_stays_available() {
     let (snapshot, _) = web_snapshot_for(r#"{"five_hour":{"utilization":12}}"#, None);
 
