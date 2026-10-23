@@ -130,12 +130,7 @@ pub fn activate(app: &AppHandle) {
         .get_webview_window("main")
         .and_then(|window| window.available_monitors().ok())
         .unwrap_or_default();
-    let origin_props = match target {
-        SurfaceMode::Settings => SurfaceMode::Settings,
-        _ => SurfaceMode::TrayPanel,
-    }
-    .window_properties();
-    let origin = window_origin_position(&monitors, (origin_props.width, origin_props.height));
+    let origin = window_origin_position(&monitors, origin_logical_size(target));
     if target == SurfaceMode::PopOut {
         tracing::info!("proof-harness: opening the tray-panel flyout window");
         // Called from the async setup task, so building the window is safe.
@@ -197,6 +192,30 @@ const PROOF_MAX_SETTLE_HEIGHT_LOGICAL: f64 = 920.0;
 fn proof_anchor_y(anchor_y: i32, work_bottom: i32, max_settle_height_px: i32) -> i32 {
     let justified = work_bottom - PROOF_BOTTOM_INSET_PX - max_settle_height_px;
     anchor_y.min(justified)
+}
+
+/// Logical size to keep on screen when placing `target` at the proof origin.
+/// The flyout reanchors after its auto-fit settle and Settings keeps its
+/// size, but the `main` tray panel is placed once and can settle up to the
+/// frontend cap, so it reserves that height (#265).
+fn origin_logical_size(target: SurfaceMode) -> (f64, f64) {
+    match target {
+        SurfaceMode::Settings => {
+            let props = SurfaceMode::Settings.window_properties();
+            (props.width, props.height)
+        }
+        SurfaceMode::PopOut => {
+            let props = SurfaceMode::TrayPanel.window_properties();
+            (props.width, props.height)
+        }
+        SurfaceMode::Hidden | SurfaceMode::TrayPanel => {
+            let props = SurfaceMode::TrayPanel.window_properties();
+            (
+                props.width,
+                props.height.max(PROOF_MAX_SETTLE_HEIGHT_LOGICAL),
+            )
+        }
+    }
 }
 
 /// Bottom edge of a settled panel anchored via [`proof_anchor_y`].
@@ -1118,6 +1137,39 @@ mod tests {
             origin_on_monitor((5000, 5000), &monitors, (310.0, 776.0)),
             None
         );
+    }
+
+    #[test]
+    fn main_tray_panel_origin_reserves_the_settled_height() {
+        let tray = SurfaceMode::TrayPanel.window_properties();
+        let settings = SurfaceMode::Settings.window_properties();
+        assert_eq!(
+            origin_logical_size(SurfaceMode::TrayPanel),
+            (tray.width, PROOF_MAX_SETTLE_HEIGHT_LOGICAL)
+        );
+        assert_eq!(
+            origin_logical_size(SurfaceMode::PopOut),
+            (tray.width, tray.height)
+        );
+        assert_eq!(
+            origin_logical_size(SurfaceMode::Settings),
+            (settings.width, settings.height)
+        );
+
+        // Near the work-area bottom of a 1080p display, the tallest settle
+        // still ends above the taskbar.
+        let work = crate::window_positioner::Rect::new(0, 0, 1920, 1032);
+        let monitors = [OriginMonitor {
+            work_area: work,
+            ..display(0, 0, 1920, 1080, 1.0)
+        }];
+        let (_, y) = origin_on_monitor(
+            (100, 1000),
+            &monitors,
+            origin_logical_size(SurfaceMode::TrayPanel),
+        )
+        .unwrap();
+        assert!(y + PROOF_MAX_SETTLE_HEIGHT_LOGICAL as i32 <= work.bottom() - 8);
     }
 
     #[test]
