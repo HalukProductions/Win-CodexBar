@@ -140,6 +140,19 @@ impl ConfigLoginEvent {
         }
     }
 
+    /// `authorization_pending` for a login that shows a sign-in URL but no code.
+    pub fn pending_url(verification_uri: &str) -> Self {
+        Self {
+            verification_uri: Some(verification_uri.to_string()),
+            ..Self::status("authorization_pending")
+        }
+    }
+
+    /// `authorization_pending` for a login that opens the browser itself.
+    pub fn pending_browser() -> Self {
+        Self::status("authorization_pending")
+    }
+
     /// The `failed` event. It carries the failure reason and message only.
     pub fn failed(error: &ConfigLoginError) -> Self {
         Self {
@@ -150,9 +163,15 @@ impl ConfigLoginEvent {
     }
 }
 
+/// The error for a Ctrl-C during a login. Nothing was saved.
+pub fn cancelled() -> ConfigLoginError {
+    ConfigLoginError::new(LoginFailure::Cancelled, "Login cancelled.")
+}
+
 /// Writes one event. JSON mode prints one object per line. Text mode prints
-/// the URL and code for `authorization_pending` and `Connected` for
-/// `authorized`; other events print nothing and their error goes to stderr.
+/// the URL (and the code, when there is one) for `authorization_pending`,
+/// `Connected` for `authorized`, and nothing for the rest. Failures go to
+/// stderr from the caller.
 pub fn write_event(
     out: &mut impl Write,
     json: bool,
@@ -161,8 +180,15 @@ pub fn write_event(
     if json {
         let line = serde_json::to_string(event).map_err(ConfigLoginError::other)?;
         writeln!(out, "{line}").map_err(ConfigLoginError::other)?;
-    } else if let (Some(url), Some(code)) = (&event.verification_uri, &event.user_code) {
-        writeln!(out, "{url}\n{code}").map_err(ConfigLoginError::other)?;
+    } else if let Some(url) = &event.verification_uri {
+        match &event.user_code {
+            Some(code) => writeln!(out, "{url}\n{code}"),
+            None => writeln!(out, "{url}"),
+        }
+        .map_err(ConfigLoginError::other)?;
+    } else if event.status == "authorization_pending" {
+        writeln!(out, "Waiting for the browser sign-in to finish.")
+            .map_err(ConfigLoginError::other)?;
     } else if event.status == "authorized" {
         writeln!(out, "Connected").map_err(ConfigLoginError::other)?;
     }

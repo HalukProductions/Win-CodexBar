@@ -494,7 +494,7 @@ async fn config_login_rejects_other_providers_before_any_io() {
         .expect_err("cursor has no CLI login");
     assert_eq!(
         error.to_string(),
-        "Login is only supported for copilot. Use --provider copilot."
+        "Login is supported for copilot, grok and kiro. Use --provider copilot, grok or kiro."
     );
     assert_eq!(error.exit_code(), crate::cli::exit_codes::USAGE_ERROR);
 }

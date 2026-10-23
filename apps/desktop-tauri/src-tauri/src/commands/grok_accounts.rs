@@ -49,9 +49,8 @@ pub async fn grok_account_add(app: tauri::AppHandle) -> Result<(), String> {
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())?;
-    let _credentials = accounts::CREDENTIAL_OPERATION.lock().await;
-    AccountManager::new()
-        .and_then(|m| m.import(login))
+    accounts::save_login(login)
+        .await
         .map_err(|e| e.to_string())?;
     crate::auto_resume::clear(&app, ProviderId::Grok);
     changed(&app);

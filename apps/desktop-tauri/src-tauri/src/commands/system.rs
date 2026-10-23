@@ -343,6 +343,7 @@ async fn run_cli_provider_login(
         )),
         LoginOutcome::LaunchFailed(e) => Err(format!("Failed to launch {display_name} login: {e}")),
         LoginOutcome::TimedOut => Err(format!("{display_name} login timed out")),
+        LoginOutcome::Cancelled => Err(format!("{display_name} login cancelled")),
         LoginOutcome::Failed { status } => Err(format!(
             "{display_name} login failed with exit code {status}"
         )),

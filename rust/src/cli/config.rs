@@ -18,6 +18,7 @@ use crate::providers::copilot::login::{
 };
 use crate::settings::{ApiKeys, ManualCookies, PreferencesDocument, Settings};
 
+mod cli_login;
 mod login;
 
 pub use login::ConfigLoginError;
@@ -86,7 +87,7 @@ pub enum ConfigCommand {
         #[arg(long = "no-enable")]
         no_enable: bool,
     },
-    /// Log in to a provider through its own device flow (GitHub Copilot only)
+    /// Log in to a provider through its own sign-in (GitHub Copilot, Grok, Kiro)
     Login {
         #[command(flatten)]
         target: ConfigProviderArg,
@@ -793,35 +794,39 @@ fn resolve_api_key_input(api_key: Option<&str>, read_from_stdin: bool) -> anyhow
     Ok(value)
 }
 
-/// Run `config login`. Only GitHub Copilot has a CLI login flow.
+/// Run `config login`. GitHub Copilot uses a device code; Grok and Kiro run
+/// their own CLI sign-in.
+///
+/// Output goes through `std::io::stdout()` rather than a held lock, because
+/// the Kiro sign-in link is written from the login thread.
 async fn login(provider: &str, output: ConfigOutputArgs) -> Result<(), ConfigLoginError> {
     let id = parse_provider(provider).map_err(ConfigLoginError::usage)?;
-    if id != ProviderId::Copilot {
-        return Err(ConfigLoginError::usage(
-            "Login is only supported for copilot. Use --provider copilot.",
-        ));
+    let json = output.is_json();
+    let out = &mut std::io::stdout();
+    match id {
+        ProviderId::Copilot => {
+            let flow = CopilotDeviceFlow::new();
+            let api = CopilotApi::new();
+            let store = TokenAccountStore::new();
+            run_copilot_login(&flow, &api, &store, json, out, login::ctrl_c(), || {
+                enable_provider(ProviderId::Copilot)
+            })
+            .await
+            .map(|_| ())
+        }
+        ProviderId::Grok => cli_login::login_grok(json, out).await,
+        ProviderId::Kiro => cli_login::login_kiro(json, out).await,
+        _ => Err(ConfigLoginError::usage(
+            "Login is supported for copilot, grok and kiro. Use --provider copilot, grok or kiro.",
+        )),
     }
-    let flow = CopilotDeviceFlow::new();
-    let api = CopilotApi::new();
-    let store = TokenAccountStore::new();
-    run_copilot_login(
-        &flow,
-        &api,
-        &store,
-        output.is_json(),
-        &mut std::io::stdout().lock(),
-        login::ctrl_c(),
-        enable_copilot,
-    )
-    .await
-    .map(|_| ())
 }
 
-/// Turns the Copilot provider on after a saved login. Only `config login`
-/// does this; the desktop sign-in keeps its current behavior.
-fn enable_copilot() -> anyhow::Result<()> {
+/// Turns `id` on after a saved login. Only `config login` does this; the
+/// desktop sign-in keeps its current behavior.
+fn enable_provider(id: ProviderId) -> anyhow::Result<()> {
     let mut settings = Settings::load();
-    settings.enable_provider(ProviderId::Copilot);
+    settings.enable_provider(id);
     settings.save()
 }
 
