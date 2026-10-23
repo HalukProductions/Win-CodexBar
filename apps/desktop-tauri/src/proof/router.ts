@@ -303,11 +303,19 @@ export function createProofRouter(
     get_usage_spend_summary: () => usageSpendSummary(current(), now),
     get_spend_contract: (args) =>
       spendContract(stringArg(args, "providerId"), settings.spendDashboardPeriod ?? "rolling:30"),
-    get_provider_cookie_source_options: () => [
-      { value: "auto", label: "Automatic" },
-      { value: "manual", label: "Manual" },
-      { value: "off", label: "Off" },
-    ],
+    // The real bridge offers no cookie-source options for providers that
+    // never read browser cookies, which hides the picker.
+    get_provider_cookie_source_options: (args) => {
+      const providerId = stringArg(args, "providerId");
+      const entry = current().catalog.find((candidate) => candidate.id === providerId);
+      return entry?.cookieDomain
+        ? [
+            { value: "auto", label: "Automatic" },
+            { value: "manual", label: "Manual" },
+            { value: "off", label: "Off" },
+          ]
+        : [];
+    },
     get_provider_region_options: () => [],
     get_provider_workspace_id: () => null,
     get_provider_gateway_url: () => "",

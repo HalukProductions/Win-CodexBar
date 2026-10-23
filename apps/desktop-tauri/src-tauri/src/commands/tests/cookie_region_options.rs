@@ -31,6 +31,25 @@ fn cookie_options_empty_for_providers_without_picker() {
 }
 
 #[test]
+fn cookie_source_picker_is_offered_only_to_providers_with_a_cookie_domain() {
+    for provider in codexbar::core::ProviderId::all() {
+        let options =
+            crate::commands::cookie_source_options_for(provider.cli_name(), Language::English);
+        if !options.is_empty() {
+            assert!(
+                provider.cookie_domain().is_some(),
+                "{} offers a cookie source without a cookie domain",
+                provider.cli_name()
+            );
+        }
+    }
+    assert!(codexbar::core::ProviderId::Vercel.cookie_domain().is_none());
+    assert!(crate::commands::cookie_source_options_for("vercel", Language::English).is_empty());
+    assert!(codexbar::core::ProviderId::Claude.cookie_domain().is_some());
+    assert!(!crate::commands::cookie_source_options_for("claude", Language::English).is_empty());
+}
+
+#[test]
 fn region_options_for_regional_provider() {
     let opts = crate::commands::region_options_for("alibaba", Language::English);
     let values: Vec<_> = opts.iter().map(|o| o.value.as_str()).collect();

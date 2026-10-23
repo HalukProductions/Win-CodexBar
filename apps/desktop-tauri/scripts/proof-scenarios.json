@@ -442,6 +442,7 @@
         { "expectText": ["Credential Storage", "Access tokens"] },
         { "expectNoText": "Remove" },
         { "expectNoText": ["On-pace budget", "in reserve"] },
+        { "expectNoText": "Cookie source" },
         { "screenshot": "settings-vercel-budget" }
       ]
     },

@@ -95,6 +95,18 @@ describe("proof router", () => {
     expect(openrouter.email).toBeNull();
   });
 
+  it("offers cookie-source options only to providers with a cookie domain", () => {
+    const router = routerFor("vercel", "settings");
+    const options = (providerId: string) =>
+      router.handle("get_provider_cookie_source_options", { providerId }) as unknown[];
+    expect(options("claude").length).toBeGreaterThan(0);
+    expect(options("vercel")).toEqual([]);
+    expect(
+      (router.handle("get_provider_detail", { providerId: "vercel" }) as ProviderDetail)
+        .cookieSource,
+    ).toBeNull();
+  });
+
   it("applies settings patches to later reads", () => {
     const router = routerFor("default");
     router.handle("update_settings", { patch: { theme: "light" } });
