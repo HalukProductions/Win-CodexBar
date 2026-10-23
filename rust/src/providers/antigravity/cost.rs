@@ -265,6 +265,25 @@ mod tests {
             None
         );
     }
+    #[test]
+    fn sonnet_4_6_long_context_is_priced_at_the_row_date() {
+        // Upstream full-context standard pricing cutoff (2026-03-13T00:00:00Z).
+        let before_cutoff = Utc.with_ymd_and_hms(2026, 3, 12, 23, 59, 59).unwrap();
+        // 240k input + 1k output: $6/$22.5 per million before the cutoff, $3/$15 after.
+        let tiered = estimate_cost_usd(
+            before_cutoff,
+            Some("claude-sonnet-4-6"),
+            240_000,
+            0,
+            0,
+            1_000,
+        )
+        .expect("dated Sonnet 4.6 price");
+        let standard = estimate_cost_usd(at(), Some("claude-sonnet-4-6"), 240_000, 0, 0, 1_000)
+            .expect("current Sonnet 4.6 price");
+        assert!((tiered - 1.4625).abs() < 1e-9, "{tiered}");
+        assert!((standard - 0.735).abs() < 1e-9, "{standard}");
+    }
 }
 
 #[cfg(test)]

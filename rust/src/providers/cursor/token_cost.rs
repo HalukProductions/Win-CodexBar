@@ -789,6 +789,27 @@ mod tests {
     }
 
     #[test]
+    fn cursor_claude_alias_long_context_is_priced_at_the_event_time() {
+        // Upstream full-context standard pricing cutoff, in milliseconds.
+        const CUTOFF_MS: i64 = 1_773_360_000_000;
+        let usage = EventTokenUsage {
+            input_tokens: 240_000,
+            output_tokens: 1_000,
+            cache_write_tokens: 0,
+            cache_read_tokens: 0,
+            cost: EventCost::Omitted,
+        };
+        // claude-4.6-sonnet resolves to claude-sonnet-4-6: $6/$22.5 per million before the
+        // cutoff, $3/$15 from it.
+        let tiered = estimated_list_price_cents(&usage, "claude-4.6-sonnet", CUTOFF_MS - 1)
+            .expect("dated Cursor Sonnet 4.6 price");
+        let standard = estimated_list_price_cents(&usage, "claude-4.6-sonnet", CUTOFF_MS)
+            .expect("current Cursor Sonnet 4.6 price");
+        assert!((tiered - 146.25).abs() < 1e-9, "{tiered}");
+        assert!((standard - 73.5).abs() < 1e-9, "{standard}");
+    }
+
+    #[test]
     fn invalid_total_cents_is_never_reestimated() {
         let page: UsageEventsPage = serde_json::from_str(
             r#"{"totalUsageEventsCount":1,"usageEventsDisplay":[{"timestamp":"1700000000000","model":"gpt-5","chargedCents":5,"tokenUsage":{"inputTokens":200,"outputTokens":20,"totalCents":"NaN"}}]}"#,
