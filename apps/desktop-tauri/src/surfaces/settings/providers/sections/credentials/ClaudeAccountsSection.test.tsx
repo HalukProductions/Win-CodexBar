@@ -111,6 +111,18 @@ describe("ClaudeAccountsSection", () => {
     expect(container.innerHTML).not.toContain("Acme Org");
   });
 
+  it("numbers hidden accounts in list order, not by sorted id", async () => {
+    const live: ClaudeAccount = { ...current, id: "zz:org", email: "z@example.com" };
+    const saved: ClaudeAccount = { ...other, id: "aa:org", email: "a@example.com" };
+    mocks.claudeAccountsList.mockResolvedValue([live, saved]);
+    const { container } = render(<ClaudeAccountsSection t={t} hidePersonalInfo />);
+    await screen.findByText("Account 2");
+    const labels = [...container.querySelectorAll(".credential-card__info strong")].map(
+      (label) => label.textContent,
+    );
+    expect(labels).toEqual(["Account 1", "Account 2"]);
+  });
+
   it("shows emails and organizations when Hide Personal Info is off", async () => {
     mocks.claudeAccountsList.mockResolvedValue([{ ...current, organization: "Acme Org" }]);
     render(<ClaudeAccountsSection t={t} />);

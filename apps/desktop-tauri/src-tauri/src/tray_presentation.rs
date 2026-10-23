@@ -502,20 +502,21 @@ pub(crate) fn metric_status_label(
     let preference = ProviderId::from_cli_name(&snapshot.provider_id)
         .map(|id| settings.get_provider_metric(id))
         .unwrap_or_default();
-    named_extra_status(snapshot, &preference, language)
+    named_extra_status(snapshot, &preference, settings.show_as_used, language)
         .or_else(|| tokens_per_minute_status(snapshot, settings, language))
         .or_else(|| balance_status_label(snapshot))
-        .unwrap_or_else(|| headline_status_label(snapshot, language))
+        .unwrap_or_else(|| headline_status_label(snapshot, settings.show_as_used, language))
 }
 
 /// Compact status text for [`headline_window`]. A locally estimated quota
 /// gets a leading `~` so it never reads as a provider-reported meter.
 pub(crate) fn headline_status_label(
     snapshot: &ProviderUsageSnapshot,
+    show_as_used: bool,
     language: Language,
 ) -> String {
     let window = headline_window(snapshot);
-    let label = crate::commands::compact_tray_status_label(window, language);
+    let label = crate::commands::compact_tray_status_label(window, language, show_as_used);
     if snapshot.quota_estimated && !window.is_informational {
         format!("~{label}")
     } else {
@@ -531,6 +532,7 @@ pub(crate) fn headline_status_label(
 pub(crate) fn named_extra_status(
     snapshot: &ProviderUsageSnapshot,
     preference: &MetricPreference,
+    show_as_used: bool,
     language: Language,
 ) -> Option<String> {
     let provider = ProviderId::from_cli_name(&snapshot.provider_id)?;
@@ -547,7 +549,7 @@ pub(crate) fn named_extra_status(
         .map(|extra| &extra.window)
         .filter(|window| !window.is_informational)
         .map(|window| {
-            let label = crate::commands::compact_tray_status_label(window, language);
+            let label = crate::commands::compact_tray_status_label(window, language, show_as_used);
             if snapshot.quota_estimated {
                 format!("~{label}")
             } else {
@@ -735,7 +737,7 @@ fn selected_tray_percents_at(
     )
 }
 
-fn display_metric_percent(window: &RateWindowSnapshot, show_as_used: bool) -> f64 {
+pub(crate) fn display_metric_percent(window: &RateWindowSnapshot, show_as_used: bool) -> f64 {
     if window.is_informational {
         return 0.0;
     }

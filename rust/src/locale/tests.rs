@@ -607,6 +607,55 @@ fn test_every_language_translates_every_key_with_the_same_format_placeholders() 
     }
 }
 
+#[test]
+fn every_locale_tag_names_its_own_file() {
+    for &lang in Language::all() {
+        let tag = get_text(lang, LocaleKey::LocaleTag);
+        assert_eq!(tag, language_id(lang).to_string(), "{lang:?}");
+    }
+}
+
+#[test]
+fn slavic_relative_times_carry_one_few_and_many_forms() {
+    let ru = Language::Russian;
+    assert_eq!(
+        get_text(ru, LocaleKey::UpdatedMinutesAgoOne),
+        "{} минуту назад"
+    );
+    assert_eq!(
+        get_text(ru, LocaleKey::UpdatedMinutesAgoFew),
+        "{} минуты назад"
+    );
+    assert_eq!(
+        get_text(ru, LocaleKey::UpdatedMinutesAgoMany),
+        "{} минут назад"
+    );
+    assert_eq!(get_text(ru, LocaleKey::UpdatedHoursAgoFew), "{} часа назад");
+    assert_eq!(get_text(ru, LocaleKey::UpdatedDaysAgoMany), "{} дней назад");
+
+    let uk = Language::Ukrainian;
+    assert_eq!(
+        get_text(uk, LocaleKey::UpdatedMinutesAgoOne),
+        "{} хвилину тому"
+    );
+    assert_eq!(
+        get_text(uk, LocaleKey::UpdatedMinutesAgoFew),
+        "{} хвилини тому"
+    );
+    assert_eq!(
+        get_text(uk, LocaleKey::UpdatedMinutesAgoMany),
+        "{} хвилин тому"
+    );
+    assert_eq!(get_text(uk, LocaleKey::UpdatedDaysAgoOne), "{} день тому");
+    assert_eq!(get_text(uk, LocaleKey::UpdatedDaysAgoFew), "{} дні тому");
+    assert_eq!(get_text(uk, LocaleKey::UpdatedDaysAgoMany), "{} днів тому");
+
+    assert_eq!(
+        get_text(Language::English, LocaleKey::UpdatedDaysAgoOne),
+        "{} day ago"
+    );
+}
+
 fn resource_entries(resource: &str) -> std::collections::HashMap<&str, &str> {
     resource
         .lines()

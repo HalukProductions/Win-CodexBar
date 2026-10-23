@@ -293,6 +293,17 @@ UpdatedJustNow = Оновлено щойно
 UpdatedMinutesAgo = { "{}" } хв тому
 UpdatedHoursAgo = { "{}" } год тому
 UpdatedDaysAgo = { "{}" } дн. тому
+# BCP 47 tag that selects the CLDR plural rules for the count keys below.
+LocaleTag = uk-UA
+UpdatedMinutesAgoOne = { "{}" } хвилину тому
+UpdatedMinutesAgoFew = { "{}" } хвилини тому
+UpdatedMinutesAgoMany = { "{}" } хвилин тому
+UpdatedHoursAgoOne = { "{}" } годину тому
+UpdatedHoursAgoFew = { "{}" } години тому
+UpdatedHoursAgoMany = { "{}" } годин тому
+UpdatedDaysAgoOne = { "{}" } день тому
+UpdatedDaysAgoFew = { "{}" } дні тому
+UpdatedDaysAgoMany = { "{}" } днів тому
 Status = Стан
 AllSystemsOperational = Усі системи працюють
 Plan = План

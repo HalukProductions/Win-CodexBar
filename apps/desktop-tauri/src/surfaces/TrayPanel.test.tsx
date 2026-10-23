@@ -1611,12 +1611,12 @@ describe("TrayPanel overview account rows", () => {
     await waitFor(() => {
       expect(container.querySelector("#card-claude\\/account\\/tok-work")).not.toBeNull();
     });
-    // Ordinals follow the sorted account id: "tok-personal" is Account 1.
+    // Ordinals follow the row order, though "tok-personal" sorts first.
     expect(container.querySelector("#card-claude\\/account\\/tok-work")!.textContent).toContain(
-      "Account 2",
+      "Account 1",
     );
     expect(container.querySelector("#card-claude\\/account\\/tok-personal")!.textContent).toContain(
-      "Account 1",
+      "Account 2",
     );
     expect(container.textContent).not.toContain("Team Alpha");
     expect(container.textContent).not.toContain("Side Project");

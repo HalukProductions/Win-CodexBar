@@ -30,6 +30,10 @@ interface Props {
   executablePath: string;
   /** Settings `claudeSwapSource`; the Source picker sits under that switch. */
   source?: ClaudeSwapAccountSource;
+  /** Settings `showAsUsed`; quota windows read as used instead of left. */
+  showAsUsed?: boolean;
+  /** Settings `hidePersonalInfo`. The backend masks the labels, so a change reloads the list. */
+  hidePersonalInfo?: boolean;
 }
 
 interface SourceText {
@@ -65,13 +69,33 @@ const EMPTY_STATE: ClaudeSwapAccountsState = {
   error: null,
 };
 
+function quotaPercent(
+  t: (key: LocaleKey) => string,
+  usedPercent: number,
+  showAsUsed: boolean,
+): string {
+  const used = Math.max(0, Math.min(100, Math.round(usedPercent)));
+  return showAsUsed
+    ? `${used}% ${t("PanelUsedSuffix")}`
+    : `${100 - used}% ${t("PanelLeftSuffix")}`;
+}
+
 function usageLabel(
   t: (key: LocaleKey) => string,
   key: LocaleKey,
   window: { usedPercent: number } | null,
+  showAsUsed: boolean,
 ): string | null {
   if (!window) return null;
-  return `${t(key)} ${Math.round(window.usedPercent)}%`;
+  return `${t(key)} ${quotaPercent(t, window.usedPercent, showAsUsed)}`;
+}
+
+function scopedLabel(
+  t: (key: LocaleKey) => string,
+  window: { name: string; usedPercent: number },
+  showAsUsed: boolean,
+): string {
+  return `${window.name} ${quotaPercent(t, window.usedPercent, showAsUsed)}`;
 }
 
 function spendLabel(
@@ -95,12 +119,13 @@ function historicalLabel(
   history: ClaudeSwapHistoricalUsage | null,
   locale: string,
   formatCurrency: (amount: number | null | undefined, sourceCode: string) => string,
+  showAsUsed: boolean,
 ): string | null {
   if (!history) return null;
   const windows = [
-    usageLabel(t, "ProviderSession", history.fiveHour),
-    usageLabel(t, "ProviderWeekly", history.sevenDay),
-    ...history.scoped.map((window) => `${window.name} ${Math.round(window.usedPercent)}%`),
+    usageLabel(t, "ProviderSession", history.fiveHour, showAsUsed),
+    usageLabel(t, "ProviderWeekly", history.sevenDay, showAsUsed),
+    ...history.scoped.map((window) => scopedLabel(t, window, showAsUsed)),
     spendLabel(t, history.spend, locale, formatCurrency),
   ].filter(Boolean);
   const captured = new Intl.DateTimeFormat(locale, {
@@ -141,6 +166,8 @@ export function ClaudeSwapAccountsSection({
   enabled,
   executablePath,
   source = "claude-swap",
+  showAsUsed = false,
+  hidePersonalInfo = false,
 }: Props) {
   const [state, setState] = useState<ClaudeSwapAccountsState>(EMPTY_STATE);
   const locale = languageLocale(language);
@@ -188,7 +215,7 @@ export function ClaudeSwapAccountsSection({
       mounted.current = false;
       void unlisten.then((fn) => fn()).catch(() => {});
     };
-  }, [enabled, executablePath, source, reload]);
+  }, [enabled, executablePath, source, hidePersonalInfo, reload]);
 
   useEffect(() => {
     const outcome = localClaudeReconciliationOutcome(snapshot, operation?.generation ?? null);
@@ -257,13 +284,19 @@ export function ClaudeSwapAccountsSection({
       )}
       <ul className="credential-list">
         {state.accounts.map((account) => {
-          const session = usageLabel(t, "ProviderSession", account.fiveHour);
-          const weekly = usageLabel(t, "ProviderWeekly", account.sevenDay);
+          const session = usageLabel(t, "ProviderSession", account.fiveHour, showAsUsed);
+          const weekly = usageLabel(t, "ProviderWeekly", account.sevenDay, showAsUsed);
           const scoped = account.scoped
-            .map((window) => `${window.name} ${Math.round(window.usedPercent)}%`)
+            .map((window) => scopedLabel(t, window, showAsUsed))
             .join(" \u00b7 ");
           const spend = spendLabel(t, account.spend, locale, formatCurrency);
-          const historical = historicalLabel(t, account.historicalUsage, locale, formatCurrency);
+          const historical = historicalLabel(
+            t,
+            account.historicalUsage,
+            locale,
+            formatCurrency,
+            showAsUsed,
+          );
           const forecast = formatSessionEquivalentEstimate(account.sessionEquivalentForecast);
           return (
             <li className="credential-card" key={account.id}>

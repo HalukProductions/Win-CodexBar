@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { LocaleKey } from "../../../../../i18n/keys";
 import {
   getProviderWorkspaceId,
@@ -23,6 +23,8 @@ export function OpenAiExtras({ providerId = "openaiapi", t }: Props) {
   const [savedProjectId, setSavedProjectId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const errorId = useId();
+  const editGeneration = useRef(0);
   const config = extraConfig(providerId, t);
 
   useEffect(() => {
@@ -46,6 +48,7 @@ export function OpenAiExtras({ providerId = "openaiapi", t }: Props) {
   const saveProjectId = async () => {
     setBusy(true);
     setError(null);
+    const generation = editGeneration.current;
     try {
       const next = projectId.trim();
       await setProviderWorkspaceId(providerId, next);
@@ -54,7 +57,8 @@ export function OpenAiExtras({ providerId = "openaiapi", t }: Props) {
         new CustomEvent<string>(PROVIDER_WORKSPACE_ID_SAVED_EVENT, { detail: providerId }),
       );
     } catch (e) {
-      setError(String(e));
+      // An edit made while the save ran makes its error stale.
+      if (editGeneration.current === generation) setError(String(e));
     } finally {
       setBusy(false);
     }
@@ -73,7 +77,13 @@ export function OpenAiExtras({ providerId = "openaiapi", t }: Props) {
             value={projectId}
             placeholder={config.placeholder}
             spellCheck={false}
-            onChange={(event) => setProjectId(event.target.value)}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? errorId : undefined}
+            onChange={(event) => {
+              editGeneration.current += 1;
+              setProjectId(event.target.value);
+              setError(null);
+            }}
           />
         </label>
         <div className="provider-detail-helper">
@@ -89,7 +99,11 @@ export function OpenAiExtras({ providerId = "openaiapi", t }: Props) {
             {t("Save")}
           </button>
         </div>
-        {error && <div className="provider-detail-error">{error}</div>}
+        {error && (
+          <div id={errorId} className="provider-detail-error">
+            {error}
+          </div>
+        )}
       </section>
     );
   }
