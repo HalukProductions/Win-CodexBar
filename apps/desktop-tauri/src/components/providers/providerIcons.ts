@@ -227,7 +227,7 @@ export const PROVIDER_ICON_REGISTRY: Record<string, ProviderIcon> = {
   augment:     { id: "augment",     brandColor: "#1aa049", fallbackLetter: "A", svgPath: RAW.augment },
   claude:      { id: "claude",      brandColor: "#cc7c5e", fallbackLetter: "◈", svgPath: RAW.claude },
   claudeplatform: { id: "claudeplatform", brandColor: "#cc7c5e", fallbackLetter: "◈", svgPath: RAW.claudeplatform },
-  pi:          { id: "pi",          brandColor: "#7c3aed", fallbackLetter: "P" },
+  pi:          { id: "pi",          brandColor: "#4d9abf", fallbackLetter: "P" },
   codebuff:    { id: "codebuff",    brandColor: "#00ff95", fallbackLetter: "B", svgPath: RAW.codebuff },
   coderabbit:  { id: "coderabbit",  brandColor: "#ff5c35", fallbackLetter: "C", svgPath: RAW.coderabbit },
   codex:       { id: "codex",       brandColor: "#49a3b0", fallbackLetter: "◆", svgPath: RAW.codex },
