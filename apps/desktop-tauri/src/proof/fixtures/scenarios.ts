@@ -38,6 +38,7 @@ export const PROOF_SCENARIO_NAMES = [
   "codex-tool-activity",
   "usage-spend-unknown-tokens",
   "claude-swap-tcr",
+  "claude-swap-tcr-remaining",
   "overview-claude-swap-accounts",
   "overview-claude-swap-accounts-private",
   "overview-tcr-accounts",
@@ -845,6 +846,16 @@ function overviewClaudeSwapAccountsScenario(now: Date, hidePersonalInfo: boolean
   };
 }
 
+/** The tcr pool from `claude-swap-tcr` with usage bars set to show what is left. */
+function claudeSwapTcrRemainingScenario(now: Date): ProofScenario {
+  const base = claudeSwapTcrScenario(now);
+  return {
+    ...base,
+    name: "claude-swap-tcr-remaining",
+    settings: { ...base.settings, showAsUsed: false },
+  };
+}
+
 /** The tcr pool from `claude-swap-tcr` with Overview rows on and cached usage. */
 function overviewTcrAccountsScenario(now: Date, hidePersonalInfo: boolean): ProofScenario {
   const base = claudeSwapTcrScenario(now);
@@ -1041,6 +1052,7 @@ const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   "codex-tool-activity": codexToolActivityScenario,
   "usage-spend-unknown-tokens": usageSpendUnknownTokensScenario,
   "claude-swap-tcr": claudeSwapTcrScenario,
+  "claude-swap-tcr-remaining": claudeSwapTcrRemainingScenario,
   "overview-claude-swap-accounts": (now) => overviewClaudeSwapAccountsScenario(now, false),
   "overview-claude-swap-accounts-private": (now) => overviewClaudeSwapAccountsScenario(now, true),
   "overview-tcr-accounts": (now) => overviewTcrAccountsScenario(now, false),

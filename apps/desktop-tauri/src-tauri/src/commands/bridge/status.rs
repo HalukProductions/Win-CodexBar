@@ -2,9 +2,11 @@ use super::*;
 
 /// Build a compact tray status label from a raw snapshot using the current language.
 /// Localization is done at render time so cached snapshots stay language-neutral.
+/// The percent follows the used/remaining display setting and names which one it is.
 pub(crate) fn compact_tray_status_label(
     window: &RateWindowSnapshot,
     lang: codexbar::settings::Language,
+    show_as_used: bool,
 ) -> String {
     if window.is_informational {
         return window
@@ -13,7 +15,16 @@ pub(crate) fn compact_tray_status_label(
             .unwrap_or_else(|| locale::get_text(lang, locale::LocaleKey::ProviderTextUnavailable));
     }
 
-    let pct = format!("{:.0}%", window.used_percent);
+    let suffix = locale::get_text(
+        lang,
+        if show_as_used {
+            locale::LocaleKey::PanelUsedSuffix
+        } else {
+            locale::LocaleKey::PanelLeftSuffix
+        },
+    );
+    let percent = crate::tray_presentation::display_metric_percent(window, show_as_used);
+    let pct = format!("{percent:.0}% {suffix}");
     if let Some(reset) = compact_reset_description(window, lang) {
         format!("{pct} • {reset}")
     } else {
@@ -218,7 +229,10 @@ mod tests {
         );
 
         assert!(window.description_is_detail);
-        assert_eq!(compact_tray_status_label(&window, Language::English), "13%");
+        assert_eq!(
+            compact_tray_status_label(&window, Language::English, true),
+            "13% used"
+        );
     }
 
     #[test]
@@ -233,9 +247,9 @@ mod tests {
             .with_description_as_detail(),
         );
 
-        let label = compact_tray_status_label(&window, Language::English);
+        let label = compact_tray_status_label(&window, Language::English, true);
 
-        assert!(label.starts_with("13% • "), "{label}");
+        assert!(label.starts_with("13% used • "), "{label}");
         assert!(!label.contains("EUR"), "{label}");
     }
 

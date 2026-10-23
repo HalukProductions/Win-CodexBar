@@ -52,6 +52,7 @@ pub(crate) fn prepend_account_menus(
             &claude_accounts,
             settings.ui_language,
             settings.hide_personal_info,
+            settings.show_as_used,
             claude_usage,
         ),
     );
@@ -294,10 +295,19 @@ fn hidden_account_label(lang: Language, ordinal: usize) -> String {
 /// known to be stale (restored cache, failed checks, or refresh turned off).
 fn claude_usage_summary(
     lang: Language,
+    show_as_used: bool,
     state: Option<&crate::commands::ClaudeAccountUsageState>,
     now: chrono::DateTime<chrono::Utc>,
 ) -> Option<String> {
     let usage = state?.usage.as_ref()?;
+    let suffix = locale::get_text(
+        lang,
+        if show_as_used {
+            LocaleKey::PanelUsedSuffix
+        } else {
+            LocaleKey::PanelLeftSuffix
+        },
+    );
     let parts: Vec<String> = [
         (LocaleKey::ProviderSessionLabel, usage.five_hour.as_ref()),
         (LocaleKey::ProviderWeeklyLabel, usage.seven_day.as_ref()),
@@ -307,11 +317,9 @@ fn claude_usage_summary(
         window
             .filter(|window| !window_has_reset(window, now))
             .map(|window| {
-                format!(
-                    "{} {:.0}%",
-                    locale::get_text(lang, key),
-                    window.used_percent
-                )
+                let used = window.used_percent.clamp(0.0, 100.0);
+                let shown = if show_as_used { used } else { 100.0 - used };
+                format!("{} {shown:.0}% {suffix}", locale::get_text(lang, key))
             })
     })
     .collect();
@@ -333,6 +341,7 @@ fn claude_accounts_menu(
     accounts: &[codexbar::providers::claude::accounts::ClaudeAccount],
     lang: Language,
     hide_personal_info: bool,
+    show_as_used: bool,
     usage: &HashMap<String, crate::commands::ClaudeAccountUsageState>,
 ) -> TrayMenuEntry {
     let text = |key| locale::get_text(lang, key);
@@ -349,7 +358,8 @@ fn claude_accounts_menu(
                     |org| format!("{} ({org})", account.email),
                 )
             };
-            let label = match claude_usage_summary(lang, usage.get(&account.id), now) {
+            let label = match claude_usage_summary(lang, show_as_used, usage.get(&account.id), now)
+            {
                 Some(summary) => format!("{label} - {summary}"),
                 None => label,
             };
@@ -621,8 +631,13 @@ mod tests {
             is_saved: true,
             ..current.clone()
         };
-        let menu =
-            claude_accounts_menu(&[current, saved], Language::English, false, &HashMap::new());
+        let menu = claude_accounts_menu(
+            &[current, saved],
+            Language::English,
+            false,
+            true,
+            &HashMap::new(),
+        );
         assert_eq!(menu.id.as_deref(), Some("claude_accounts"));
         assert_eq!(menu.children[0].checked, Some(true));
         assert!(menu.children[0].disabled);
@@ -633,7 +648,7 @@ mod tests {
         assert!(!menu.children[1].disabled);
         assert!(menu_contains(&menu.children, "add_claude_account"));
         assert!(menu_contains(
-            &claude_accounts_menu(&[], Language::English, false, &HashMap::new()).children,
+            &claude_accounts_menu(&[], Language::English, false, true, &HashMap::new()).children,
             "add_claude_account"
         ));
     }
@@ -667,12 +682,12 @@ mod tests {
                 ..Default::default()
             },
         );
-        let menu = claude_accounts_menu(&accounts, Language::English, false, &usage);
+        let menu = claude_accounts_menu(&accounts, Language::English, false, true, &usage);
         let session = locale::get_text(Language::English, LocaleKey::ProviderSessionLabel);
         let weekly = locale::get_text(Language::English, LocaleKey::ProviderWeeklyLabel);
         assert_eq!(
             menu.children[0].label,
-            format!("a:org@example.com - {session} 42%, {weekly} 10%")
+            format!("a:org@example.com - {session} 42% used, {weekly} 10% used")
         );
         // A row with no successful check recorded shows no percentage.
         assert_eq!(menu.children[1].label, "b:org@example.com");
@@ -703,22 +718,26 @@ mod tests {
 
         let expired_session = state(Some("2026-10-18T05:00:00Z"), Some("2026-10-20T00:00:00Z"));
         assert_eq!(
-            claude_usage_summary(Language::English, Some(&expired_session), now),
-            Some(format!("{weekly} 10%"))
+            claude_usage_summary(Language::English, true, Some(&expired_session), now),
+            Some(format!("{weekly} 10% used"))
         );
         let both_expired = state(
             Some("2026-10-18T12:00:00Z"),
             Some("2026-10-17T00:00:00+02:00"),
         );
         assert_eq!(
-            claude_usage_summary(Language::English, Some(&both_expired), now),
+            claude_usage_summary(Language::English, true, Some(&both_expired), now),
             None
         );
         // Missing or unparseable reset times keep the window.
         let unknown = state(None, Some("not a date"));
         assert_eq!(
-            claude_usage_summary(Language::English, Some(&unknown), now),
-            Some(format!("{session} 42%, {weekly} 10%"))
+            claude_usage_summary(Language::English, true, Some(&unknown), now),
+            Some(format!("{session} 42% used, {weekly} 10% used"))
+        );
+        assert_eq!(
+            claude_usage_summary(Language::English, false, Some(&unknown), now),
+            Some(format!("{session} 58% left, {weekly} 90% left"))
         );
     }
 
@@ -796,6 +815,7 @@ mod tests {
             &[claude, claude_other],
             Language::English,
             true,
+            true,
             &HashMap::new(),
         );
         let grok_menu = grok_accounts_menu(&[grok], Language::English, true);
@@ -820,6 +840,7 @@ mod tests {
                 claude_menu_account("a:org"),
             ],
             Language::English,
+            true,
             true,
             &HashMap::new(),
         );

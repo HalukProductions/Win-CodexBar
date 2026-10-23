@@ -294,6 +294,35 @@ describe("ClaudeSwapAccountsSection", () => {
     expect(mocks.claudeSwapAccountSwitch).not.toHaveBeenCalled();
   });
 
+  it("names quota percents as left by default and as used when the setting asks", async () => {
+    const account: ClaudeSwapAccount = {
+      ...active,
+      scoped: [{ name: "Opus", usedPercent: 30, resetsAt: null }],
+      historicalUsage: {
+        fiveHour: { usedPercent: 44, resetsAt: null },
+        sevenDay: null,
+        scoped: [],
+        spend: null,
+        fetchedAt: "2026-09-12T00:45:00Z",
+        provenance: "source_reported_last_good",
+      },
+    };
+    mocks.claudeSwapAccountsList.mockResolvedValue(enabledState([account]));
+    const { rerender } = render(
+      <ClaudeSwapAccountsSection t={t} enabled executablePath="~/bin/cswap" />,
+    );
+    await screen.findByText("ProviderSession 88% PanelLeftSuffix \u00b7 Opus 70% PanelLeftSuffix");
+    expect(screen.getByText(/ClaudeSwapHistoricalUsage: ProviderSession 56% PanelLeftSuffix/)).toBeTruthy();
+    expect(screen.queryByText(/PanelUsedSuffix/)).toBeNull();
+
+    rerender(
+      <ClaudeSwapAccountsSection t={t} enabled executablePath="~/bin/cswap" showAsUsed />,
+    );
+    await screen.findByText("ProviderSession 12% PanelUsedSuffix \u00b7 Opus 30% PanelUsedSuffix");
+    expect(screen.getByText(/ClaudeSwapHistoricalUsage: ProviderSession 44% PanelUsedSuffix/)).toBeTruthy();
+    expect(screen.queryByText(/PanelLeftSuffix/)).toBeNull();
+  });
+
   it("renders disabled, spend, and display-only historical usage details", async () => {
     const account: ClaudeSwapAccount = {
       ...switchable,

@@ -218,6 +218,7 @@ export function ClaudeAccountsSection({
         enabled={claudeSwapEnabled}
         executablePath={claudeSwapExecutablePath}
         source={claudeSwapSource}
+        showAsUsed={showAsUsed}
       />
     </>
   );
