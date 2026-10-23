@@ -5,8 +5,8 @@ use uuid::Uuid;
 
 use codexbar::codex_accounts::{
     AccountStore, CodexAccount, CodexAccountApi, CodexAccountManager, CodexAccountManagerError,
-    CodexAccountRuntime, CodexAccountSource, CodexApiError, CodexSwitchResult, SnapshotStore,
-    display_names_by_id, ordinals_by_id, restart_codex_desktop,
+    CodexAccountRuntime, CodexAccountSource, CodexApiError, CodexSwitchResult, RegistryOperation,
+    SnapshotStore, display_names_by_id, ordinals_by_id, restart_codex_desktop,
 };
 use codexbar::notifications::CredentialAlertPolicy;
 use codexbar::settings::Settings;
@@ -84,10 +84,18 @@ fn reconcile_codex_accounts(
 
 /// Persist the given accounts to the account store.
 pub(crate) fn persist_codex_accounts(accounts: &[CodexAccount]) -> Result<(), String> {
+    persist_codex_accounts_as(RegistryOperation::RegistryWrite, accounts)
+}
+
+/// Persist the given accounts, tagging the registry-write log with `operation`.
+pub(crate) fn persist_codex_accounts_as(
+    operation: RegistryOperation,
+    accounts: &[CodexAccount],
+) -> Result<(), String> {
     let store = AccountStore::new();
     let (_existing, removed) = store.load().map_err(|e| e.to_string())?;
     store
-        .save(accounts, Some(&removed))
+        .save_with_operation(accounts, Some(&removed), operation)
         .map_err(|e| e.to_string())
 }
 
@@ -317,7 +325,7 @@ pub async fn codex_account_add(app: tauri::AppHandle) -> Result<CodexAccount, St
         .map_err(into_user_message)?;
 
     crate::auto_resume::clear(&app, ProviderId::Codex);
-    if let Err(e) = refresh_persisted_accounts(app) {
+    if let Err(e) = refresh_persisted_accounts(app, RegistryOperation::AddOrReauth) {
         tracing::error!("failed to persist accounts after add: {e}");
     }
     Ok(account)
@@ -344,7 +352,7 @@ pub async fn codex_account_reauthenticate(
     // before refreshing usage so every surface observes the new session. The
     // logged-in record is transient: reconciliation can drop or replace the
     // ambient identity, so report only a record that was actually persisted.
-    let account = match refresh_persisted_accounts(app.clone()) {
+    let account = match refresh_persisted_accounts(app.clone(), RegistryOperation::AddOrReauth) {
         Ok(accounts) => canonical_reauthenticated_account(&accounts, &authenticated),
         Err(e) => {
             // Credential replacement is already committed, but the reconciled
@@ -392,7 +400,7 @@ pub fn codex_account_remove(app: tauri::AppHandle, id: String) -> Result<(), Str
         .into_iter()
         .filter(|account| account.id.to_string() != id)
         .collect();
-    persist_codex_accounts(&remaining)?;
+    persist_codex_accounts_as(RegistryOperation::Remove, &remaining)?;
     crate::auto_resume::clear(&app, ProviderId::Codex);
     events::emit_settings_changed(&app);
     accounts_changed(&app);
@@ -530,7 +538,7 @@ pub async fn codex_account_fetch(
         let _ = SnapshotStore::new().save(&snapshots);
     }
 
-    if refresh_persisted_accounts(app).is_err() {
+    if refresh_persisted_accounts(app, RegistryOperation::RegistryWrite).is_err() {
         // Non-fatal: the snapshot was still fetched.
     }
     Ok(snapshot)
@@ -575,9 +583,12 @@ pub async fn codex_account_restart_desktop(
 ///
 /// Returns the post-reconciliation accounts, which is exactly the set that was
 /// persisted, so callers can report a canonical account from persisted state.
-fn refresh_persisted_accounts(app: tauri::AppHandle) -> Result<Vec<CodexAccount>, String> {
+fn refresh_persisted_accounts(
+    app: tauri::AppHandle,
+    operation: RegistryOperation,
+) -> Result<Vec<CodexAccount>, String> {
     let accounts = load_codex_accounts()?;
-    persist_codex_accounts(&accounts)?;
+    persist_codex_accounts_as(operation, &accounts)?;
     events::emit_settings_changed(&app);
     accounts_changed(&app);
     Ok(accounts)
