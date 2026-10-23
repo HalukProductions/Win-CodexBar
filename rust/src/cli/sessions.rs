@@ -76,6 +76,62 @@ mod tests {
         assert_eq!(decoded.dialect, None);
         assert_eq!(decoded.session_name, None);
     }
+
+    /// The payload a remote Windows host prints is built from the real
+    /// `SessionsOutput` encoder, so this cannot drift from `codexbar sessions`.
+    #[test]
+    fn windows_cli_envelope_decodes_as_a_remote_payload() {
+        let mut file_only = sample();
+        file_only.id = "codex-file".into();
+        file_only.pid = None;
+        file_only.state = AgentSessionState::Idle;
+        file_only.transcript_path = Some(r"C:\Users\proof\.codex\rollout.jsonl".into());
+        file_only.activity.last_activity_at = chrono::DateTime::from_timestamp(1_785_000_000, 0);
+        file_only.focus_target = AgentSessionFocusTarget::Transcript {
+            transcript_path: r"C:\Users\proof\.codex\rollout.jsonl".into(),
+        };
+        let mut pi_session = sample();
+        pi_session.id = "pid:7".into();
+        pi_session.provider = AgentSessionProvider::Pi;
+        pi_session.dialect = Some(crate::agent_sessions::PiSessionDialect::Pi);
+        pi_session.session_name = Some("Proof title".into());
+        let sessions = vec![sample(), file_only, pi_session];
+
+        for (json_v2, pretty) in [(true, false), (true, true), (false, false)] {
+            let output = SessionsOutput {
+                sessions: sessions_for_json(&sessions, json_v2),
+                errors: vec!["tailscale: Tailscale status failed"],
+            };
+            let body = if pretty {
+                serde_json::to_string_pretty(&output).unwrap()
+            } else {
+                serde_json::to_string(&output).unwrap()
+            };
+
+            let result = crate::agent_sessions::RemoteSessionFetcher::decode_remote_sessions(
+                "proof@win-box",
+                &body,
+            )
+            .expect("Windows envelope decodes");
+
+            let expected = sessions_for_json(&sessions, json_v2)
+                .into_iter()
+                .map(|session| AgentSession {
+                    host: "proof@win-box".into(),
+                    ..session.clone()
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(result.host, "proof@win-box");
+            assert_eq!(
+                result.sessions, expected,
+                "json_v2={json_v2} pretty={pretty}"
+            );
+            assert_eq!(
+                result.error.as_deref(),
+                Some("Remote host reported: tailscale: Tailscale status failed")
+            );
+        }
+    }
 }
 use crate::agent_sessions::{
     AgentSession, AgentSessionDiscovery, AgentSessionDiscoveryMode, AgentSessionDiscoveryResult,
