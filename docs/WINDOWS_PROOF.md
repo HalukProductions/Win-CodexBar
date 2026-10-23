@@ -86,6 +86,50 @@ When it is set in proof mode:
 
 The app ignores the variable outside proof mode. It logs a warning and uses normal placement when the value isn't two whole numbers separated by a comma, or when no monitor contains the point.
 
+### Read and activate the tray menu
+
+A right-click on the tray icon takes focus, so a proof run can't open the tray menu the normal way. Two proof-only hooks cover it.
+
+`CODEXBAR_PROOF_TRAY_MENU_DUMP` names an absolute path. In proof mode the app writes the live tray context menu there as JSON after startup and after every menu rebuild (provider toggles, status updates after a refresh, the float bar toggle, Stay Awake). Each write replaces the file in one step, so a reader sees a whole document. Outside proof mode, or when the variable is unset, nothing is written.
+
+```powershell
+$env:CODEXBAR_PROOF_TRAY_MENU_DUMP = 'C:\proof\tray-menu.json'
+```
+
+The document holds `generation` (1 for the first write in a process, then +1 per write), `timestamp` (UTC, RFC 3339) and `items`. Each node has `id`, `text`, `kind`, `enabled`, `checked` and `children`:
+
+- `kind` is `item`, `check`, `submenu`, `separator` or `icon`.
+- `checked` is `true` or `false` for `check` rows and `null` otherwise.
+- `id` is `null` for separators.
+- `text` is the label as built, so Hide Personal Info masking shows here as it does on screen.
+
+```json
+{
+  "generation": 2,
+  "timestamp": "2026-05-01T12:00:00.123456789+00:00",
+  "items": [
+    { "id": "status_claude", "text": "Claude 60% session", "kind": "item", "enabled": false, "checked": null, "children": [] },
+    { "id": null, "text": "", "kind": "separator", "enabled": true, "checked": null, "children": [] },
+    { "id": "refresh", "text": "Refresh all", "kind": "item", "enabled": true, "checked": null, "children": [] },
+    { "id": "toggle_float_bar", "text": "Show Float Bar", "kind": "check", "enabled": true, "checked": false, "children": [] },
+    { "id": "providers", "text": "Providers", "kind": "submenu", "enabled": true, "checked": null, "children": [
+      { "id": "toggle_provider:codex", "text": "Codex", "kind": "check", "enabled": true, "checked": true, "children": [] }
+    ] }
+  ]
+}
+```
+
+`proof_activate_tray_item` runs the handler a native click on a row would run. Call it through the Tauri bridge from a CDP session attached to a CodexBar page target (found by URL, never the first target):
+
+```js
+await window.__TAURI_INTERNALS__.invoke('proof_activate_tray_item', { id: 'toggle_float_bar' });
+```
+
+- It fails with an error unless proof mode is active and `id` is an enabled row of the menu now on the tray that maps to a menu action. Status rows (`status_*`), disabled rows, unknown ids and rows the current menu doesn't show (such as `toggle_provider:<id>` for a provider missing from the menu) are refused. The error doesn't echo the id.
+- The check and the handler run on the main thread, after any menu install queued before the call. Nothing on screen opens or takes focus unless the action itself opens a window.
+- Some actions write to the running profile. A provider toggle saves `settings.json`, and Quit exits the app. Use an isolated `APPDATA` home for proof runs.
+- Rows that change a setting show the new state once the menu is rebuilt. The call returns when the handler's synchronous part is done, and some rebuilds and all account actions run after that, so the dump can still show the old state right after the call. Poll for a higher `generation` before you read the state.
+
 ### Report a fixed system theme
 
 `CODEXBAR_PROOF_SYSTEM_THEME` makes the app report a fixed Windows app theme to `get_system_theme`. The `auto` theme in Settings then follows that value, so both directions can be proven without changing the real OS setting.

@@ -674,7 +674,7 @@ fn fill_window_pace(
     now: chrono::DateTime<chrono::Utc>,
     work_days: Option<u8>,
 ) {
-    if w.pace.is_some() || w.is_informational {
+    if (w.pace.is_some() && w.daily_target.is_some()) || w.is_informational {
         return;
     }
     let Some(resets_at) = w
@@ -684,12 +684,19 @@ fn fill_window_pace(
     else {
         return;
     };
-    let window = codexbar::core::RateWindow::with_details(
+    let mut window = codexbar::core::RateWindow::with_details(
         w.used_percent,
         w.window_minutes,
         Some(resets_at.with_timezone(&chrono::Utc)),
         w.reset_description.clone(),
     );
+    window.reset_regenerates = w.reset_regenerates;
+    if w.daily_target.is_none() {
+        w.daily_target = crate::commands::pace::daily_target(id, &window, now);
+    }
+    if w.pace.is_some() {
+        return;
+    }
     w.pace = match id {
         Some(id) => crate::commands::pace::WindowPaceSnapshot::for_lane(
             id,
@@ -1024,6 +1031,25 @@ mod tests {
         assert!(pace.reset_window);
         // Extras keep plain lane pace: no length means no pace.
         assert!(snapshot.extra_rate_windows[0].window.pace.is_none());
+    }
+
+    #[test]
+    fn seed_daily_target_skips_regenerating_windows() {
+        use chrono::TimeZone;
+        let now = chrono::Utc.with_ymd_and_hms(2026, 2, 15, 0, 0, 0).unwrap();
+        let seed = |regenerates: bool| {
+            let json = format!(
+                r#"{{"providerId":"copilot","displayName":"Copilot",
+                "primary":{{"usedPercent":60.0,"resetsAt":"2026-03-01T00:00:00Z",
+                            "resetRegenerates":{regenerates}}}}}"#
+            );
+            let mut snapshot: ProviderUsageSnapshot = serde_json::from_str(&json).unwrap();
+            normalize_seed_snapshot(&mut snapshot);
+            fill_seed_pace(&mut snapshot, now, None);
+            snapshot.primary.daily_target
+        };
+        assert!(seed(false).is_some());
+        assert_eq!(seed(true), None);
     }
 
     #[test]

@@ -545,9 +545,7 @@ pub(crate) fn named_extra_status(
         .map(|extra| extra.title.as_str())
         .filter(|title| !title.trim().is_empty())
         .unwrap_or(declared.label);
-    let reading = extra
-        .map(|extra| &extra.window)
-        .filter(|window| !window.is_informational)
+    let reading = crate::usage_metric::named_extra_reading(snapshot, declared)
         .map(|window| {
             let label = crate::commands::compact_tray_status_label(window, language, show_as_used);
             if snapshot.quota_estimated {

@@ -346,6 +346,7 @@ codexbar config disable cursor --json
 codexbar config set-source --provider codex --source cli
 printf '%s' $env:OPENROUTER_API_KEY | codexbar config set-api-key -p openrouter --stdin
 codexbar config claude-code-credentials status --json
+codexbar config login --provider copilot
 codexbar config preferences export --file C:\temp\codexbar-preferences.json
 codexbar config preferences import --file C:\temp\codexbar-preferences.json
 codexbar config validate
@@ -361,6 +362,7 @@ codexbar config validate
 | `enable`, `disable` | Turns a provider on or off and saves the setting. |
 | `set-source` | Saves a provider's usage source (`--source auto\|web\|cli\|oauth`) without changing whether it is enabled. `auto` returns to the default. |
 | `set-api-key` | Stores a provider API key. `--stdin` reads it from stdin. `--no-enable` stores it without enabling the provider. |
+| `login` | Signs in to GitHub Copilot with GitHub's device-code flow, or to Grok and Kiro through their own CLIs. Other providers are rejected. See [Sign in from the CLI](#sign-in-from-the-cli). |
 | `path` | Shows the configuration file paths. |
 | `preferences export`, `preferences import` | Exports or imports portable preferences. See [CONFIGURATION.md](./CONFIGURATION.md#portable-preferences). |
 | `claude-code-credentials` | `allow`, `deny` or `status`. |
@@ -379,6 +381,81 @@ codexbar config validate
 `claude-code-credentials` controls whether CodexBar may read and refresh Claude Code's own OAuth credentials (`~/.claude/.credentials.json` or Windows Credential Manager). It is the same choice as the desktop setting, and it is off by default. While it is off, Claude Auto falls back to CLI usage, which has less detail. `allow` and `deny` save the choice. `status` only reports it.
 
 `config preferences import` changes the saved settings. Restart a running CodexBar afterwards.
+
+### Sign in from the CLI
+
+```powershell
+codexbar config login --provider copilot
+codexbar config login --provider grok
+codexbar config login --provider kiro --json
+```
+
+`config login` supports three providers: `copilot`, `grok` and `kiro`. The output and exit codes are the same for all three. Each provider's own sign-in differs, as described below.
+
+#### GitHub Copilot
+
+`config login --provider copilot` starts GitHub's device-code flow. It prints the verification URL and a one-time code, then waits while you approve the code in your browser. The code expires after the lifetime GitHub returns, and the command stops when it does.
+
+Text output is two lines and then a confirmation:
+
+```text
+https://github.com/login/device
+ABCD-1234
+Connected
+```
+
+The token is never printed. Once you approve the code, the account is saved the same way the desktop app's Copilot sign-in saves it. The account is matched by GitHub identity, so signing in again updates the existing account instead of adding a second one. Its label is the GitHub login, with the plan in brackets when GitHub reports one.
+
+A successful login also turns the Copilot provider on in settings, as the macOS app does. The desktop app's sign-in does not change the enabled state, so enable Copilot there yourself if you use that path.
+
+#### Grok
+
+`config login --provider grok` runs `grok login --oauth` from Grok Build, the same sign-in the desktop app's Grok account add uses. Grok opens the browser itself, so the CLI prints only `Waiting for the browser sign-in to finish.` (in JSON, an `authorization_pending` line with no URL). Grok's own output is not shown. The sign-in waits up to 5 minutes.
+
+Once the sign-in finishes, the account is saved to CodexBar's Grok accounts the same way the desktop app saves it. Then the Grok provider is turned on. If the Grok CLI is not installed, the command exits with `8`. Set `CODEXBAR_GROK_CLI_PATH` to a `grok` executable to use that file; the variable is used only when it names an existing file.
+
+#### Kiro
+
+`config login --provider kiro` runs `kiro-cli login`. The command first prints `Waiting for the browser sign-in to finish.` (in JSON, an `authorization_pending` line with no URL). kiro-cli then prints a sign-in link and opens the browser. The link is printed as soon as the CLI shows it: on its own line in text mode, or as a second `authorization_pending` line with `verificationURI` in JSON mode. The sign-in waits up to 120 seconds, the same as the desktop sign-in.
+
+kiro-cli keeps the credential itself. CodexBar does not copy it into its own store. A zero exit code therefore means kiro-cli reported a successful sign-in. Then the Kiro provider is turned on. If kiro-cli is not installed, the command exits with `8`. `CODEXBAR_KIRO_CLI_PATH` selects a specific `kiro-cli` executable, as it does for usage.
+
+#### JSON events
+
+`--json` prints one JSON object per line, using upstream's field names:
+
+| Line | Shape |
+| --- | --- |
+| Code issued (Copilot) | `{"status":"authorization_pending","verificationURI":"https://github.com/login/device","userCode":"ABCD-1234","expiresIn":900}` |
+| Kiro sign-in link | `{"status":"authorization_pending","verificationURI":"<link printed by kiro-cli>"}` |
+| Waiting in the browser (Grok; also the first line for Kiro) | `{"status":"authorization_pending"}` |
+| Approved and saved | `{"status":"authorized"}`. This line is written only after the credential is saved and the provider is enabled. |
+| Cancelled (Ctrl-C) | `{"status":"cancelled"}` |
+| Failed | `{"status":"failed","reason":"denied","error":"GitHub device login failed: Access denied by user"}`. `reason` is one of `denied`, `expired`, `cancelled`, `missing_binary` or `error`. The exit code table below maps each reason to its exit code. |
+
+Text mode prints the URL and code for Copilot. Grok prints only `Waiting for the browser sign-in to finish.` Kiro prints that waiting line, then the sign-in URL once kiro-cli shows it. On success every provider prints `Connected`. Errors go to stderr as `Error: <message>`. Ctrl-C ends the login with `Error: Login cancelled.` and exit code `7`.
+
+### Exit codes
+
+| Exit code | Meaning | Final `--json` line |
+| --- | --- | --- |
+| `0` | Signed in. The credential is saved (Copilot and Grok) or kiro-cli reported success (Kiro), and the provider is enabled. | `{"status":"authorized"}` |
+| `1` | Any other failure: network error, provider server error, or a settings or store write error. Usually nothing is saved. If only the settings write that enables the provider fails, the sign-in already finished and the error says so: `Signed in and saved the account, but could not enable Copilot` (or `Grok`), or `Signed in, but could not enable Kiro`. Running the login again updates that account. | `{"status":"failed","reason":"error",...}` |
+| `5` | The user denied the request on GitHub (`access_denied`). Copilot only. Nothing is saved. | `{"status":"failed","reason":"denied",...}` |
+| `6` | The sign-in expired before approval: the GitHub device code (`expired_token`), or the Grok or Kiro sign-in window ran out. Nothing is saved. | `{"status":"failed","reason":"expired",...}` |
+| `7` | Stopped with Ctrl-C before the credential was saved. Nothing is saved. | `{"status":"cancelled"}` |
+| `8` | The provider's CLI is not installed: `grok` (Grok) or `kiro-cli` (Kiro). Copilot never uses this code. Nothing is saved. | `{"status":"failed","reason":"missing_binary",...}` |
+| `64` | Invalid arguments, including an unsupported `--provider`. No network call is made. | None; the error goes to stderr |
+
+Only exit code `0` guarantees both that the sign-in finished and that the provider is enabled. For Kiro, kiro-cli keeps the credential, so `0` means kiro-cli reported a successful sign-in. Codes `5`, `6`, `7`, `8` and `64` mean nothing was saved; code `1` can follow a finished sign-in, as described above.
+
+Polling follows the interval GitHub returns. Each `slow_down` response adds 5 seconds for the rest of the login. GitHub's `access_denied` and `expired_token` responses end the login with the friendly errors above, and nothing is saved.
+
+Other providers fail before any network call: `Login is supported for copilot, grok and kiro. Use --provider copilot, grok or kiro.`
+
+The Copilot login always signs in on github.com. This port has no GitHub Enterprise host option for the login flow, and the desktop app's sign-in behaves the same way.
+
+For tests and proof runs, `CODEXBAR_GITHUB_BASE_URL` replaces both GitHub roots with one origin. The device-code requests (`/login/device/code`, `/login/oauth/access_token`) and the identity and usage requests (`/user`, `/copilot_internal/user`) all go there. Only `https://` URLs, or loopback `http://` URLs (`127.0.0.1`, `localhost`, `[::1]`), with no path, query or credentials are accepted. Anything else is ignored with a warning, and the default GitHub roots are used. The variable also applies to the desktop app's Copilot sign-in and usage fetches, so unset it for normal use.
 
 ### Separate config file (`CODEXBAR_CONFIG`)
 

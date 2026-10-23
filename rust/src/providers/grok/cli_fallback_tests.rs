@@ -1,3 +1,4 @@
+use super::tests::billing_response_with_percent;
 use super::*;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -389,4 +390,281 @@ async fn oauth_login_missing_never_reaches_the_cli() {
 
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     assert!(step.is_none());
+}
+
+/// A wallet-only ACP answer: an active weekly period and prepaid balance, no percent.
+fn wallet_only_answer(now: DateTime<Utc>) -> BearerBilling {
+    BearerBilling {
+        billing: GrokBillingSnapshot {
+            used_percent: None,
+            used_percent_is_wire_published: false,
+            used_percent_is_implicit_zero: false,
+            resets_at: Some(now + chrono::Duration::days(6)),
+            window_minutes: Some(10_080),
+            product_usage: Vec::new(),
+        },
+        subscription_tier: Some("SuperGrok Heavy".to_string()),
+        prepaid_balance_usd: Some(12.5),
+    }
+}
+
+fn varint(mut value: u64) -> Vec<u8> {
+    let mut encoded = Vec::new();
+    loop {
+        let byte = (value & 0x7f) as u8;
+        value >>= 7;
+        if value == 0 {
+            encoded.push(byte);
+            return encoded;
+        }
+        encoded.push(byte | 0x80);
+    }
+}
+
+fn length_field(field: u64, contents: &[u8]) -> Vec<u8> {
+    let mut encoded = varint((field << 3) | 2);
+    encoded.extend(varint(contents.len() as u64));
+    encoded.extend(contents);
+    encoded
+}
+
+fn timestamp_message(seconds: i64) -> Vec<u8> {
+    let mut message = vec![0x08];
+    message.extend(varint(seconds as u64));
+    message
+}
+
+/// A gRPC-web response for an active weekly period whose usage is omitted, so
+/// the zero is implied. Timestamps are relative to `now` to keep the period active.
+fn implicit_zero_weekly_response(now: DateTime<Utc>) -> Vec<u8> {
+    let mut period = vec![0x08, 0x02];
+    period.extend(length_field(
+        2,
+        &timestamp_message((now - chrono::Duration::days(1)).timestamp()),
+    ));
+    period.extend(length_field(
+        3,
+        &timestamp_message((now + chrono::Duration::days(6)).timestamp()),
+    ));
+    let payload = length_field(1, &length_field(8, &period));
+    let mut response = vec![0x00];
+    response.extend(
+        u32::try_from(payload.len())
+            .expect("test payload length fits u32")
+            .to_be_bytes(),
+    );
+    response.extend(payload);
+    response
+}
+
+#[tokio::test]
+async fn wallet_only_cli_answer_adopts_a_validated_zero_week() {
+    let now = Utc::now();
+    let mut server = mockito::Server::new_async().await;
+    let grpc = server
+        .mock("POST", "/billing")
+        .with_status(200)
+        .with_body(implicit_zero_weekly_response(now))
+        .expect(1)
+        .create_async()
+        .await;
+    let provider =
+        GrokProvider::new().with_billing_endpoint_for_tests(format!("{}/billing", server.url()));
+
+    let answer = provider
+        .resolve_cli_unknown_usage(
+            wallet_only_answer(now),
+            &GrokCredentials::from_bearer("token"),
+        )
+        .await;
+
+    grpc.assert_async().await;
+    assert_eq!(answer.billing.used_percent, Some(0.0));
+    assert!(answer.billing.used_percent_is_implicit_zero);
+    assert_eq!(answer.billing.window_minutes, Some(10_080));
+    assert_eq!(answer.prepaid_balance_usd, Some(12.5));
+    assert_eq!(answer.subscription_tier.as_deref(), Some("SuperGrok Heavy"));
+    let result = result_from_billing(answer.billing, "grok-cli", None, None, None);
+    assert_eq!(result.usage.primary.used_percent, 0.0);
+}
+
+#[tokio::test]
+async fn wallet_only_cli_answer_adopts_a_wire_published_percent() {
+    let now = Utc::now();
+    let mut server = mockito::Server::new_async().await;
+    let grpc = server
+        .mock("POST", "/billing")
+        .with_status(200)
+        .with_body(billing_response_with_percent(37.0))
+        .expect(1)
+        .create_async()
+        .await;
+    let provider =
+        GrokProvider::new().with_billing_endpoint_for_tests(format!("{}/billing", server.url()));
+
+    let answer = provider
+        .resolve_cli_unknown_usage(
+            wallet_only_answer(now),
+            &GrokCredentials::from_bearer("token"),
+        )
+        .await;
+
+    grpc.assert_async().await;
+    assert_eq!(answer.billing.used_percent, Some(37.0));
+    assert!(answer.billing.used_percent_is_wire_published);
+    assert_eq!(answer.prepaid_balance_usd, Some(12.5));
+    assert_eq!(answer.billing.window_minutes, Some(10_080));
+}
+
+#[tokio::test]
+async fn cli_answer_with_a_percent_is_never_enriched() {
+    let mut server = mockito::Server::new_async().await;
+    let grpc = server
+        .mock("POST", "/billing")
+        .with_status(200)
+        .with_body(billing_response_with_percent(90.0))
+        .expect(0)
+        .create_async()
+        .await;
+    let provider =
+        GrokProvider::new().with_billing_endpoint_for_tests(format!("{}/billing", server.url()));
+
+    let answer = provider
+        .resolve_cli_unknown_usage(cli_answer(), &GrokCredentials::from_bearer("token"))
+        .await;
+
+    grpc.assert_async().await;
+    assert_eq!(answer.billing.used_percent, Some(64.0));
+}
+
+#[tokio::test]
+async fn failed_percent_enrichment_keeps_the_wallet_with_unknown_usage() {
+    let now = Utc::now();
+    let mut server = mockito::Server::new_async().await;
+    let grpc = server
+        .mock("POST", "/billing")
+        .with_status(500)
+        .expect(1)
+        .create_async()
+        .await;
+    let provider =
+        GrokProvider::new().with_billing_endpoint_for_tests(format!("{}/billing", server.url()));
+
+    let answer = provider
+        .resolve_cli_unknown_usage(
+            wallet_only_answer(now),
+            &GrokCredentials::from_bearer("token"),
+        )
+        .await;
+
+    grpc.assert_async().await;
+    assert_eq!(answer.billing.used_percent, None);
+    assert_eq!(answer.prepaid_balance_usd, Some(12.5));
+    assert_eq!(answer.billing.window_minutes, Some(10_080));
+}
+
+#[tokio::test]
+async fn expired_credentials_skip_percent_enrichment() {
+    let now = Utc::now();
+    let mut server = mockito::Server::new_async().await;
+    let grpc = server
+        .mock("POST", "/billing")
+        .with_status(200)
+        .with_body(implicit_zero_weekly_response(now))
+        .expect(0)
+        .create_async()
+        .await;
+    let provider =
+        GrokProvider::new().with_billing_endpoint_for_tests(format!("{}/billing", server.url()));
+    let mut credentials = GrokCredentials::from_bearer("stale-token");
+    credentials.expires_at = Some(now - chrono::Duration::minutes(1));
+
+    let answer = provider
+        .resolve_cli_unknown_usage(wallet_only_answer(now), &credentials)
+        .await;
+
+    grpc.assert_async().await;
+    assert_eq!(answer.billing.used_percent, None);
+}
+
+#[tokio::test]
+async fn acp_wallet_answer_is_enriched_on_the_fallback_path() {
+    let mut server = mockito::Server::new_async().await;
+    server
+        .mock("GET", "/credits")
+        .with_status(500)
+        .create_async()
+        .await;
+    // The bearer phase and the enrichment each ask grok.com once; both fail here.
+    let grpc = server
+        .mock("POST", "/billing")
+        .with_status(500)
+        .expect(2)
+        .create_async()
+        .await;
+    let (calls, run) = counting_cli(|| Ok(wallet_only_answer(Utc::now())));
+    let provider = GrokProvider::new()
+        .with_billing_endpoint_for_tests(format!("{}/billing", server.url()))
+        .with_credits_proxy_endpoint_for_tests(format!("{}/credits", server.url()))
+        .with_cli_billing_for_tests(run);
+
+    let answer = provider
+        .fetch_bearer_or_cli_billing(
+            &GrokCredentials::from_bearer("token"),
+            GrokAuthKind::Cli,
+            &FetchContext::default(),
+        )
+        .await
+        .unwrap();
+
+    grpc.assert_async().await;
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(answer.billing.used_percent, None);
+    assert_eq!(answer.prepaid_balance_usd, Some(12.5));
+}
+
+#[tokio::test]
+async fn acp_wallet_answer_adopts_the_enriched_percent_on_the_fallback_path() {
+    let mut server = mockito::Server::new_async().await;
+    server
+        .mock("GET", "/credits")
+        .with_status(500)
+        .create_async()
+        .await;
+    // mockito serves the first matching mock that still expects hits, so the
+    // bearer phase gets the failure and the enrichment gets the percent.
+    let bearer_billing = server
+        .mock("POST", "/billing")
+        .with_status(500)
+        .expect(1)
+        .create_async()
+        .await;
+    let enrichment = server
+        .mock("POST", "/billing")
+        .with_status(200)
+        .with_body(billing_response_with_percent(37.0))
+        .expect(1)
+        .create_async()
+        .await;
+    let (calls, run) = counting_cli(|| Ok(wallet_only_answer(Utc::now())));
+    let provider = GrokProvider::new()
+        .with_billing_endpoint_for_tests(format!("{}/billing", server.url()))
+        .with_credits_proxy_endpoint_for_tests(format!("{}/credits", server.url()))
+        .with_cli_billing_for_tests(run);
+
+    let answer = provider
+        .fetch_bearer_or_cli_billing(
+            &GrokCredentials::from_bearer("token"),
+            GrokAuthKind::Cli,
+            &FetchContext::default(),
+        )
+        .await
+        .unwrap();
+
+    bearer_billing.assert_async().await;
+    enrichment.assert_async().await;
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(answer.billing.used_percent, Some(37.0));
+    assert!(answer.billing.used_percent_is_wire_published);
+    assert_eq!(answer.prepaid_balance_usd, Some(12.5));
 }

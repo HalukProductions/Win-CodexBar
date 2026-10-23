@@ -13,16 +13,17 @@
 
 use reqwest::Client;
 
+use super::code_api::MISSING_WEEKLY_DESCRIPTION;
 use super::credential::KimiWebCredential;
 use super::desktop_session::desktop_credential;
 use super::local_storage::local_storage_tokens;
 use super::{
     KIMI_SUBSCRIPTION_SERVICE, KIMI_SUBSCRIPTION_STATS_SERVICE, KIMI_WEB_USAGE_SERVICE,
     KimiProvider, KimiRegion, KimiSubscriptionResponse, KimiSubscriptionStatsResponse,
-    KimiWebUsageResponse, apply_subscription_windows, kimi_web_post,
+    KimiWebUsageResponse, apply_subscription_windows, gift_display_details, kimi_web_post,
 };
 use crate::browser::cookies::get_cookie_header;
-use crate::core::{ProviderError, ProviderId, UsageSnapshot};
+use crate::core::{ProviderError, ProviderFetchResult, ProviderId, RateWindow, UsageSnapshot};
 
 /// Persisted Kimi cookie-source value ("manual" default; matches the
 /// `claude`/settings convention of a fresh read at fetch time).
@@ -74,9 +75,7 @@ impl WebFetchFailure {
 
 /// One automatic token attempt. `None` means the server rejected the token
 /// and the chain moves on; anything else ends it.
-fn settle_attempt(
-    result: Result<UsageSnapshot, ProviderError>,
-) -> Option<Result<UsageSnapshot, WebFetchFailure>> {
+fn settle_attempt<T>(result: Result<T, ProviderError>) -> Option<Result<T, WebFetchFailure>> {
     match result {
         Ok(usage) => Some(Ok(usage)),
         Err(ProviderError::AuthRequired) => None,
@@ -191,7 +190,7 @@ pub(crate) async fn fetch_via_web(
     cookie_header: Option<&str>,
     region: KimiRegion,
     account_isolated: bool,
-) -> Result<UsageSnapshot, ProviderError> {
+) -> Result<ProviderFetchResult, ProviderError> {
     fetch_web_session_isolated(cookie_header, region, account_isolated)
         .await
         .map_err(|failure| failure.error)
@@ -205,7 +204,7 @@ pub(super) async fn fetch_web_session_isolated(
     cookie_header: Option<&str>,
     region: KimiRegion,
     account_isolated: bool,
-) -> Result<UsageSnapshot, WebFetchFailure> {
+) -> Result<ProviderFetchResult, WebFetchFailure> {
     // An explicitly selected token account is an identity boundary: fetch only
     // its own session cookie and never fall back to another ambient credential
     // or browser account (upstream per-provider token account routing).
@@ -224,7 +223,7 @@ pub(super) async fn fetch_web_session_isolated(
 pub(super) async fn fetch_web_session(
     cookie_header: Option<&str>,
     region: KimiRegion,
-) -> Result<UsageSnapshot, WebFetchFailure> {
+) -> Result<ProviderFetchResult, WebFetchFailure> {
     let source = cookie_source();
     let input = WebTokenInput {
         manual_header: cookie_header,
@@ -251,13 +250,13 @@ pub(super) async fn fetch_web_session(
 /// is tried, then browser import. Only a server rejection moves on to the
 /// next automatic token; a Desktop session that changed before dispatch is a
 /// non-auth error and stops the chain.
-async fn fetch_with_web_tokens<F, Fut>(
+async fn fetch_with_web_tokens<T, F, Fut>(
     input: &WebTokenInput<'_>,
     mut fetch: F,
-) -> Result<UsageSnapshot, WebFetchFailure>
+) -> Result<T, WebFetchFailure>
 where
     F: FnMut(KimiWebCredential) -> Fut,
-    Fut: Future<Output = Result<UsageSnapshot, ProviderError>>,
+    Fut: Future<Output = Result<T, ProviderError>>,
 {
     if let Some(token) = input
         .manual_header
@@ -340,7 +339,7 @@ async fn fetch_via_web_token(
     client: &reqwest::Client,
     credential: &KimiWebCredential,
     region: KimiRegion,
-) -> Result<UsageSnapshot, ProviderError> {
+) -> Result<ProviderFetchResult, ProviderError> {
     let usage_url = region.web_api_url(KIMI_WEB_USAGE_SERVICE);
     let resp = kimi_web_post(
         client,
@@ -398,36 +397,56 @@ pub(super) fn snapshot_from_web_usage_response(
     subscription: Option<KimiSubscriptionStatsResponse>,
 ) -> Result<UsageSnapshot, ProviderError> {
     snapshot_from_web_usage_response_with_plan(response, subscription, None)
+        .map(|fetched| fetched.usage)
 }
 
 fn snapshot_from_web_usage_response_with_plan(
     response: KimiWebUsageResponse,
     subscription: Option<KimiSubscriptionStatsResponse>,
     plan_name: Option<String>,
-) -> Result<UsageSnapshot, ProviderError> {
+) -> Result<ProviderFetchResult, ProviderError> {
     let coding = response
         .usages
+        .unwrap_or_default()
         .into_iter()
-        .find(|usage| usage.scope == "FEATURE_CODING")
-        .ok_or_else(|| ProviderError::Parse("Kimi FEATURE_CODING usage missing".into()))?;
-    let primary = KimiProvider::rate_window_from_usage_detail(&coding.detail, Some(10080))?;
-    let mut usage = UsageSnapshot::new(primary).with_login_method("Kimi");
+        .find(|usage| usage.scope == "FEATURE_CODING");
+    let has_coding = coding.is_some();
+    let mut usage = match coding {
+        Some(coding) => {
+            let primary = KimiProvider::rate_window_from_usage_detail(&coding.detail, Some(10080))?;
+            let mut usage = UsageSnapshot::new(primary).with_login_method("Kimi");
 
-    if let Some(limit) = coding.limits.unwrap_or_default().into_iter().next() {
-        let window_minutes = limit.window.as_ref().and_then(super::kimi_window_minutes);
-        let rate_limit =
-            KimiProvider::rate_window_from_usage_detail(&limit.detail, window_minutes)?;
-        usage = usage.with_secondary(rate_limit);
-    }
+            if let Some(limit) = coding.limits.unwrap_or_default().into_iter().next() {
+                let window_minutes = limit.window.as_ref().and_then(super::kimi_window_minutes);
+                let rate_limit =
+                    KimiProvider::rate_window_from_usage_detail(&limit.detail, window_minutes)?;
+                usage = usage.with_secondary(rate_limit);
+            }
+            usage
+        }
+        // Upstream #4700: a lapsed plan can omit its Code pools while the
+        // membership pools below still show usage.
+        None => UsageSnapshot::new(RateWindow::informational(MISSING_WEEKLY_DESCRIPTION))
+            .with_login_method("Kimi"),
+    };
 
+    let mut details = Vec::new();
     if let Some(subscription) = subscription.as_ref() {
+        details = gift_display_details(subscription, usage.updated_at);
         usage = apply_subscription_windows(usage, subscription);
     }
     if let Some(plan_name) = plan_name {
         usage = usage.with_login_method(plan_name);
     }
 
-    Ok(usage)
+    // Without Code pools, the membership pools must supply at least one lane.
+    if !has_coding && usage.extra_rate_windows.is_empty() {
+        return Err(ProviderError::Parse(
+            "FEATURE_CODING scope not found in response".into(),
+        ));
+    }
+
+    Ok(ProviderFetchResult::new(usage, "web").with_display_details(details))
 }
 
 pub(super) async fn fetch_subscription_plan(
@@ -1030,5 +1049,48 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(inactive.plan_name(), None);
+    }
+
+    #[test]
+    fn lapsed_web_result_carries_gift_rows_and_membership_pool() {
+        // Upstream #4700 + #4691: a lapsed plan keeps the membership pool and
+        // the live gift rows in the web result, with the web source label.
+        let usage: KimiWebUsageResponse = serde_json::from_value(serde_json::json!({
+            "totalQuota": { "limit": "100", "used": "36" }
+        }))
+        .unwrap();
+        let subscription: KimiSubscriptionStatsResponse =
+            serde_json::from_value(serde_json::json!({
+                "subscriptionBalance": {
+                    "feature": "FEATURE_OMNI",
+                    "type": "SUBSCRIPTION",
+                    "amountUsedRatio": 0.36,
+                    "expireTime": "2026-11-22T00:00:00Z"
+                },
+                "giftBalances": [{
+                    "feature": "FEATURE_OMNI",
+                    "type": "GIFT",
+                    "amountUsedRatio": 0.6,
+                    "expireTime": "2099-12-31T15:59:59Z",
+                    "displayName": "Welcome Credit"
+                }]
+            }))
+            .unwrap();
+
+        let fetched =
+            snapshot_from_web_usage_response_with_plan(usage, Some(subscription), None).unwrap();
+
+        assert_eq!(fetched.source_label, "web");
+        assert!(fetched.usage.primary.is_informational);
+        assert!(
+            fetched
+                .usage
+                .extra_rate_windows
+                .iter()
+                .any(|window| window.id == "kimi-monthly")
+        );
+        assert_eq!(fetched.display_details.len(), 1);
+        assert_eq!(fetched.display_details[0].title(), "Welcome Credit");
+        assert_eq!(fetched.display_details[0].value(), "40% left");
     }
 }

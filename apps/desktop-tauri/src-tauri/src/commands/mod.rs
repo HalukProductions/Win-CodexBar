@@ -3,11 +3,11 @@ use std::sync::Mutex;
 
 use codexbar::core::{
     FetchContext, ManualEmptyCookiePolicy, ProviderAccountData, ProviderFetchResult, ProviderId,
-    ProviderMetadata, RateWindow, SourceMode, TokenAccount, TokenAccountStore,
-    instantiate_provider,
+    ProviderMetadata, RateWindow, SourceMode, TokenAccountStore, instantiate_provider,
 };
 use codexbar::locale;
 use codexbar::login::{self, LoginOutcome, LoginPhase};
+use codexbar::providers::copilot::login::{finish_device_login, start_device_login};
 use codexbar::providers::copilot::{CopilotApi, device_flow::CopilotDeviceFlow};
 use codexbar::secure_file::{self, SecureFileStatus};
 use codexbar::settings::{

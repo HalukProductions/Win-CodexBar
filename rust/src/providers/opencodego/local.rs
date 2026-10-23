@@ -21,6 +21,8 @@ const WEEKLY_LIMIT_USD: f64 = 30.0;
 const MONTHLY_LIMIT_USD: f64 = 60.0;
 const PROVIDER_ID: &str = "opencode-go";
 
+/// Legacy `message` rows. Every legacy arm yields `(createdMs, cost, requestCount, modelID, tokens,
+/// messageID)` so the v2 arm can anti-join against them by message id.
 const MESSAGE_USAGE_SQL: &str = r#"
 SELECT
   CAST(COALESCE(json_extract(data, '$.time.created'), time_created) AS INTEGER) AS createdMs,
@@ -28,12 +30,20 @@ SELECT
   1 AS requestCount,
   COALESCE(json_extract(data, '$.modelID'), '') AS modelID,
   CASE WHEN json_type(data, '$.tokens') = 'object'
-    THEN json_extract(data, '$.tokens') END AS tokens
+    THEN json_extract(data, '$.tokens') END AS tokens,
+  id AS messageID
 FROM message
 WHERE json_valid(data)
   AND json_extract(data, '$.providerID') = 'opencode-go'
   AND json_extract(data, '$.role') = 'assistant'
   AND json_type(data, '$.cost') IN ('integer', 'real')
+"#;
+
+/// Legacy placeholder for databases that have no `message` table (v2-only installs).
+const NO_LEGACY_USAGE_SQL: &str = r#"
+SELECT NULL AS createdMs, NULL AS cost, NULL AS requestCount, NULL AS modelID, NULL AS tokens,
+  NULL AS messageID
+WHERE 0
 "#;
 
 const MESSAGE_AND_PART_USAGE_SQL: &str = r#"
@@ -50,51 +60,55 @@ WITH provider_messages AS (
   WHERE json_valid(data)
     AND json_extract(data, '$.providerID') = 'opencode-go'
     AND json_extract(data, '$.role') = 'assistant'
+), provider_parts AS NOT MATERIALIZED (
+  SELECT
+    CAST(COALESCE(json_extract(p.data, '$.time.created'), p.time_created, m.createdMs) AS INTEGER)
+      AS createdMs,
+    CAST(json_extract(p.data, '$.cost') AS REAL) AS cost,
+    1 AS requestCount,
+    m.modelID AS modelID,
+    CASE WHEN json_type(p.data, '$.tokens') = 'object'
+      THEN json_extract(p.data, '$.tokens') END AS tokens,
+    m.messageID AS messageID
+  FROM part p
+  JOIN provider_messages m ON m.messageID = p.message_id
+  WHERE json_valid(p.data)
+    AND json_extract(p.data, '$.type') = 'step-finish'
+    AND json_type(p.data, '$.cost') IN ('integer', 'real')
 )
-SELECT
-  CAST(COALESCE(json_extract(p.data, '$.time.created'), p.time_created, m.createdMs) AS INTEGER)
-    AS createdMs,
-  CAST(json_extract(p.data, '$.cost') AS REAL) AS cost,
-  1 AS requestCount,
-  m.modelID AS modelID,
-  CASE WHEN json_type(p.data, '$.tokens') = 'object'
-    THEN json_extract(p.data, '$.tokens') END AS tokens
-FROM part p
-JOIN provider_messages m ON m.messageID = p.message_id
-WHERE json_valid(p.data)
-  AND json_extract(p.data, '$.type') = 'step-finish'
-  AND json_type(p.data, '$.cost') IN ('integer', 'real')
+SELECT createdMs, cost, requestCount, modelID, tokens, messageID FROM provider_parts
 UNION ALL
-SELECT createdMs, cost, 1 AS requestCount, modelID, tokens
+SELECT createdMs, cost, 1 AS requestCount, modelID, tokens, messageID
 FROM provider_messages m
 WHERE hasCost
-  AND NOT EXISTS (
-    SELECT 1
-    FROM part p
-    WHERE p.message_id = m.messageID
-      AND json_valid(p.data)
-      AND json_extract(p.data, '$.type') = 'step-finish'
-      AND json_type(p.data, '$.cost') IN ('integer', 'real')
-  )
+  AND NOT EXISTS (SELECT 1 FROM provider_parts p WHERE p.messageID = m.messageID)
 "#;
 
-/// OpenCode v2 writes new assistant turns to `session_message` and copies older turns there under the
-/// same ids. Only turns the legacy `message` table does not already hold are added, so migrated turns
-/// are counted once.
+/// OpenCode v2 writes new turns to `session_message` and copies older turns there under the same ids.
+/// A v2 row is skipped only when a usable legacy copy exists (positive timestamp, finite non-negative
+/// cost), so a malformed legacy copy cannot hide a valid v2 request. Compaction summaries carry the
+/// request cost too, so they count as well.
 const SESSION_MESSAGE_USAGE_SQL: &str = r#"
+UNION ALL
 SELECT
   CAST(COALESCE(json_extract(s.data, '$.time.created'), s.time_created) AS INTEGER) AS createdMs,
   CAST(json_extract(s.data, '$.cost') AS REAL) AS cost,
   1 AS requestCount,
   COALESCE(json_extract(s.data, '$.model.id'), '') AS modelID,
   CASE WHEN json_type(s.data, '$.tokens') = 'object'
-    THEN json_extract(s.data, '$.tokens') END AS tokens
+    THEN json_extract(s.data, '$.tokens') END AS tokens,
+  s.id AS messageID
 FROM session_message s
-WHERE s.type = 'assistant'
+WHERE s.type IN ('assistant', 'compaction')
   AND json_valid(s.data)
   AND json_extract(s.data, '$.model.providerID') = 'opencode-go'
   AND json_type(s.data, '$.cost') IN ('integer', 'real')
-  AND NOT EXISTS (SELECT 1 FROM message m WHERE m.id = s.id)
+  AND NOT EXISTS (
+    SELECT 1 FROM legacy_usage m
+    WHERE m.messageID = s.id
+      AND m.createdMs > 0
+      AND m.cost BETWEEN 0 AND 1.7976931348623157e308
+  )
 "#;
 
 #[derive(Debug, Clone)]
@@ -245,13 +259,26 @@ fn read_rows(db_path: &Path) -> Result<Vec<UsageRow>, ProviderError> {
     conn.busy_timeout(std::time::Duration::from_millis(250))
         .map_err(sqlite_err)?;
 
-    let legacy_sql = if has_table(&conn, "part") {
+    let has_messages = has_table(&conn, "message");
+    let has_v2 = has_table(&conn, "session_message");
+    if !has_messages && !has_v2 {
+        return Err(ProviderError::Other(
+            "SQLite error reading OpenCode Go usage: no message or session_message table".into(),
+        ));
+    }
+    let legacy_sql = if !has_messages {
+        NO_LEGACY_USAGE_SQL
+    } else if has_table(&conn, "part") {
         MESSAGE_AND_PART_USAGE_SQL
     } else {
         MESSAGE_USAGE_SQL
     };
-    let sql = if has_table(&conn, "session_message") {
-        format!("{legacy_sql}\nUNION ALL\n{SESSION_MESSAGE_USAGE_SQL}")
+    // The legacy arm is a CTE shared by the v2 anti-join. NOT MATERIALIZED lets SQLite inline it
+    // rather than keep a second copy of the legacy history.
+    let sql = if has_v2 {
+        format!(
+            "WITH legacy_usage AS NOT MATERIALIZED ({legacy_sql})\nSELECT * FROM legacy_usage{SESSION_MESSAGE_USAGE_SQL}"
+        )
     } else {
         legacy_sql.to_owned()
     };

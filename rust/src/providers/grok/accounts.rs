@@ -18,10 +18,17 @@ use crate::secure_file;
 
 use super::text_field;
 
-pub use login::{begin_login, cancel_login, cleanup_abandoned_logins, login};
+pub use login::{begin_login, cancel_login, cleanup_abandoned_logins, executable, login};
 pub use orca::select_account as select_orca_account;
 
 pub static CREDENTIAL_OPERATION: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// Stores a finished Grok sign-in in the saved-account list. The desktop add
+/// flow and `config login --provider grok` both save through here.
+pub async fn save_login(login: SavedLogin) -> io::Result<()> {
+    let _credentials = CREDENTIAL_OPERATION.lock().await;
+    AccountManager::new()?.import(login)
+}
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]

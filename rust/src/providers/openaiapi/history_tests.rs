@@ -96,6 +96,34 @@ fn daily(costs: &[CostBucket], completions: &[CompletionsUsageBucket]) -> Vec<Op
 }
 
 #[test]
+fn fill_missing_days_adds_zero_slots_for_idle_utc_days() {
+    // A mid-day bucket on day 1 keeps its own start; idle days 0 and 2 become zero slots.
+    let day_one = NOW - DAY;
+    let mut buckets = daily(&[cost_bucket_at(day_one + 3_600, 1.0, None)], &[]);
+    assert_eq!(buckets.len(), 1);
+
+    history::fill_missing_days(&mut buckets, [NOW - 2 * DAY, day_one, NOW]);
+
+    let starts: Vec<i64> = buckets.iter().map(|day| day.start_time).collect();
+    assert_eq!(starts, vec![NOW - 2 * DAY, day_one + 3_600, NOW]);
+    assert_eq!(buckets[0].end_time, NOW - DAY);
+    assert_eq!(buckets[0].cost_usd, 0.0);
+    assert_eq!(buckets[0].total_tokens, 0);
+    assert!(buckets[0].models.is_empty());
+    assert_eq!(buckets[1].cost_usd, 1.0);
+    assert_eq!(buckets[2].cost_usd, 0.0);
+}
+
+#[test]
+fn fill_missing_days_keeps_an_empty_history_empty() {
+    let mut buckets: Vec<OpenAiApiDailyUsage> = Vec::new();
+
+    history::fill_missing_days(&mut buckets, [NOW - DAY, NOW]);
+
+    assert!(buckets.is_empty());
+}
+
+#[test]
 fn upstream_fixture_buckets_into_two_days() {
     let daily = daily(&upstream_costs(), &upstream_completions());
     assert_eq!(daily.len(), 2);
@@ -150,7 +178,16 @@ fn upstream_fixture_result_carries_history_and_summary() {
     let history = result.open_ai_api_usage.as_ref().unwrap();
     assert_eq!(history.history_days, 30);
     assert_eq!(history.project_id.as_deref(), Some("proj_abc"));
-    assert_eq!(history.daily.len(), 2);
+    // Two fixture days carry usage; the other 28 days of the window are zero slots.
+    assert_eq!(history.daily.len(), 30);
+    assert_eq!(
+        history
+            .daily
+            .iter()
+            .filter(|day| day.total_tokens > 0)
+            .count(),
+        2
+    );
     assert_eq!(result.cost.as_ref().unwrap().used, 18.75);
     assert_eq!(result.cost.as_ref().unwrap().period, "Last 30 days");
 }

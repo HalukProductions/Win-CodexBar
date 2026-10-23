@@ -21,6 +21,7 @@ pub mod file_locations;
 mod labels;
 pub mod login_runner;
 pub mod models;
+mod registry_log;
 pub mod stores;
 mod switch_runtime;
 
@@ -42,5 +43,6 @@ pub use models::{
     AccountUsageSnapshot, CodexAccount, CodexAccountSource, CreditsBalanceSnapshot,
     RemovedAccountIdentity, UsageWindowSnapshot, utc_now,
 };
+pub use registry_log::RegistryOperation;
 pub use stores::{AccountStore, SnapshotStore};
 pub use switch_runtime::CodexAccountRuntime;

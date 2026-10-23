@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use chrono::{TimeZone, Utc};
+use chrono::{NaiveDate, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -154,6 +154,45 @@ fn cache_root() -> PathBuf {
     dirs::cache_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("CodexBar")
+}
+
+/// Daily token totals for the last `days` calendar days, ascending. A complete
+/// scan gets a zero slot for each day that has no events. A partial scan keeps
+/// only the reported days, because an unscanned day is unknown, not idle. An
+/// empty report stays empty, so the chart keeps its empty state when no local
+/// history exists.
+pub fn token_history_slots(report: &Report, days: u32) -> Vec<(String, u64)> {
+    let end = crate::cost_reporting_period::cost_bucket_zone().date(Utc::now());
+    fill_token_slots(&report.daily, report.is_complete(), end, days)
+}
+
+fn fill_token_slots(
+    daily: &[DailyUsage],
+    complete: bool,
+    end: NaiveDate,
+    days: u32,
+) -> Vec<(String, u64)> {
+    if !complete {
+        return daily
+            .iter()
+            .map(|day| (day.day.clone(), day.total_tokens))
+            .collect();
+    }
+    if daily.is_empty() {
+        return Vec::new();
+    }
+    let tokens_by_day: HashMap<&str, u64> = daily
+        .iter()
+        .map(|day| (day.day.as_str(), day.total_tokens))
+        .collect();
+    (0..days)
+        .rev()
+        .map(|days_ago| {
+            let day = (end - chrono::Duration::days(i64::from(days_ago))).to_string();
+            let tokens = tokens_by_day.get(day.as_str()).copied().unwrap_or(0);
+            (day, tokens)
+        })
+        .collect()
 }
 
 fn day_window(days: u32) -> (String, String) {
@@ -507,5 +546,68 @@ pub fn scan_in(
         session_count: sessions_with_usage,
         top_model,
         coverage,
+    }
+}
+
+#[cfg(test)]
+mod slot_tests {
+    use super::*;
+
+    fn day(day: &str, total_tokens: u64) -> DailyUsage {
+        DailyUsage {
+            day: day.to_string(),
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+            reasoning_tokens: 0,
+            total_tokens,
+            request_count: 1,
+            models: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn token_slots_keep_every_calendar_day_with_zero_for_idle_days() {
+        let end = NaiveDate::from_ymd_opt(2026, 9, 10).unwrap();
+        let daily = [day("2026-09-05", 100), day("2026-09-08", 50)];
+
+        let slots = fill_token_slots(&daily, true, end, 7);
+
+        assert_eq!(
+            slots,
+            vec![
+                ("2026-09-04".to_string(), 0),
+                ("2026-09-05".to_string(), 100),
+                ("2026-09-06".to_string(), 0),
+                ("2026-09-07".to_string(), 0),
+                ("2026-09-08".to_string(), 50),
+                ("2026-09-09".to_string(), 0),
+                ("2026-09-10".to_string(), 0),
+            ]
+        );
+    }
+
+    #[test]
+    fn token_slots_stay_empty_without_local_history() {
+        let end = NaiveDate::from_ymd_opt(2026, 9, 10).unwrap();
+
+        assert!(fill_token_slots(&[], true, end, 30).is_empty());
+    }
+
+    #[test]
+    fn partial_scan_keeps_only_reported_days() {
+        let end = NaiveDate::from_ymd_opt(2026, 9, 10).unwrap();
+        let daily = [day("2026-09-05", 100), day("2026-09-08", 50)];
+
+        let slots = fill_token_slots(&daily, false, end, 7);
+
+        assert_eq!(
+            slots,
+            vec![
+                ("2026-09-05".to_string(), 100),
+                ("2026-09-08".to_string(), 50),
+            ]
+        );
     }
 }

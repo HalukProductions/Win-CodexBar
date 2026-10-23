@@ -321,6 +321,20 @@
   color: var(--provider-status-error);
 }
 
+.agent-sessions__host {
+  display: grid;
+  gap: 6px;
+}
+
+.agent-sessions__host-header {
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.agent-sessions__host-header--unreachable {
+  color: var(--provider-status-error);
+}
+
 /* ── Per-provider accent color override (#2972) ─────────────────── */
 .provider-detail-accent-color {
   margin-top: 16px;

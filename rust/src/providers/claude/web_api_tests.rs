@@ -2,7 +2,7 @@ use super::{
     AccountResponse, ClaudeWebApiFetcher, UsageWindow, classify_web_http_error, cookie_value,
     describe_json_body_shape, is_cookie_authentication_failure,
 };
-use crate::core::ProviderError;
+use crate::core::{CostSnapshot, ProviderError, UsageSnapshot};
 use reqwest::StatusCode;
 use reqwest::header;
 use std::sync::{Mutex, OnceLock};
@@ -566,4 +566,145 @@ fn disabled_extra_usage_web_response_has_no_meter_or_cost() {
     assert!(cost.is_none());
     assert!(snapshot.primary.is_informational);
     assert!(snapshot.primary_label.is_none());
+}
+
+/// Build the usage snapshot the way `fetch_with_cookie_header` does, with the
+/// optional prepaid balance applied before the availability decision.
+fn web_snapshot_for(
+    json: &str,
+    prepaid: Option<super::PrepaidBalance>,
+) -> (UsageSnapshot, Option<CostSnapshot>) {
+    let usage: super::UsageResponse = serde_json::from_str(json).unwrap();
+    let fetcher = ClaudeWebApiFetcher::new();
+    let (mut snapshot, mut cost) = fetcher.build_usage_and_cost(&usage, usage.extra_usage.clone());
+    if let Some(balance) = prepaid {
+        cost = Some(super::apply_prepaid_balance(balance, cost));
+    }
+    super::mark_limits_unavailable_without_quota(&mut snapshot, cost.as_ref());
+    (snapshot, cost)
+}
+
+#[test]
+fn null_quota_web_answer_reports_limits_unavailable() {
+    let (snapshot, cost) = web_snapshot_for(r#"{"five_hour":null,"seven_day":null}"#, None);
+
+    assert!(cost.is_none());
+    assert!(snapshot.primary.is_informational);
+    assert_eq!(
+        snapshot.primary.reset_description.as_deref(),
+        Some("Limits not available")
+    );
+    assert!(snapshot.secondary.is_none());
+    assert!(snapshot.model_specific.is_none());
+    assert!(snapshot.tertiary.is_none());
+    assert!(snapshot.extra_rate_windows.is_empty());
+    assert!(snapshot.primary_label.is_none());
+}
+
+#[test]
+fn disabled_extra_usage_without_quota_reports_limits_unavailable() {
+    let (snapshot, cost) = web_snapshot_for(
+        r#"{
+            "five_hour": null,
+            "seven_day": null,
+            "extra_usage": {
+                "is_enabled": false,
+                "monthly_credit_limit": 5000,
+                "used_credits": 1234,
+                "currency": "USD"
+            }
+        }"#,
+        None,
+    );
+
+    assert!(cost.is_none());
+    assert_eq!(
+        snapshot.primary.reset_description.as_deref(),
+        Some("Limits not available")
+    );
+}
+
+#[test]
+fn weekly_only_web_answer_keeps_the_no_session_placeholder() {
+    let (snapshot, _) = web_snapshot_for(r#"{"seven_day":{"utilization":20}}"#, None);
+
+    assert!(snapshot.primary.is_informational);
+    assert_eq!(
+        snapshot.primary.reset_description.as_deref(),
+        Some("No active 5h session")
+    );
+    assert!(snapshot.secondary.is_some());
+}
+
+#[test]
+fn sonnet_only_web_answer_keeps_its_weekly_lane_available() {
+    let (snapshot, _) = web_snapshot_for(
+        r#"{"five_hour":null,"seven_day":null,"seven_day_sonnet":{"utilization":37}}"#,
+        None,
+    );
+
+    let model = snapshot.model_specific.expect("sonnet weekly lane");
+    assert!((model.used_percent - 37.0).abs() < f64::EPSILON);
+    assert_eq!(
+        snapshot.primary.reset_description.as_deref(),
+        Some("No active 5h session")
+    );
+}
+
+#[test]
+fn opus_stays_the_model_lane_when_sonnet_is_also_reported() {
+    let (snapshot, _) = web_snapshot_for(
+        r#"{"seven_day_opus":{"utilization":11},"seven_day_sonnet":{"utilization":37}}"#,
+        None,
+    );
+
+    let model = snapshot.model_specific.expect("model lane");
+    assert!((model.used_percent - 11.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn measured_session_web_answer_stays_available() {
+    let (snapshot, _) = web_snapshot_for(r#"{"five_hour":{"utilization":12}}"#, None);
+
+    assert!(!snapshot.primary.is_informational);
+    assert!((snapshot.primary.used_percent - 12.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn capped_spend_only_web_answer_keeps_the_projected_meter() {
+    let (snapshot, cost) = web_snapshot_for(
+        r#"{
+            "extra_usage": {
+                "is_enabled": true,
+                "monthly_credit_limit": 5000,
+                "used_credits": 1234,
+                "currency": "USD"
+            }
+        }"#,
+        None,
+    );
+
+    assert!(cost.expect("spend cost").folded_into_primary);
+    assert!(!snapshot.primary.is_informational);
+    assert_ne!(
+        snapshot.primary.reset_description.as_deref(),
+        Some("Limits not available")
+    );
+}
+
+#[test]
+fn prepaid_balance_alone_keeps_the_no_session_placeholder() {
+    let (snapshot, cost) = web_snapshot_for(
+        r#"{"five_hour":null,"seven_day":null}"#,
+        Some(super::PrepaidBalance {
+            amount_dollars: 4.25,
+            currency_code: "USD".to_string(),
+        }),
+    );
+
+    assert!(cost.is_some(), "balance-only cost stays visible");
+    assert_eq!(
+        snapshot.primary.reset_description.as_deref(),
+        Some("No active 5h session")
+    );
 }

@@ -1,6 +1,7 @@
 import { normalizeResetDescription } from "../hooks/useFormattedResetTime";
 import type { LocaleKey } from "../i18n/keys";
 import type {
+  DailyTargetSnapshot,
   PaceStage,
   RateWindowSnapshot,
   WindowPaceSnapshot,
@@ -267,6 +268,26 @@ function paceMetaText(pace: WindowPaceSnapshot, kind: PaceKind, t: Translate): s
   return right ? `${left} · ${right}` : left;
 }
 
+const DAILY_TARGET_KEYS: Record<string, LocaleKey> = {
+  "%": "PaceDailyTargetPercent",
+  credits: "PaceDailyTargetCredits",
+  requests: "PaceDailyTargetRequests",
+};
+
+/**
+ * Upstream `UsagePaceText.dailyTarget`: the per-day share in the allowance's
+ * own unit. Units without a key (for example a currency) show no target.
+ */
+function dailyTargetText(target: DailyTargetSnapshot, t: Translate): string | null {
+  const key = DAILY_TARGET_KEYS[target.unit];
+  if (!key || !Number.isFinite(target.amount)) return null;
+  const digits = target.unit === "%" ? 1 : 2;
+  const amount = new Intl.NumberFormat(intlLocale(t), { maximumFractionDigits: digits }).format(
+    Math.max(0, target.amount),
+  );
+  return fill(t(key), amount);
+}
+
 function normalizedMarkerPercents(values: number[]): number[] {
   const kept: number[] = [];
   for (const value of values.map(clampPercent)) {
@@ -342,6 +363,15 @@ export function metricRowPresentation(input: MetricRowInput, t: Translate): Metr
     input.showResetWhenExhausted && snap.isExhausted && resetTarget > input.now && input.resetText !== null;
   const visible = visiblePace(input);
   const markers = barMarkers(input);
+  // The daily target shares the pace setting and the non-compact meta line.
+  const dailyTarget =
+    input.paceEnabled && !input.compact && snap.dailyTarget
+      ? dailyTargetText(snap.dailyTarget, t)
+      : null;
+  const metaParts = [
+    visible && !input.compact ? paceMetaText(visible.pace, visible.kind, t) : null,
+    dailyTarget,
+  ].filter((part): part is string => part !== null);
   const valuePercent = Math.round(shown);
   const pacePercent =
     visible && PACE_DIRECTION[visible.pace.stage] !== "onPace"
@@ -352,7 +382,7 @@ export function metricRowPresentation(input: MetricRowInput, t: Translate): Metr
       ? null
       : percentLabel(shown, t(showAsUsed ? "PanelUsedSuffix" : "PanelLeftSuffix")),
     resetText: input.compact && !replacesPercent ? null : input.resetText,
-    metaText: visible && !input.compact ? paceMetaText(visible.pace, visible.kind, t) : null,
+    metaText: metaParts.length > 0 ? metaParts.join(" · ") : null,
     bar: {
       fillPercent: renderedFillPercent(shown),
       valuePercent,

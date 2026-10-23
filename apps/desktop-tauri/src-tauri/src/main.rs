@@ -12,6 +12,7 @@ mod geometry_store;
 mod http_server;
 mod powertoys;
 mod proof_harness;
+mod proof_tray_menu;
 mod shell;
 mod shortcut_bridge;
 mod state;
@@ -355,6 +356,7 @@ fn main() {
             commands::set_ui_language,
             commands::open_path,
             tray_visibility::tray_visibility_status,
+            tray_bridge::proof_activate_tray_item,
             floatbar::resize_float_bar,
         ])
         .setup(move |app| {

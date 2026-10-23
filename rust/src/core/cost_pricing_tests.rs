@@ -75,7 +75,12 @@ fn prices_codex_models() {
 
 #[test]
 fn prices_claude_models() {
-    for (model, expected) in [("claude-opus-4-8", 0.0175), ("claude-fable-5", 0.035)] {
+    for (model, expected) in [
+        ("claude-opus-4-8", 0.0175),
+        ("claude-fable-5", 0.035),
+        ("claude-mythos-5", 0.035),
+        ("claude-mythos-5-1", 0.035),
+    ] {
         let cost = CostUsagePricing::claude_cost_usd(model, 1_000, 0, 0, 500).unwrap();
         assert!((cost - expected).abs() < 1e-10, "{model}");
     }
@@ -790,6 +795,8 @@ gpt-6-astra 1e-5 5e-5 1e-6 Some(1.25e-5) None Some((2e-5, 7.5e-5, 2e-6, Some(2.5
 claude-fable-5 1e-5 5e-5 1.25e-5 1e-6 None None None None None
 claude-haiku-4-5 1e-6 5e-6 1.25e-6 1e-7 None None None None None
 claude-haiku-4-5-20251001 1e-6 5e-6 1.25e-6 1e-7 None None None None None
+claude-mythos-5 1e-5 5e-5 1.25e-5 1e-6 None None None None None
+claude-mythos-5-1 1e-5 5e-5 1.25e-5 2.5e-7 None None None None None
 claude-opus-4-1 1.5e-5 7.5e-5 1.875e-5 1.5e-6 None None None None None
 claude-opus-4-20250514 1.5e-5 7.5e-5 1.875e-5 1.5e-6 None None None None None
 claude-opus-4-5 5e-6 2.5e-5 6.25e-6 5e-7 None None None None None

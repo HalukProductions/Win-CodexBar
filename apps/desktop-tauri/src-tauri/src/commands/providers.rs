@@ -6,7 +6,7 @@ use super::provider_refresh::{
 use super::warning_identity::WarningIdentity;
 use super::*;
 use chrono::{Local, Utc};
-use codexbar::core::HookUsageWindow;
+use codexbar::core::{HookUsageWindow, RefreshInteraction, scope_refresh_interaction};
 use codexbar::notifications::{LimitResetObservation, LimitResetSample, WarningScope};
 use serde::Serialize;
 use std::sync::Arc;
@@ -223,12 +223,20 @@ async fn do_refresh_providers_with_policy(
     );
     let enabled_count = refresh_ids.len();
 
+    // Non-forced refreshes are automatic (timer, auto-resume, stale-gated launch and
+    // poll refreshes). Forced refreshes come from a user action or a follow-up to one.
+    let interaction = if force {
+        RefreshInteraction::UserInitiated
+    } else {
+        RefreshInteraction::Background
+    };
     let handles = spawn_provider_refreshes(
         app,
         &inputs,
         &refresh_ids,
         generation,
         scope.refresh_account_lanes(),
+        interaction,
     );
     if scope == RefreshScope::AllEnabled {
         super::claude_swap_usage::spawn_background_pool_read(app, &inputs.settings, false);
@@ -292,6 +300,7 @@ fn spawn_provider_refreshes(
     provider_ids: &[ProviderId],
     generation: u64,
     refresh_account_lanes: bool,
+    interaction: RefreshInteraction,
 ) -> Vec<tokio::task::JoinHandle<()>> {
     let mut handles = Vec::with_capacity(provider_ids.len());
     let fetch_permits = Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_PROVIDER_FETCHES));
@@ -322,17 +331,20 @@ fn spawn_provider_refreshes(
             let Ok(_permit) = fetch_permits.acquire_owned().await else {
                 return;
             };
-            refresh_provider(
-                app_handle,
-                id,
-                ctx,
-                generation,
-                ActiveTokenAccount {
-                    id: token_account_id,
-                    label: token_account_label,
-                },
-                hooks_enabled,
-                pace_work_days,
+            scope_refresh_interaction(
+                interaction,
+                refresh_provider(
+                    app_handle,
+                    id,
+                    ctx,
+                    generation,
+                    ActiveTokenAccount {
+                        id: token_account_id,
+                        label: token_account_label,
+                    },
+                    hooks_enabled,
+                    pace_work_days,
+                ),
             )
             .await;
         }));

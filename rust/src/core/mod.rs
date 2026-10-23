@@ -32,6 +32,7 @@ mod provider_state;
 mod quota_burndown;
 mod rate_window;
 mod redactor;
+mod refresh_interaction;
 mod session_equivalent_forecast;
 mod sqlite;
 mod throughput;
@@ -74,6 +75,7 @@ pub use quota_burndown::{
 };
 pub use rate_window::*;
 pub use redactor::*;
+pub use refresh_interaction::*;
 pub use session_equivalent_forecast::*;
 pub use sqlite::*;
 pub use throughput::*;

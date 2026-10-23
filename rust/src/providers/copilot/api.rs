@@ -4,6 +4,7 @@
 //! path is app-managed device OAuth/token accounts; legacy API key and Windows
 //! Credential Manager tokens remain supported as fallbacks.
 
+use super::endpoints::GitHubEndpoints;
 use crate::core::{NamedRateWindow, ProviderError, RateWindow, UsageSnapshot};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
@@ -41,17 +42,32 @@ pub struct GitHubIdentity {
 /// Copilot API client.
 pub struct CopilotApi {
     client: reqwest::Client,
+    endpoints: GitHubEndpoints,
 }
 
 impl CopilotApi {
     pub fn new() -> Self {
+        Self::with_endpoints(GitHubEndpoints::from_env())
+    }
+
+    pub(crate) fn with_endpoints(endpoints: GitHubEndpoints) -> Self {
         let client = crate::core::credentialed_http_client_builder()
             .use_rustls_tls()
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
 
-        Self { client }
+        Self { client, endpoints }
+    }
+
+    /// Builds an API URL. The enterprise host picks the API host, unless an
+    /// endpoint override is set; then the override root replaces it.
+    fn api_url(&self, github_host: Option<&str>, path: &str) -> String {
+        if self.endpoints.overridden {
+            format!("{}{path}", self.endpoints.api_root)
+        } else {
+            github_api_url(github_host, path)
+        }
     }
 
     /// Fetch usage information from Copilot API with an already-resolved
@@ -66,7 +82,7 @@ impl CopilotApi {
     ) -> Result<UsageSnapshot, ProviderError> {
         let request = self
             .client
-            .get(copilot_usage_url(github_host))
+            .get(self.api_url(github_host, COPILOT_USAGE_PATH))
             .header("Authorization", format!("token {}", token.trim()))
             .header("Accept", "application/json")
             .header("Editor-Version", "vscode/1.96.2")
@@ -87,7 +103,7 @@ impl CopilotApi {
     ) -> Result<GitHubIdentity, ProviderError> {
         let request = self
             .client
-            .get(github_api_url(github_host, GITHUB_USER_PATH))
+            .get(self.api_url(github_host, GITHUB_USER_PATH))
             .header("Authorization", format!("token {}", token.trim()))
             .header("Accept", "application/vnd.github+json")
             .header("User-Agent", "Win-CodexBar")
@@ -487,6 +503,8 @@ impl UsableQuota {
             reset_regenerates: false,
             hidden_on_card: false,
             usage_known: true,
+            quota_limit: None,
+            quota_unit: None,
         }
     }
 }
@@ -625,10 +643,6 @@ impl QuotaSnapshot {
 fn github_api_url(github_host: Option<&str>, path: &str) -> String {
     let host = normalized_api_host(github_host);
     format!("https://{host}{path}")
-}
-
-fn copilot_usage_url(github_host: Option<&str>) -> String {
-    github_api_url(github_host, COPILOT_USAGE_PATH)
 }
 
 fn normalized_api_host(github_host: Option<&str>) -> String {
