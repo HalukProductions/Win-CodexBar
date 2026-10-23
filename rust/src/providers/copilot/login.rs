@@ -25,6 +25,9 @@ pub struct SavedCopilotAccount {
     pub login: Option<String>,
     pub plan: Option<String>,
     pub identity_id: Option<u64>,
+    /// Whether the provider was turned on after the save. The save itself
+    /// leaves this false; `config login` sets it once it enables the provider.
+    pub enabled: bool,
 }
 
 /// Asks GitHub for a device code. The caller shows `verification_uri` and
@@ -79,6 +82,7 @@ async fn save_device_token(
         login: login.clone(),
         plan,
         identity_id,
+        enabled: false,
     };
 
     if let Some(index) = existing_index {

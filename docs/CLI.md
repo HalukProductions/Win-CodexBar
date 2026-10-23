@@ -401,15 +401,33 @@ Connected
 
 The token is never printed. Once you approve the code, the account is saved the same way the desktop app's Copilot sign-in saves it. The account is matched by GitHub identity, so signing in again updates the existing account instead of adding a second one. Its label is the GitHub login, with the plan in brackets when GitHub reports one.
 
+A successful login also turns the Copilot provider on in settings, as the macOS app does. The desktop app's sign-in does not change the enabled state, so enable Copilot there yourself if you use that path.
+
 `--json` prints one JSON object per line, using upstream's field names:
 
 | Line | Shape |
 | --- | --- |
 | Code issued | `{"status":"authorization_pending","verificationURI":"https://github.com/login/device","userCode":"ABCD-1234","expiresIn":900}` |
-| Approved | `{"status":"authorized"}` |
-| Failed | `{"status":"failed","error":"GitHub device login failed: Access denied by user"}`, and the command exits with an error |
+| Approved and saved | `{"status":"authorized"}`. This line is written only after the account is saved and Copilot is enabled. |
+| Cancelled (Ctrl-C) | `{"status":"cancelled"}` |
+| Failed | `{"status":"failed","reason":"denied","error":"GitHub device login failed: Access denied by user"}`. `reason` is one of the values in the exit code table below. |
 
-Polling follows the interval GitHub returns. Each `slow_down` response adds 5 seconds for the rest of the login. GitHub's `access_denied` and `expired_token` responses end the login with a friendly error, and nothing is saved.
+Text mode prints the URL and code, then `Connected` on success. Errors go to stderr as `Error: <message>`. Ctrl-C ends the login with `Error: Login cancelled.` and exit code `7`.
+
+### Exit codes
+
+| Exit code | Meaning | Final `--json` line |
+| --- | --- | --- |
+| `0` | Signed in. The account is saved and Copilot is enabled. | `{"status":"authorized"}` |
+| `1` | Any other failure: network error, GitHub server error, or a settings or token store write error. Nothing is saved. | `{"status":"failed","reason":"error",...}` |
+| `5` | The user denied the request on GitHub (`access_denied`). Nothing is saved. | `{"status":"failed","reason":"denied",...}` |
+| `6` | The device code expired before approval (`expired_token`). Nothing is saved. | `{"status":"failed","reason":"expired",...}` |
+| `7` | Stopped with Ctrl-C before the account was saved. Nothing is saved. | `{"status":"cancelled"}` |
+| `64` | Invalid arguments, including an unsupported `--provider`. No network call is made. | None; the error goes to stderr |
+
+Exit code `0` means the credential was saved. Any other code means it was not.
+
+Polling follows the interval GitHub returns. Each `slow_down` response adds 5 seconds for the rest of the login. GitHub's `access_denied` and `expired_token` responses end the login with the friendly errors above, and nothing is saved.
 
 Other providers fail before any network call: `Login is only supported for copilot. Use --provider copilot.`
 

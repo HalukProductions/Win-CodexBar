@@ -5,6 +5,7 @@
 use clap::{Parser, Subcommand};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+use std::future::Future;
 use std::io::Write;
 use std::path::Path;
 
@@ -12,8 +13,15 @@ use super::usage::OutputFormat;
 use crate::core::{ProviderId, SourceMode, TokenAccountStore, instantiate_provider};
 use crate::providers::copilot::CopilotApi;
 use crate::providers::copilot::device_flow::CopilotDeviceFlow;
-use crate::providers::copilot::login::{finish_device_login, start_device_login};
+use crate::providers::copilot::login::{
+    SavedCopilotAccount, finish_device_login, start_device_login,
+};
 use crate::settings::{ApiKeys, ManualCookies, PreferencesDocument, Settings};
+
+mod login;
+
+pub use login::ConfigLoginError;
+use login::{ConfigLoginEvent, LoginFailure, report_outcome, write_event};
 
 /// Arguments for the config command
 #[derive(Parser, Debug)]
@@ -213,7 +221,9 @@ pub async fn run(args: ConfigArgs) -> anyhow::Result<()> {
             stdin,
             no_enable,
         } => set_api_key(target.name(), api_key.as_deref(), stdin, !no_enable).await,
-        ConfigCommand::Login { target, output } => login(target.name(), output).await,
+        ConfigCommand::Login { target, output } => login(target.name(), output)
+            .await
+            .map_err(anyhow::Error::from),
         ConfigCommand::Path => show_paths().await,
         ConfigCommand::Preferences { action } => transfer_preferences(action),
         ConfigCommand::ClaudeCodeCredentials { action, output } => {
@@ -783,38 +793,13 @@ fn resolve_api_key_input(api_key: Option<&str>, read_from_stdin: bool) -> anyhow
     Ok(value)
 }
 
-/// One `config login` event (upstream `ConfigLoginEvent`). It carries the
-/// verification URL and user code only; the token is never part of it.
-#[derive(Debug, Serialize)]
-struct ConfigLoginEvent {
-    status: &'static str,
-    #[serde(rename = "verificationURI", skip_serializing_if = "Option::is_none")]
-    verification_uri: Option<String>,
-    #[serde(rename = "userCode", skip_serializing_if = "Option::is_none")]
-    user_code: Option<String>,
-    #[serde(rename = "expiresIn", skip_serializing_if = "Option::is_none")]
-    expires_in: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<String>,
-}
-
-impl ConfigLoginEvent {
-    fn status(status: &'static str) -> Self {
-        Self {
-            status,
-            verification_uri: None,
-            user_code: None,
-            expires_in: None,
-            error: None,
-        }
-    }
-}
-
 /// Run `config login`. Only GitHub Copilot has a CLI login flow.
-async fn login(provider: &str, output: ConfigOutputArgs) -> anyhow::Result<()> {
-    let id = parse_provider(provider)?;
+async fn login(provider: &str, output: ConfigOutputArgs) -> Result<(), ConfigLoginError> {
+    let id = parse_provider(provider).map_err(ConfigLoginError::usage)?;
     if id != ProviderId::Copilot {
-        anyhow::bail!("Login is only supported for copilot. Use --provider copilot.");
+        return Err(ConfigLoginError::usage(
+            "Login is only supported for copilot. Use --provider copilot.",
+        ));
     }
     let flow = CopilotDeviceFlow::new();
     let api = CopilotApi::new();
@@ -825,69 +810,67 @@ async fn login(provider: &str, output: ConfigOutputArgs) -> anyhow::Result<()> {
         &store,
         output.is_json(),
         &mut std::io::stdout().lock(),
+        login::ctrl_c(),
+        enable_copilot,
     )
     .await
+    .map(|_| ())
+}
+
+/// Turns the Copilot provider on after a saved login. Only `config login`
+/// does this; the desktop sign-in keeps its current behavior.
+fn enable_copilot() -> anyhow::Result<()> {
+    let mut settings = Settings::load();
+    settings.enable_provider(ProviderId::Copilot);
+    settings.save()
 }
 
 /// Runs the Copilot device login and writes progress to `out`. In JSON mode
-/// each event is one line; in text mode the URL and code are two lines. A
-/// failure is also reported as a `failed` JSON event before the error returns.
+/// each event is one line; in text mode the URL and code are two lines.
+///
+/// The account is saved before `enable` runs, and `enable` runs before the
+/// `authorized` event. `cancel` (Ctrl-C in the CLI) is checked first, so once
+/// it fires the flow stops before it can save anything else.
 async fn run_copilot_login(
     flow: &CopilotDeviceFlow,
     api: &CopilotApi,
     store: &TokenAccountStore,
     json: bool,
     out: &mut impl Write,
-) -> anyhow::Result<()> {
-    match login_steps(flow, api, store, json, out).await {
-        Ok(()) => write_login_event(out, json, &ConfigLoginEvent::status("authorized")),
-        Err(error) => {
-            if json {
-                let mut failed = ConfigLoginEvent::status("failed");
-                failed.error = Some(error.to_string());
-                write_login_event(out, json, &failed)?;
-            }
-            Err(error)
-        }
-    }
+    cancel: impl Future<Output = ()>,
+    enable: impl FnOnce() -> anyhow::Result<()>,
+) -> Result<SavedCopilotAccount, ConfigLoginError> {
+    let result = tokio::select! {
+        biased;
+        () = cancel => Err(ConfigLoginError::new(LoginFailure::Cancelled, "Login cancelled.")),
+        saved = copilot_steps(flow, api, store, json, out) => saved,
+    };
+    let result = result.and_then(|mut saved| {
+        enable().map_err(ConfigLoginError::other)?;
+        saved.enabled = true;
+        Ok(saved)
+    });
+    report_outcome(json, out, result)
 }
 
-async fn login_steps(
+async fn copilot_steps(
     flow: &CopilotDeviceFlow,
     api: &CopilotApi,
     store: &TokenAccountStore,
     json: bool,
     out: &mut impl Write,
-) -> anyhow::Result<()> {
+) -> Result<SavedCopilotAccount, ConfigLoginError> {
     let device = start_device_login(flow).await?;
-    write_login_event(
+    write_event(
         out,
         json,
-        &ConfigLoginEvent {
-            status: "authorization_pending",
-            verification_uri: Some(device.verification_uri.clone()),
-            user_code: Some(device.user_code.clone()),
-            expires_in: Some(device.expires_in),
-            error: None,
-        },
+        &ConfigLoginEvent::pending(
+            &device.verification_uri,
+            &device.user_code,
+            device.expires_in,
+        ),
     )?;
-    finish_device_login(flow, api, store, &device).await?;
-    Ok(())
-}
-
-fn write_login_event(
-    out: &mut impl Write,
-    json: bool,
-    event: &ConfigLoginEvent,
-) -> anyhow::Result<()> {
-    if json {
-        writeln!(out, "{}", serde_json::to_string(event)?)?;
-    } else if let (Some(url), Some(code)) = (&event.verification_uri, &event.user_code) {
-        writeln!(out, "{url}\n{code}")?;
-    } else if event.status == "authorized" {
-        writeln!(out, "Connected")?;
-    }
-    Ok(())
+    Ok(finish_device_login(flow, api, store, &device).await?)
 }
 
 /// Show configuration file paths

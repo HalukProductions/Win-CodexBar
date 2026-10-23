@@ -496,12 +496,19 @@ async fn config_login_rejects_other_providers_before_any_io() {
         error.to_string(),
         "Login is only supported for copilot. Use --provider copilot."
     );
+    assert_eq!(error.exit_code(), crate::cli::exit_codes::USAGE_ERROR);
 }
 
 mod copilot_login_output {
-    use super::super::{CopilotApi, CopilotDeviceFlow, TokenAccountStore, run_copilot_login};
+    use std::cell::Cell;
+    use std::future::Future;
+
+    use super::super::{
+        ConfigLoginError, CopilotApi, CopilotDeviceFlow, TokenAccountStore, run_copilot_login,
+    };
     use crate::core::ProviderId;
     use crate::providers::copilot::endpoints::GitHubEndpoints;
+    use crate::providers::copilot::login::SavedCopilotAccount;
     use crate::providers::copilot::test_server::{FakeGitHub, Reply, ok};
 
     const DEVICE_JSON: &str = r#"{"device_code":"device-example","user_code":"ABCD-1234","verification_uri":"https://github.com/login/device","expires_in":900,"interval":0}"#;
@@ -519,32 +526,59 @@ mod copilot_login_output {
         ])
     }
 
-    /// The returned `TempDir` must stay alive while the store is read back.
-    async fn run(
+    /// One login run. `_dir` must stay alive while the store is read back.
+    struct Run {
+        result: Result<SavedCopilotAccount, ConfigLoginError>,
+        out: String,
+        store: TokenAccountStore,
+        enable_calls: u32,
+        _dir: tempfile::TempDir,
+    }
+
+    async fn run(fake: &FakeGitHub, json: bool) -> Run {
+        run_with_cancel(fake, json, std::future::pending()).await
+    }
+
+    async fn run_with_cancel(
         fake: &FakeGitHub,
         json: bool,
-    ) -> (
-        anyhow::Result<()>,
-        String,
-        TokenAccountStore,
-        tempfile::TempDir,
-    ) {
+        cancel: impl Future<Output = ()>,
+    ) -> Run {
         let endpoints = GitHubEndpoints::with_origin(&fake.origin).expect("loopback origin");
         let flow = CopilotDeviceFlow::with_endpoints(&endpoints);
         let api = CopilotApi::with_endpoints(endpoints);
         let dir = tempfile::tempdir().expect("tempdir");
         let store = TokenAccountStore::with_path(dir.path().join("token-accounts.json"));
         let mut out = Vec::new();
-        let result = run_copilot_login(&flow, &api, &store, json, &mut out).await;
-        (result, String::from_utf8(out).expect("utf8"), store, dir)
+        let enable_calls = Cell::new(0);
+        let result = run_copilot_login(&flow, &api, &store, json, &mut out, cancel, || {
+            enable_calls.set(enable_calls.get() + 1);
+            Ok(())
+        })
+        .await;
+        Run {
+            result,
+            out: String::from_utf8(out).expect("utf8"),
+            store,
+            enable_calls: enable_calls.get(),
+            _dir: dir,
+        }
     }
 
     #[tokio::test]
     async fn text_output_shows_url_and_code_then_connected_and_never_the_token() {
         let fake = fake(vec![ok(TOKEN_JSON)]);
-        let (result, out, store, _dir) = run(&fake, false).await;
+        let Run {
+            result,
+            out,
+            store,
+            enable_calls,
+            _dir,
+        } = run(&fake, false).await;
 
-        result.expect("login succeeds");
+        let saved = result.expect("login succeeds");
+        assert!(saved.enabled, "a saved login enables the provider");
+        assert_eq!(enable_calls, 1);
         assert_eq!(
             out,
             "https://github.com/login/device\nABCD-1234\nConnected\n"
@@ -561,9 +595,16 @@ mod copilot_login_output {
             ok(r#"{"error":"authorization_pending"}"#),
             ok(TOKEN_JSON),
         ]);
-        let (result, out, _store, _dir) = run(&fake, true).await;
+        let Run {
+            result,
+            out,
+            enable_calls,
+            _dir,
+            ..
+        } = run(&fake, true).await;
 
         result.expect("login succeeds");
+        assert_eq!(enable_calls, 1);
         assert!(!out.contains("gho_example_token"));
         let events: Vec<serde_json::Value> = out
             .lines()
@@ -584,9 +625,20 @@ mod copilot_login_output {
     #[tokio::test]
     async fn denied_json_reports_a_failed_event_and_returns_the_error() {
         let fake = fake(vec![ok(r#"{"error":"access_denied"}"#)]);
-        let (result, out, store, _dir) = run(&fake, true).await;
+        let Run {
+            result,
+            out,
+            store,
+            enable_calls,
+            _dir,
+        } = run(&fake, true).await;
 
         let error = result.expect_err("denied");
+        assert_eq!(error.exit_code(), 5);
+        assert_eq!(
+            enable_calls, 0,
+            "a denied login does not enable the provider"
+        );
         assert_eq!(
             error.to_string(),
             "GitHub device login failed: Access denied by user"
@@ -594,6 +646,7 @@ mod copilot_login_output {
         let failed: serde_json::Value =
             serde_json::from_str(out.lines().last().expect("event")).expect("failed event is JSON");
         assert_eq!(failed["status"], "failed");
+        assert_eq!(failed["reason"], "denied");
         assert_eq!(
             failed["error"],
             "GitHub device login failed: Access denied by user"
@@ -611,12 +664,78 @@ mod copilot_login_output {
     #[tokio::test]
     async fn expired_text_login_prints_the_code_and_returns_an_error() {
         let fake = fake(vec![ok(r#"{"error":"expired_token"}"#)]);
-        let (result, out, _store, _dir) = run(&fake, false).await;
+        let Run {
+            result,
+            out,
+            enable_calls,
+            _dir,
+            ..
+        } = run(&fake, false).await;
 
+        let error = result.expect_err("expired");
+        assert_eq!(error.exit_code(), 6);
+        assert_eq!(enable_calls, 0);
         assert_eq!(
-            result.expect_err("expired").to_string(),
+            error.to_string(),
             "GitHub device login failed: Device code expired"
         );
         assert_eq!(out, "https://github.com/login/device\nABCD-1234\n");
+    }
+
+    #[tokio::test]
+    async fn cancelled_before_any_request_saves_nothing_and_reports_cancelled() {
+        let fake = fake(vec![ok(TOKEN_JSON)]);
+        let Run {
+            result,
+            out,
+            store,
+            enable_calls,
+            _dir,
+        } = run_with_cancel(&fake, true, std::future::ready(())).await;
+
+        let error = result.expect_err("cancelled");
+        assert_eq!(error.exit_code(), 7);
+        assert_eq!(error.to_string(), "Login cancelled.");
+        assert_eq!(out, "{\"status\":\"cancelled\"}\n");
+        assert_eq!(enable_calls, 0);
+        assert!(fake.requests().is_empty(), "no GitHub request after Ctrl-C");
+        assert!(
+            store
+                .load_provider(ProviderId::Copilot)
+                .expect("load")
+                .accounts
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn network_failure_is_a_general_failure_with_an_error_reason() {
+        let fake = FakeGitHub::start(vec![(
+            "/login/device/code",
+            vec![Reply {
+                status: 500,
+                body: "{}",
+            }],
+        )]);
+        let Run {
+            result,
+            out,
+            store,
+            _dir,
+            ..
+        } = run(&fake, true).await;
+
+        assert_eq!(result.expect_err("server error").exit_code(), 1);
+        let failed: serde_json::Value =
+            serde_json::from_str(out.lines().last().expect("event")).expect("failed event is JSON");
+        assert_eq!(failed["status"], "failed");
+        assert_eq!(failed["reason"], "error");
+        assert!(
+            store
+                .load_provider(ProviderId::Copilot)
+                .expect("load")
+                .accounts
+                .is_empty()
+        );
     }
 }
