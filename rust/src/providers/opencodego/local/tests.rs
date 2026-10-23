@@ -1,6 +1,6 @@
 use super::test_db::{
-    create_session_message_table, insert_message, insert_session_message, insert_step_finish,
-    iso_ms, open_db, write_message_db,
+    create_session_message_table, insert_message, insert_session_message,
+    insert_session_message_raw, insert_step_finish, iso_ms, open_db, write_message_db,
 };
 use super::*;
 use crate::core::RateWindow;
@@ -611,6 +611,304 @@ fn malformed_v2_session_messages_are_ignored_without_failing_the_read() {
     assert_eq!(rows.len(), 1, "{rows:?}");
     assert_eq!(rows[0].model, "good-model");
     assert!((rows[0].cost - 4.0).abs() < 1e-6);
+}
+
+/// Noon local time on the day the migrated-copy fixture rows are anchored to (upstream #4587).
+fn v2_history_now() -> DateTime<Utc> {
+    Local
+        .with_ymd_and_hms(2026, 3, 6, 12, 0, 0)
+        .single()
+        .unwrap()
+        .with_timezone(&Utc)
+}
+
+#[test]
+fn v2_only_database_without_message_table_reads_requests() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("opencode.db");
+    let conn = Connection::open(&db).unwrap();
+    create_session_message_table(&conn);
+    insert_session_message_raw(
+        &conn,
+        "msg_go",
+        "assistant",
+        1_772_794_800_000,
+        r#"{"agent":"build","model":{"providerID":"opencode-go","id":"fixture-model"},"content":[],"cost":3,"time":{"created":1772794800000}}"#,
+    );
+    drop(conn);
+
+    // No auth.json and no legacy `message` table: v2 history alone must still produce usage.
+    let auth = dir.path().join("auth.json");
+    let now = a14_now();
+    let snap = fetch_from_paths(&auth, &db, now).expect("v2-only history must read");
+    assert!((snap.rolling_usage_percent - 25.0).abs() < 0.05, "{snap:?}");
+
+    let rows = read_rows(&db).unwrap();
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    let buckets = daily_model_costs(&rows, now, 30);
+    assert_eq!(buckets.len(), 1, "{buckets:?}");
+    assert_eq!(buckets[0].model, "fixture-model");
+    assert!((buckets[0].cost - 3.0).abs() < 1e-6);
+    assert_eq!(buckets[0].request_count, 1);
+}
+
+#[test]
+fn legacy_copies_count_once_and_new_v2_turns_are_added() {
+    for has_parts in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("opencode.db");
+        let conn = open_db(&db, has_parts);
+        create_session_message_table(&conn);
+        let day_start_ms = Local
+            .with_ymd_and_hms(2026, 3, 6, 0, 0, 0)
+            .single()
+            .unwrap()
+            .timestamp_millis();
+        let before = day_start_ms - 60_000;
+        let after = day_start_ms + 60_000;
+        insert_message(&conn, "msg_old", before, Some(4.0), None, None);
+        insert_message(&conn, "msg_migrated", before, Some(3.0), None, None);
+        if has_parts {
+            // Step-finish parts take precedence over the migrated message's own cost.
+            insert_step_finish(&conn, "prt_1", "msg_migrated", before, 1.0, None);
+            insert_step_finish(&conn, "prt_2", "msg_migrated", after, 2.0, None);
+        }
+        insert_session_message(
+            &conn,
+            "msg_migrated",
+            before,
+            3.0,
+            "fixture-model",
+            "opencode-go",
+            None,
+        );
+        insert_session_message(
+            &conn,
+            "msg_new",
+            after,
+            5.0,
+            "fixture-model",
+            "opencode-go",
+            None,
+        );
+        drop(conn);
+
+        let rows = read_rows(&db).unwrap();
+        let buckets = daily_model_costs(&rows, v2_history_now(), 30);
+        let mut by_day: std::collections::BTreeMap<String, (f64, u32)> =
+            std::collections::BTreeMap::new();
+        for bucket in &buckets {
+            let entry = by_day.entry(bucket.day_key.clone()).or_default();
+            entry.0 += bucket.cost;
+            entry.1 += bucket.request_count;
+        }
+        let days: Vec<(f64, u32)> = by_day.values().copied().collect();
+        assert_eq!(days.len(), 2, "has_parts={has_parts}: {buckets:?}");
+        let (before_cost, after_cost) = if has_parts { (5.0, 7.0) } else { (7.0, 5.0) };
+        assert!(
+            (days[0].0 - before_cost).abs() < 1e-6,
+            "has_parts={has_parts}: {days:?}"
+        );
+        assert!(
+            (days[1].0 - after_cost).abs() < 1e-6,
+            "has_parts={has_parts}: {days:?}"
+        );
+        let requests: u32 = days.iter().map(|day| day.1).sum();
+        assert_eq!(
+            requests,
+            if has_parts { 4 } else { 3 },
+            "has_parts={has_parts}"
+        );
+    }
+}
+
+#[test]
+fn invalid_legacy_copies_do_not_hide_valid_v2_requests() {
+    for has_legacy in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("opencode.db");
+        let conn = open_db(&db, false);
+        create_session_message_table(&conn);
+        let created = 1_772_794_800_000;
+        if has_legacy {
+            // A legacy copy with a negative cost is unusable and must not hide the v2 request.
+            insert_message(&conn, "msg_go", created, Some(-3.0), None, None);
+        }
+        insert_session_message(
+            &conn,
+            "msg_go",
+            created,
+            3.0,
+            "fixture-model",
+            "opencode-go",
+            None,
+        );
+        insert_session_message_raw(
+            &conn,
+            "msg_zero",
+            "assistant",
+            created,
+            r#"{"model":{"providerID":"opencode-go"},"cost":0}"#,
+        );
+        let invalid_payloads = [
+            "{",
+            r#"{"model":{"providerID":"opencode"},"cost":99}"#,
+            r#"{"model":{"providerID":"another-provider"},"cost":99}"#,
+            r#"{"providerID":"opencode-go","role":"assistant","cost":99}"#,
+            r#"{"model":{"providerID":"opencode-go"},"cost":"99"}"#,
+            r#"{"model":{"providerID":"opencode-go"},"cost":null}"#,
+            r#"{"model":{"providerID":"opencode-go"}}"#,
+            r#"{"model":{"providerID":"opencode-go"},"cost":-1}"#,
+            r#"{"model":{"providerID":"opencode-go"},"cost":1e999}"#,
+        ];
+        for (index, data) in invalid_payloads.iter().enumerate() {
+            insert_session_message_raw(
+                &conn,
+                &format!("msg_invalid_{index}"),
+                "assistant",
+                created,
+                data,
+            );
+        }
+        insert_session_message_raw(
+            &conn,
+            "msg_user",
+            "user",
+            created,
+            r#"{"model":{"providerID":"opencode-go"},"cost":99}"#,
+        );
+        drop(conn);
+
+        let now = a14_now();
+        let rows = read_rows(&db).unwrap();
+        assert_eq!(rows.len(), 2, "has_legacy={has_legacy}: {rows:?}");
+        let buckets = daily_model_costs(&rows, now, 30);
+        assert_eq!(buckets.len(), 2, "has_legacy={has_legacy}: {buckets:?}");
+        assert_eq!(buckets[0].model, "fixture-model");
+        assert!((buckets[0].cost - 3.0).abs() < 1e-6);
+        assert_eq!(buckets[0].request_count, 1);
+        assert_eq!(buckets[1].model, UNKNOWN_MODEL_NAME);
+        assert!(buckets[1].cost.abs() < 1e-6);
+        assert_eq!(buckets[1].request_count, 1);
+    }
+}
+
+#[test]
+fn legacy_copy_with_unusable_timestamp_does_not_hide_valid_v2_request() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("opencode.db");
+    let conn = open_db(&db, false);
+    create_session_message_table(&conn);
+    // No `time.created` and `time_created` 0 gives a legacy createdMs of 0, which is unusable.
+    conn.execute(
+        "INSERT INTO message (id, data, time_created) VALUES ('msg_clock', ?1, 0)",
+        rusqlite::params![r#"{"providerID":"opencode-go","role":"assistant","cost":3}"#],
+    )
+    .unwrap();
+    insert_session_message(
+        &conn,
+        "msg_clock",
+        1_772_794_800_000,
+        3.0,
+        "fixture-model",
+        "opencode-go",
+        None,
+    );
+    drop(conn);
+
+    let rows = read_rows(&db).unwrap();
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(rows[0].model, "fixture-model");
+    assert!((rows[0].cost - 3.0).abs() < 1e-6);
+}
+
+#[test]
+fn idle_v2_wal_history_reads_without_changing_the_database_or_creating_sidecars() {
+    for has_legacy in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("opencode.db");
+        {
+            let conn = Connection::open(&db).unwrap();
+            conn.execute_batch("PRAGMA journal_mode=WAL;").unwrap();
+            create_session_message_table(&conn);
+            if has_legacy {
+                conn.execute_batch(
+                    "CREATE TABLE message (id TEXT PRIMARY KEY, data TEXT NOT NULL, time_created INTEGER);",
+                )
+                .unwrap();
+            }
+            insert_session_message(
+                &conn,
+                "msg_go",
+                1_772_794_800_000,
+                3.0,
+                "fixture-model",
+                "opencode-go",
+                None,
+            );
+            conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()))
+                .unwrap();
+            drop(conn);
+        }
+        // Idle WAL: the writer's checkpointed sidecars are gone. Park them rather than delete.
+        for suffix in ["-wal", "-shm"] {
+            let side = crate::core::sqlite_sidecar_path(&db, suffix);
+            if side.exists() {
+                let parked = PathBuf::from(format!("{}.parked", side.display()));
+                std::fs::rename(&side, parked).unwrap();
+            }
+        }
+        let wal = crate::core::sqlite_sidecar_path(&db, "-wal");
+        let shm = crate::core::sqlite_sidecar_path(&db, "-shm");
+        assert!(
+            !wal.exists() && !shm.exists(),
+            "precondition: no sidecars (has_legacy={has_legacy})"
+        );
+        let contents = std::fs::read(&db).unwrap();
+
+        let rows = read_rows(&db).expect("read idle v2 WAL history");
+        assert_eq!(rows.len(), 1, "has_legacy={has_legacy}: {rows:?}");
+        assert!((rows[0].cost - 3.0).abs() < 1e-6);
+
+        assert_eq!(
+            std::fs::read(&db).unwrap(),
+            contents,
+            "reader must not modify the database"
+        );
+        assert!(
+            !wal.exists() && !shm.exists(),
+            "reader must not create -wal/-shm sidecars (has_legacy={has_legacy})"
+        );
+    }
+}
+
+#[test]
+fn v2_compaction_requests_count_with_their_cost_and_tokens() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("opencode.db");
+    let conn = open_db(&db, false);
+    create_session_message_table(&conn);
+    insert_session_message_raw(
+        &conn,
+        "msg_compaction",
+        "compaction",
+        1_772_794_800_000,
+        r#"{"status":"completed","reason":"auto","summary":"Summary","recent":"",
+           "model":{"providerID":"opencode-go","id":"fixture-model"},"cost":2,
+           "tokens":{"input":2,"output":1,"reasoning":0,"cache":{"read":0,"write":0}}}"#,
+    );
+    drop(conn);
+
+    let rows = read_rows(&db).unwrap();
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(rows[0].model, "fixture-model");
+    assert!((rows[0].cost - 2.0).abs() < 1e-6);
+    assert_eq!(rows[0].tokens.as_ref().map(|t| t.total), Some(3));
+
+    let buckets = daily_model_costs(&rows, a14_now(), 30);
+    assert_eq!(buckets.len(), 1, "{buckets:?}");
+    assert!((buckets[0].cost - 2.0).abs() < 1e-6);
+    assert_eq!(buckets[0].request_count, 1);
 }
 
 #[test]

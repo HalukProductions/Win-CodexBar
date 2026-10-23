@@ -280,7 +280,9 @@ impl GrokProvider {
         match self.cli_billing.fetch().await {
             Ok(bearer) => {
                 tracing::debug!("Grok billing answered by the CLI ACP fallback");
-                Ok(bearer)
+                // A wallet-only ACP answer gets the same bounded percent
+                // enrichment as the credits proxy (upstream #4679).
+                Ok(self.resolve_cli_unknown_usage(bearer, credentials).await)
             }
             Err(acp_error) => {
                 // The original error stays the answer, so auto mode still

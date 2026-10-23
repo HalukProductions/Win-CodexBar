@@ -31,6 +31,12 @@ export interface RateWindowSnapshot {
   reserveEtaSeconds?: number | null;
   /** Pace of this window; absent when the provider's pace is not authoritative or the window is informational. */
   pace?: WindowPaceSnapshot | null;
+  /**
+   * Per-day share of a monthly allowance (upstream `monthlyTargetMetrics`).
+   * Independent of pace scoring; omitted outside monthly windows and when
+   * usage or the reset is unknown.
+   */
+  dailyTarget?: DailyTargetSnapshot | null;
   /** Set while a longer exhausted pool blocks this window; raw percentages stay the provider data. */
   monthlyLimitBlock?: MonthlyLimitBlock | null;
 }
@@ -89,6 +95,12 @@ export interface WindowPaceSnapshot {
    * pace whatever the window's length. Omitted when false.
    */
   resetWindow?: boolean;
+}
+
+/** Remaining allowance over the local days left, in `unit` (`%`, `credits` or `requests`). */
+export interface DailyTargetSnapshot {
+  amount: number;
+  unit: string;
 }
 
 export interface PaceSnapshot {

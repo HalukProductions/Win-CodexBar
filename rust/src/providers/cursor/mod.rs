@@ -37,11 +37,14 @@ pub(crate) const PACE_CAPABILITY: crate::core::ProviderPaceCapability =
     );
 
 /// Grok Bot is Cursor's named extra allowance (upstream 0.73.0 #4269),
-/// published through [`ProviderId::named_extra_metrics`].
+/// published through [`ProviderId::named_extra_metrics`]. A unified weekly
+/// pool replaces the Grok Bot extra, and a saved Grok Bot choice reads that
+/// pool (upstream `CursorProviderDescriptor.menuBarExtras`).
 pub const NAMED_EXTRA_METRICS: &[crate::core::NamedExtraMetric] =
     &[crate::core::NamedExtraMetric {
         id: api::GROK_BOT_WINDOW_ID,
         label: api::GROK_BOT_TITLE,
+        promoted_primary_label: Some(api::SHARED_WEEKLY_POOL_LABEL),
     }];
 
 /// Cursor provider for fetching AI usage limits
@@ -269,6 +272,7 @@ impl Provider for CursorProvider {
                             email,
                             plan_type,
                             grok_bot,
+                            primary_label,
                         } = result;
                         let mut usage = Self::build_usage_snapshot(
                             primary,
@@ -278,6 +282,9 @@ impl Provider for CursorProvider {
                             plan_type,
                             token_report.as_ref(),
                         );
+                        if let Some(label) = primary_label {
+                            usage = usage.with_primary_label(label);
+                        }
                         if let Some(grok_bot) = grok_bot {
                             usage.extra_rate_windows.push(grok_bot);
                         }
@@ -322,6 +329,7 @@ mod tests {
         assert_eq!(metrics.len(), 1);
         assert_eq!(metrics[0].id, "cursor-grok-bot");
         assert_eq!(metrics[0].label, "Grok Bot");
+        assert_eq!(metrics[0].promoted_primary_label, Some("Weekly"));
         assert_eq!(
             ProviderId::Cursor.named_extra_metric("cursor-grok-bot"),
             Some(metrics[0])
@@ -616,5 +624,54 @@ mod tests {
 
         usage.assert_async().await;
         allowed.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn unified_weekly_pool_is_the_weekly_primary_without_grok_bot_extra() {
+        let mut server = mockito::Server::new_async().await;
+        let reset = chrono::Utc::now() + chrono::Duration::days(5);
+        let start = reset - chrono::Duration::days(7);
+        let sand_body = format!(
+            r#"{{"currentPeriodStart":"{}","nextResetTimestampUtc":"{}",
+                "usagePercent":10.5,"hasNonZeroIncludedLimit":true,"isUnified":true}}"#,
+            start.to_rfc3339(),
+            reset.to_rfc3339()
+        );
+        let _summary = server
+            .mock("GET", "/api/usage-summary")
+            .with_status(200)
+            .with_body(SUMMARY)
+            .create_async()
+            .await;
+        let _me = server
+            .mock("GET", "/api/auth/me")
+            .with_status(500)
+            .create_async()
+            .await;
+        let sand = server
+            .mock("POST", "/api/dashboard/get-sand-usage-status")
+            .with_status(200)
+            .with_body(sand_body)
+            .expect(1)
+            .create_async()
+            .await;
+        let harness = Harness::new(&server);
+
+        let result = harness.fetch(COOKIE_A).await;
+
+        sand.assert_async().await;
+        let usage = result.usage;
+        assert!((usage.primary.used_percent - 10.5).abs() < 1e-9);
+        assert_eq!(usage.primary.window_minutes, Some(10080));
+        assert_eq!(usage.primary_label.as_deref(), Some("Weekly"));
+        assert!(usage.secondary.is_none());
+        assert!(usage.model_specific.is_none());
+        assert!(
+            usage
+                .extra_rate_windows
+                .iter()
+                .all(|extra| extra.id != api::GROK_BOT_WINDOW_ID),
+            "Grok Bot must not repeat the promoted pool"
+        );
     }
 }

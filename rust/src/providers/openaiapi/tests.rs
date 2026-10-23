@@ -440,8 +440,15 @@ async fn openai_admin_usage_returns_per_day_history_from_the_wire_pages() {
         .expect("Admin path returns history");
     assert_eq!(history.history_days, 30);
     assert_eq!(history.project_id.as_deref(), Some("proj_abc"));
-    assert_eq!(history.daily.len(), 1);
-    let bucket = &history.daily[0];
+    // One slot per UTC day of the 30-day window; only the bucket's day has usage.
+    assert_eq!(history.daily.len(), 30);
+    let with_usage: Vec<_> = history
+        .daily
+        .iter()
+        .filter(|d| d.total_tokens > 0)
+        .collect();
+    assert_eq!(with_usage.len(), 1);
+    let bucket = with_usage[0];
     assert_eq!((bucket.start_time, bucket.end_time), (day, day + 86_400));
     assert_eq!(bucket.cost_usd, 2.5);
     assert_eq!(bucket.requests, 4);

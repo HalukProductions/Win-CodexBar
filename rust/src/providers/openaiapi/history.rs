@@ -17,6 +17,7 @@ use crate::core::{
 const MAX_CARD_ENTRIES: usize = 10_000;
 /// Largest integer a JavaScript number holds exactly; upstream rejects anything above it.
 const MAX_SAFE_COUNT: u64 = 9_007_199_254_740_991;
+const SECONDS_PER_DAY: i64 = 86_400;
 const DEFAULT_LINE_ITEM: &str = "API";
 const DEFAULT_MODEL: &str = "Responses and Chat Completions";
 
@@ -162,6 +163,43 @@ pub(super) fn daily_usage(
     let excess = daily.len().saturating_sub(history_days as usize);
     daily.drain(..excess);
     Ok(daily)
+}
+
+/// Add a zero bucket for every day in `day_starts` that has no bucket yet, then keep
+/// the list ascending. Days match by UTC day, so a bucket that starts mid-day still
+/// counts as its day. An empty `daily` stays empty: the chart keeps its empty state
+/// when the API reported nothing at all, and only a fetch with data proves the
+/// missing days are zero.
+pub(crate) fn fill_missing_days(
+    daily: &mut Vec<OpenAiApiDailyUsage>,
+    day_starts: impl IntoIterator<Item = i64>,
+) {
+    if daily.is_empty() {
+        return;
+    }
+    for start in day_starts {
+        let day = start.div_euclid(SECONDS_PER_DAY);
+        if daily
+            .iter()
+            .any(|existing| existing.start_time.div_euclid(SECONDS_PER_DAY) == day)
+        {
+            continue;
+        }
+        let start_time = day * SECONDS_PER_DAY;
+        daily.push(OpenAiApiDailyUsage {
+            start_time,
+            end_time: start_time + SECONDS_PER_DAY,
+            cost_usd: 0.0,
+            requests: 0,
+            input_tokens: 0,
+            cached_input_tokens: 0,
+            output_tokens: 0,
+            total_tokens: 0,
+            line_items: Vec::new(),
+            models: Vec::new(),
+        });
+    }
+    daily.sort_by_key(|day| day.start_time);
 }
 
 /// The card payload for `daily`, or `None` when it breaks an upstream card bound (a day

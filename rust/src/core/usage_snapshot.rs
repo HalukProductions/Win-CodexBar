@@ -110,7 +110,8 @@ pub struct OpenAiApiUsageHistory {
     pub history_days: u32,
     /// Project the Admin queries were scoped to, when one is configured.
     pub project_id: Option<String>,
-    /// One bucket per UTC day that has data, ascending by `start_time`.
+    /// One bucket per UTC day in the window, ascending by `start_time`. A day with no
+    /// usage is a zero bucket once the fetch that produced the history has data.
     pub daily: Vec<OpenAiApiDailyUsage>,
 }
 

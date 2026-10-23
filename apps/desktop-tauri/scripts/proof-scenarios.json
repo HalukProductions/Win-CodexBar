@@ -196,6 +196,27 @@
       ]
     },
     {
+      "name": "tray-cursor-weekly",
+      "query": "window=main&fixture=cursor-weekly",
+      "size": [310, 1032],
+      "steps": [
+        { "click": { "selector": ".provider-grid__item", "label": "Cursor" } },
+        { "expectText": ["Cursor", "Weekly", "cursor.user@example.com", "10% used", "$4.47"] },
+        { "expectNoText": ["Grok Bot", "Auto", "API"] },
+        { "screenshot": "tray-cursor-weekly", "clip": "panel" }
+      ]
+    },
+    {
+      "name": "flyout-cursor-weekly",
+      "query": "window=flyout&fixture=cursor-weekly&theme=dark",
+      "size": [310, 1032],
+      "steps": [
+        { "expectText": ["Cursor", "Weekly", "10% used", "$4.47"] },
+        { "expectNoText": ["Grok Bot", "Auto", "API"] },
+        { "screenshot": "flyout-cursor-weekly", "clip": "panel" }
+      ]
+    },
+    {
       "name": "settings-general-dark",
       "query": "window=settings&tab=general&theme=dark",
       "size": [880, 620],
@@ -467,6 +488,25 @@
       ]
     },
     {
+      "name": "flyout-kimi-bonus-credits",
+      "query": "window=flyout&fixture=kimi-bonus-credits&theme=dark",
+      "size": [310, 1032],
+      "steps": [
+        { "expectText": ["Kimi", "Total usage", "Bonus credits", "Invite to Earn Credit", "75% left", "Expires Dec 31, 2026", "Welcome Credit", "40% left"] },
+        { "expectNoText": ["Reservation Bonus", "Expired grant"] },
+        { "screenshot": "flyout-kimi-bonus-credits", "clip": "panel" }
+      ]
+    },
+    {
+      "name": "flyout-copilot-daily-target",
+      "query": "window=flyout&fixture=copilot-daily-target&theme=dark",
+      "size": [310, 1032],
+      "steps": [
+        { "expectText": ["Copilot", "Premium", "≈ 2.9% / day to last until reset"] },
+        { "screenshot": "flyout-copilot-daily-target", "clip": "panel" }
+      ]
+    },
+    {
       "name": "settings-gemini-usage-source",
       "query": "window=settings&tab=providers:gemini&fixture=default&theme=dark",
       "size": [880, 620],
@@ -704,6 +744,16 @@
         { "expectSelector": ".floatbar__pill" },
         { "expectText": "%" },
         { "screenshot": "floatbar" }
+      ]
+    },
+    {
+      "name": "tray-agent-sessions-hosts",
+      "query": "window=main&fixture=agent-sessions-hosts",
+      "size": [310, 1032],
+      "steps": [
+        { "expectText": ["WORKSTATION-A — 2", "BUILD-BOX — 1", "LAB-HOST — unreachable", "ssh: connection timed out", "example-project"] },
+        { "expectNoText": "LAB-HOST — 0" },
+        { "screenshot": "tray-agent-sessions-hosts", "clip": "panel" }
       ]
     }
   ]

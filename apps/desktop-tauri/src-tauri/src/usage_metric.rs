@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::cmp::Ordering;
 
 use chrono::{DateTime, Utc};
-use codexbar::core::{IconLane, ProviderId, UsagePace};
+use codexbar::core::{IconLane, NamedExtraMetric, ProviderId, UsagePace};
 use codexbar::settings::{MetricPreference, Settings};
 
 use crate::commands::{ProviderUsageSnapshot, RateWindowSnapshot};
@@ -178,7 +178,7 @@ fn preferred_window(
         MetricPreference::NamedExtra(id) => {
             let declared = provider?.named_extra_metric(&id)?;
             Some(
-                plan_window(snapshot, declared.id)
+                named_extra_reading(snapshot, declared)
                     .cloned()
                     .unwrap_or_else(unknown_window),
             )
@@ -244,7 +244,7 @@ pub(crate) fn selected_named_extra_is_unknown(
         .get_provider_metric(provider)
         .named_extra_id()
         .and_then(|id| provider.named_extra_metric(id))
-        .is_some_and(|declared| plan_window(snapshot, declared.id).is_none())
+        .is_some_and(|declared| named_extra_reading(snapshot, declared).is_none())
 }
 
 fn unknown_window() -> RateWindowSnapshot {
@@ -256,6 +256,21 @@ fn unknown_window() -> RateWindowSnapshot {
 
 fn monthly_plan_window_id(provider: ProviderId) -> Option<&'static str> {
     codexbar::core::instantiate_provider(provider).monthly_plan_window_id()
+}
+
+/// The known reading for a declared named extra allowance: its own extra
+/// window, or the primary window once the provider has promoted the
+/// allowance into it (see [`NamedExtraMetric::promoted_primary_label`]).
+pub(crate) fn named_extra_reading(
+    snapshot: &ProviderUsageSnapshot,
+    declared: NamedExtraMetric,
+) -> Option<&RateWindowSnapshot> {
+    let promoted = declared.promoted_primary_label.is_some()
+        && snapshot.primary_label.as_deref() == declared.promoted_primary_label;
+    if promoted {
+        return non_informational(Some(&snapshot.primary));
+    }
+    plan_window(snapshot, declared.id)
 }
 
 fn plan_window<'a>(

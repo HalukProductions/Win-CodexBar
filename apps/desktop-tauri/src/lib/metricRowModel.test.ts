@@ -510,3 +510,58 @@ describe("metricRowPresentation bar", () => {
     ).toBe("63%");
   });
 });
+
+describe("monthly daily target", () => {
+  // A calendar-month allowance on the secondary lane with a synthetic target.
+  function monthly(dailyTarget: RateWindowSnapshot["dailyTarget"]): RateWindowSnapshot {
+    return rateWindow({
+      usedPercent: 79,
+      remainingPercent: 21,
+      windowMinutes: 43_200,
+      pace: pace(),
+      dailyTarget,
+    });
+  }
+
+  it("shows the per-day share when the window has no pace", () => {
+    const snap = { ...monthly({ amount: 0, unit: "%" }), pace: null };
+    expect(metricRowPresentation(input({ lane: "secondary", snap }), en).metaText).toContain(
+      "≈ 0% / day to last until reset",
+    );
+  });
+
+  it("shows a credit allowance's per-day share in the allowance's unit", () => {
+    const row = metricRowPresentation(
+      input({ lane: "secondary", snap: monthly({ amount: 21.0909, unit: "credits" }) }),
+      en,
+    );
+    expect(row.metaText).toContain("≈ 21.09 credits / day to last until reset");
+  });
+
+  it("formats percent, request and unknown units", () => {
+    const text = (dailyTarget: RateWindowSnapshot["dailyTarget"]) =>
+      metricRowPresentation(input({ lane: "secondary", snap: monthly(dailyTarget) }), en).metaText ?? "";
+
+    expect(text({ amount: 2.46, unit: "%" })).toContain("≈ 2.5% / day to last until reset");
+    expect(text({ amount: 10.714, unit: "requests" })).toContain(
+      "≈ 10.71 requests / day to last until reset",
+    );
+    expect(text({ amount: 5, unit: "tokens" })).not.toContain("/ day");
+  });
+
+  it("follows the pace setting and hides on compact rows", () => {
+    const target = { amount: 21.09, unit: "credits" };
+    expect(
+      metricRowPresentation(input({ lane: "secondary", snap: monthly(target), paceEnabled: false }), en)
+        .metaText,
+    ).toBeNull();
+    expect(
+      metricRowPresentation(input({ lane: "secondary", snap: monthly(target), compact: true }), en).metaText,
+    ).toBeNull();
+  });
+
+  it("shows nothing when the window carries no target", () => {
+    const row = metricRowPresentation(input({ lane: "secondary", snap: monthly(null) }), en);
+    expect(row.metaText ?? "").not.toContain("/ day");
+  });
+});

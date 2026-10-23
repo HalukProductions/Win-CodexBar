@@ -6,9 +6,9 @@ Claude cli=claude display="Claude" cookie=Some("claude.ai") color=#CC7C5E deprec
   map=["anthropic", "claude"]
   metadata=ProviderMetadata { id: Claude, display_name: "Claude", session_label: "Session (5h)", weekly_label: "Weekly", supports_opus: true, supports_credits: true, default_enabled: true, is_primary: true, dashboard_url: Some("https://platform.claude.com/usage"), status_page_url: Some("https://status.claude.com/"), tertiary_label_key: None }
   sources=[Auto, OAuth, Web, Cli] oauth=true web=true cli=true
-Pi cli=pi display="Pi" cookie=None color=#7C3AED deprecated=false blocking=None
+Pi cli=pi display="Pi" cookie=None color=#4D9ABF deprecated=false blocking=None
   map=["pi"]
-  metadata=ProviderMetadata { id: Pi, display_name: "Pi", session_label: "Session", weekly_label: "Weekly", supports_opus: false, supports_credits: false, default_enabled: false, is_primary: false, dashboard_url: Some("https://github.com/badlogic/pi-mono"), status_page_url: None, tertiary_label_key: None }
+  metadata=ProviderMetadata { id: Pi, display_name: "Pi", session_label: "Session", weekly_label: "Weekly", supports_opus: false, supports_credits: false, default_enabled: false, is_primary: false, dashboard_url: Some("https://github.com/earendil-works/pi"), status_page_url: None, tertiary_label_key: None }
   sources=[Auto] oauth=false web=false cli=false
 Cursor cli=cursor display="Cursor" cookie=Some("cursor.com") color=#F54E00 deprecated=false blocking=None
   map=["cursor"]
@@ -442,3 +442,7 @@ ClaudePlatform cli=claudeplatform display="Claude Platform" cookie=Some("platfor
   map=["claude-platform", "claudeplatform"]
   metadata=ProviderMetadata { id: ClaudePlatform, display_name: "Claude Platform", session_label: "API credit", weekly_label: "Purchased credit", supports_opus: false, supports_credits: false, default_enabled: false, is_primary: false, dashboard_url: Some("https://platform.claude.com/settings/billing"), status_page_url: Some("https://status.claude.com/"), tertiary_label_key: None }
   sources=[Auto, Web] oauth=false web=true cli=false
+Soniox cli=soniox display="Soniox" cookie=None color=#253772 deprecated=false blocking=None
+  map=["soniox"]
+  metadata=ProviderMetadata { id: Soniox, display_name: "Soniox", session_label: "Monthly budget", weekly_label: "Usage", supports_opus: false, supports_credits: false, default_enabled: false, is_primary: false, dashboard_url: Some("https://console.soniox.com"), status_page_url: Some("https://status.soniox.com"), tertiary_label_key: None }
+  sources=[Auto, OAuth] oauth=false web=false cli=false

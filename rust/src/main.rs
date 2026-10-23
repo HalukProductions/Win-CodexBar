@@ -110,7 +110,9 @@ fn dispatch_command(rt: &Runtime, command: Option<Commands>) -> i32 {
         Some(Commands::Dashboard(args)) => run_unexpected(rt, cli::dashboard::run(args)),
         Some(Commands::Autostart(args)) => run_unexpected(rt, cli::autostart::run(args)),
         Some(Commands::Account(args)) => run_unexpected(rt, cli::account::run(args)),
-        Some(Commands::Config(args)) => run_unexpected(rt, cli::config::run(args)),
+        Some(Commands::Config(args)) => {
+            run_command(rt, cli::config::run(args), categorize_config_error)
+        }
         Some(Commands::Hooks(args)) => run_unexpected(rt, cli::hooks::run(args)),
         Some(Commands::Workspaces(args)) => run_categorized(rt, cli::workspaces::run(args)),
         None => missing_subcommand(),
@@ -153,6 +155,15 @@ fn missing_subcommand() -> i32 {
          Use `codexbar --help` for the full list of subcommands."
     );
     exit_codes::USAGE_ERROR
+}
+
+/// `config login` failures carry their own exit code (see
+/// `cli::exit_codes`). Every other `config` error stays at the general failure code.
+fn categorize_config_error(e: &anyhow::Error) -> i32 {
+    e.downcast_ref::<cli::config::ConfigLoginError>().map_or(
+        exit_codes::UNEXPECTED_FAILURE,
+        cli::config::ConfigLoginError::exit_code,
+    )
 }
 
 /// Categorize an error into the appropriate exit code

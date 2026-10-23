@@ -273,6 +273,37 @@ impl GrokProvider {
         }
     }
 
+    /// Bounded grok.com percent for a wallet-only ACP answer (upstream #4679).
+    /// The ACP period, plan and prepaid balance stay authoritative. Only a
+    /// wire-published percent or a validated implicit zero is adopted. Expired
+    /// credentials and failed or slow enrichment keep the wallet with usage unknown.
+    pub(super) async fn resolve_cli_unknown_usage(
+        &self,
+        answer: BearerBilling,
+        credentials: &GrokCredentials,
+    ) -> BearerBilling {
+        if answer.billing.used_percent.is_some() || credentials.is_expired(Utc::now()) {
+            return answer;
+        }
+        let authorization = format!("Bearer {}", credentials.access_token);
+        match tokio::time::timeout(
+            PERCENT_RETRY_TIMEOUT,
+            self.fetch_billing(Some(authorization), None),
+        )
+        .await
+        {
+            Ok(Ok(grpc)) => adopt_grpc_percent(answer, grpc),
+            Ok(Err(error)) => {
+                tracing::debug!("Grok ACP percent enrichment failed: {error}");
+                answer
+            }
+            Err(_) => {
+                tracing::debug!("Grok ACP percent enrichment timed out");
+                answer
+            }
+        }
+    }
+
     async fn fetch_credits_proxy(
         &self,
         authorization: &str,

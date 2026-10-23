@@ -116,6 +116,17 @@ pub struct RateWindow {
     /// becoming an exported quota measurement.
     #[serde(default = "rate_window_usage_known_default", skip_serializing)]
     pub(crate) usage_known: bool,
+
+    /// Absolute allowance reported alongside the percentage (for example 250
+    /// credits). Upstream `RateWindow.quotaLimit`; absent for percent-only
+    /// windows, and kept out of payloads unless set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quota_limit: Option<f64>,
+
+    /// Unit of [`Self::quota_limit`]: `credits`, `requests`, or an ISO currency
+    /// code. Upstream `RateWindow.quotaUnit`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quota_unit: Option<String>,
 }
 
 fn rate_window_usage_known_default() -> bool {
@@ -135,6 +146,8 @@ impl RateWindow {
             reset_regenerates: false,
             hidden_on_card: false,
             usage_known: true,
+            quota_limit: None,
+            quota_unit: None,
         }
     }
 
@@ -178,12 +191,21 @@ impl RateWindow {
             reset_regenerates: false,
             hidden_on_card: false,
             usage_known: true,
+            quota_limit: None,
+            quota_unit: None,
         }
     }
 
     /// Mark `reset_description` as a detail line instead of reset wording.
     pub fn with_description_as_detail(mut self) -> Self {
         self.description_is_detail = true;
+        self
+    }
+
+    /// Record the absolute allowance behind the percentage, in `unit`.
+    pub fn with_quota(mut self, limit: f64, unit: impl Into<String>) -> Self {
+        self.quota_limit = Some(limit);
+        self.quota_unit = Some(unit.into());
         self
     }
 
@@ -336,6 +358,27 @@ mod tests {
         assert_eq!(window.used_percent, 0.0);
         assert_eq!(window.resets_at, None);
         assert!(!window.usage_known());
+    }
+
+    #[test]
+    fn quota_allowance_serializes_only_when_reported() {
+        let plain = RateWindow::with_details(10.0, Some(43_200), None, None);
+        let plain_json = serde_json::to_value(&plain).expect("rate window JSON");
+        assert!(plain_json.get("quota_limit").is_none());
+        assert!(plain_json.get("quota_unit").is_none());
+
+        let quoted = plain.with_quota(250.0, "credits");
+        let json = serde_json::to_value(&quoted).expect("rate window JSON");
+        assert_eq!(json["quota_limit"], serde_json::json!(250.0));
+        assert_eq!(json["quota_unit"], serde_json::json!("credits"));
+
+        let restored: RateWindow = serde_json::from_value(json).expect("round trip");
+        assert_eq!(restored.quota_limit, Some(250.0));
+        assert_eq!(restored.quota_unit.as_deref(), Some("credits"));
+        let legacy: RateWindow =
+            serde_json::from_value(serde_json::json!({ "used_percent": 5.0 })).expect("legacy");
+        assert_eq!(legacy.quota_limit, None);
+        assert_eq!(legacy.quota_unit, None);
     }
 
     #[test]

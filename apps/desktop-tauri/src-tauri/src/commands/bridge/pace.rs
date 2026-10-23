@@ -38,6 +38,24 @@ pub struct WindowPaceSnapshot {
     pub reset_window: bool,
 }
 
+/// Remaining allowance divided by the local calendar days left, in the
+/// allowance's own unit (`%`, `credits` or `requests`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DailyTargetSnapshot {
+    pub amount: f64,
+    pub unit: String,
+}
+
+impl From<codexbar::core::MonthlyDailyTarget> for DailyTargetSnapshot {
+    fn from(target: codexbar::core::MonthlyDailyTarget) -> Self {
+        Self {
+            amount: target.amount,
+            unit: target.unit,
+        }
+    }
+}
+
 /// Where a window is rendered. Reset-window pace applies to the card's
 /// primary, secondary and tertiary bars only, as on the Mac; extra windows
 /// keep plain lane pace.
@@ -115,6 +133,24 @@ impl WindowPaceSnapshot {
             reset_window,
         }
     }
+}
+
+/// Daily target of a monthly window in local calendar days (the Mac uses
+/// `Calendar.current`). Upstream `monthlyTargetMetrics` reads the same
+/// window, so the target never estimates today's consumption. It does not
+/// depend on a lane pace: an exhausted allowance has no pace but still has
+/// a target.
+pub(crate) fn daily_target(
+    id: Option<ProviderId>,
+    window: &RateWindow,
+    now: DateTime<Utc>,
+) -> Option<DailyTargetSnapshot> {
+    let capability = id.map_or(codexbar::core::ProviderPaceCapability::UNSUPPORTED, |id| {
+        id.pace_capability()
+    });
+    capability
+        .monthly_daily_target(window, now, &chrono::Local)
+        .map(DailyTargetSnapshot::from)
 }
 
 #[cfg(test)]
@@ -545,6 +581,74 @@ mod tests {
         assert_eq!(json["paceAuthoritative"], serde_json::Value::Bool(false));
         let cached: ProviderUsageSnapshot = serde_json::from_value(json).unwrap();
         assert!(!cached.pace_authoritative);
+    }
+
+    /// A calendar-month credit allowance carries its daily target on the card
+    /// lane: 200 remaining credits over the 14 local days to the Mar 1 reset.
+    /// Local-day counting varies by zone, so the bound allows one day either way.
+    #[test]
+    fn monthly_credit_allowance_carries_a_daily_target_on_the_card_lane() {
+        let window = monthly(20.0, Some(43_200)).with_quota(250.0, "credits");
+
+        let snap = snapshot_at(ProviderId::Notion, UsageSnapshot::new(window));
+
+        let target = snap.primary.daily_target.expect("daily target");
+        assert_eq!(target.unit, "credits");
+        let days = 200.0 / target.amount;
+        assert!((13.0..=15.0).contains(&days), "{days}");
+    }
+
+    /// An exhausted allowance has no lane pace, but the card still shows its
+    /// target, as upstream computes the target apart from pace.
+    #[test]
+    fn exhausted_monthly_allowance_keeps_a_zero_daily_target_without_pace() {
+        let window = monthly(100.0, Some(43_200)).with_quota(250.0, "credits");
+
+        let snap = snapshot_at(ProviderId::Notion, UsageSnapshot::new(window));
+
+        assert_eq!(snap.primary.pace, None);
+        assert_eq!(
+            snap.primary.daily_target,
+            Some(DailyTargetSnapshot {
+                amount: 0.0,
+                unit: "credits".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn weekly_window_has_no_daily_target() {
+        // Reset five days out, inside the seven-day window.
+        let reset = Utc.with_ymd_and_hms(2026, 2, 20, 0, 0, 0).unwrap();
+        let window = RateWindow::with_details(20.0, Some(10_080), Some(reset), None)
+            .with_quota(250.0, "credits");
+
+        let snap = snapshot_at(ProviderId::Notion, UsageSnapshot::new(window));
+
+        assert!(snap.primary.pace.is_some());
+        assert_eq!(snap.primary.daily_target, None);
+    }
+
+    /// A provider that opts out of pace gets no daily target either, so the
+    /// target follows the same pace visibility as the rest of the lane.
+    #[test]
+    fn non_authoritative_monthly_allowance_has_no_daily_target() {
+        let metadata = instantiate_provider(ProviderId::Notion).metadata().clone();
+        let window = monthly(20.0, Some(43_200)).with_quota(250.0, "credits");
+        let result = ProviderFetchResult::new(UsageSnapshot::new(window), "web")
+            .with_non_authoritative_pace();
+
+        let snap = ProviderUsageSnapshot::from_fetch_result_at(
+            ProviderId::Notion,
+            &metadata,
+            &result,
+            None,
+            None,
+            february_now(),
+        );
+
+        assert_eq!(snap.primary.pace, None);
+        assert_eq!(snap.primary.daily_target, None);
     }
 
     #[test]

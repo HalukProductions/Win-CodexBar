@@ -85,6 +85,22 @@ pub(super) fn insert_session_message(
     .unwrap();
 }
 
+/// Insert a raw v2 `session_message` row with any `type` and payload, including malformed JSON.
+pub(super) fn insert_session_message_raw(
+    conn: &Connection,
+    id: &str,
+    ty: &str,
+    created_ms: i64,
+    data: &str,
+) {
+    conn.execute(
+        "INSERT INTO session_message (id, session_id, type, seq, time_created, time_updated, data)
+         VALUES (?1, 'session-1', ?2, 0, ?3, ?3, ?4)",
+        rusqlite::params![id, ty, created_ms, data],
+    )
+    .unwrap();
+}
+
 /// Insert a step-finish part carrying a cost, attached to `message_id`.
 pub(super) fn insert_step_finish(
     conn: &Connection,
