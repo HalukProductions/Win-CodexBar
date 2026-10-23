@@ -416,7 +416,7 @@ Once the sign-in finishes, the account is saved to CodexBar's Grok accounts the 
 
 #### Kiro
 
-`config login --provider kiro` runs `kiro-cli login`. The CLI prints a sign-in link, and kiro-cli opens the browser. The link is printed as soon as the CLI shows it: on its own line in text mode, or as an `authorization_pending` line with `verificationURI` in JSON mode. The sign-in waits up to 120 seconds, the same as the desktop sign-in.
+`config login --provider kiro` runs `kiro-cli login`. The command first prints `Waiting for the browser sign-in to finish.` (in JSON, an `authorization_pending` line with no URL). kiro-cli then prints a sign-in link and opens the browser. The link is printed as soon as the CLI shows it: on its own line in text mode, or as a second `authorization_pending` line with `verificationURI` in JSON mode. The sign-in waits up to 120 seconds, the same as the desktop sign-in.
 
 kiro-cli keeps the credential itself. CodexBar does not copy it into its own store. A zero exit code therefore means kiro-cli reported a successful sign-in. Then the Kiro provider is turned on. If kiro-cli is not installed, the command exits with `8`. `CODEXBAR_KIRO_CLI_PATH` selects a specific `kiro-cli` executable, as it does for usage.
 
@@ -428,12 +428,12 @@ kiro-cli keeps the credential itself. CodexBar does not copy it into its own sto
 | --- | --- |
 | Code issued (Copilot) | `{"status":"authorization_pending","verificationURI":"https://github.com/login/device","userCode":"ABCD-1234","expiresIn":900}` |
 | Kiro sign-in link | `{"status":"authorization_pending","verificationURI":"<link printed by kiro-cli>"}` |
-| Waiting in the browser (Grok) | `{"status":"authorization_pending"}` |
+| Waiting in the browser (Grok; also the first line for Kiro) | `{"status":"authorization_pending"}` |
 | Approved and saved | `{"status":"authorized"}`. This line is written only after the credential is saved and the provider is enabled. |
 | Cancelled (Ctrl-C) | `{"status":"cancelled"}` |
 | Failed | `{"status":"failed","reason":"denied","error":"GitHub device login failed: Access denied by user"}`. `reason` is one of `denied`, `expired`, `cancelled`, `missing_binary` or `error`. The exit code table below maps each reason to its exit code. |
 
-Text mode prints the URL and code (or only the URL, or only `Waiting for the browser sign-in to finish.` for Grok), then `Connected` on success. Errors go to stderr as `Error: <message>`. Ctrl-C ends the login with `Error: Login cancelled.` and exit code `7`.
+Text mode prints the URL and code for Copilot. Grok prints only `Waiting for the browser sign-in to finish.` Kiro prints that waiting line, then the sign-in URL once kiro-cli shows it. On success every provider prints `Connected`. Errors go to stderr as `Error: <message>`. Ctrl-C ends the login with `Error: Login cancelled.` and exit code `7`.
 
 ### Exit codes
 
