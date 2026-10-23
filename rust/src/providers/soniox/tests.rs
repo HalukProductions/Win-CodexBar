@@ -452,6 +452,10 @@ fn base_url_override_accepts_https_and_loopback_http() {
         validated_base_url("http://[::1]:9/v1/organization").as_deref(),
         Some("http://[::1]:9/v1/organization")
     );
+    assert_eq!(
+        validated_base_url("http://127.0.0.1:9/proxy/v1/organization").as_deref(),
+        Some("http://127.0.0.1:9/proxy/v1/organization")
+    );
 }
 
 #[test]
@@ -464,6 +468,9 @@ fn base_url_override_rejects_remote_plain_http_and_unsafe_forms() {
         "https://api.soniox.com/v1/organization?x=1",
         "https://api.soniox.com/v1/organization#frag",
         "http://127.0.0.1%2f.attacker.test/v1/organization",
+        "https://api.soniox.com",
+        "https://api.soniox.com/v1",
+        "http://127.0.0.1:4010/",
         "not a url",
         "",
     ] {

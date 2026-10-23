@@ -32,6 +32,7 @@ const BASE_URL: &str = "https://api.soniox.com/v1/organization";
 /// Optional override for the organization API base (proof runs and fake servers).
 /// Accepts `https://` or loopback `http://` only; anything else is ignored.
 const BASE_URL_ENV: &str = "SONIOX_BASE_URL";
+const ORGANIZATION_PATH: &str = "/v1/organization";
 const CREDENTIAL_TARGET: &str = "codexbar-soniox";
 pub const API_KEY_ENV: &str = "SONIOX_ORG_API_KEY";
 const MAX_RESPONSE_BYTES: usize = 256 * 1024;
@@ -153,7 +154,7 @@ fn base_url_from_override(raw: Option<&str>) -> String {
         Some(base) => base,
         None => {
             tracing::warn!(
-                "Ignoring {BASE_URL_ENV}: use an https:// URL or a loopback http:// URL without credentials, query, or fragment"
+                "Ignoring {BASE_URL_ENV}: use an https:// URL or a loopback http:// URL ending in {ORGANIZATION_PATH}, without credentials, query, or fragment"
             );
             BASE_URL.to_owned()
         }
@@ -176,6 +177,8 @@ fn clean_override(raw: &str) -> String {
 
 /// Same policy as the Sub2API base URL: `https://`, or `http://` only for a
 /// loopback host, with no userinfo, query, fragment, or encoded host delimiters.
+/// The path must end in `/v1/organization`, because requests append only the
+/// endpoint name (`/balance`, `/usage/monthly`).
 /// Returns the URL without a trailing slash.
 fn validated_base_url(raw: &str) -> Option<String> {
     let lower = raw.to_ascii_lowercase();
@@ -199,6 +202,10 @@ fn validated_base_url(raw: &str) -> Option<String> {
         || url.fragment().is_some()
         || host.contains('%')
         || host.chars().any(|c| c.is_control() || c.is_whitespace())
+        || !url
+            .path()
+            .trim_end_matches('/')
+            .ends_with(ORGANIZATION_PATH)
     {
         return None;
     }
