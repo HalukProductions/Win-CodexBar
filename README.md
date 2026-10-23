@@ -152,6 +152,7 @@ For Claude, browser cookies (the `sessionKey`) are preferred, because they match
 | Munito | Admin API Key | Today's and this month's organization spend against spend limits |
 | Soniox | Organization API key | Prepaid USD balance, this month's spend against the monthly budget, billing method |
 | Claude Platform | Browser cookies / manual Cookie header | Console API credit and purchased credit, other grants, month-to-date spend |
+| Trae CN | Browser cookies / manual Cookie header | Credit allowance used against total, remaining credits, plan name |
 
 </details>
 

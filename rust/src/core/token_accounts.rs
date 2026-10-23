@@ -387,7 +387,8 @@ impl TokenAccountSupport {
             | ProviderId::FutureAgi
             | ProviderId::Munito
             | ProviderId::Soniox
-            | ProviderId::ClaudePlatform => None,
+            | ProviderId::ClaudePlatform
+            | ProviderId::TraeCn => None,
         }
     }
 
