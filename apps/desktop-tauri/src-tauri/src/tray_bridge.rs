@@ -147,7 +147,7 @@ fn build_native_tray_menu(
     Menu::with_items(app, &item_refs)
 }
 
-enum MenuAction {
+pub(crate) enum MenuAction {
     /// Open Settings/About in a detached window.
     OpenSettings(String),
     /// Open (or focus) the dedicated flyout ("Pop Out Dashboard") window.
@@ -162,7 +162,7 @@ enum MenuAction {
     Quit,
 }
 
-fn resolve_menu_action(id: &str) -> Option<MenuAction> {
+pub(crate) fn resolve_menu_action(id: &str) -> Option<MenuAction> {
     if let Some(action) = crate::tray_accounts::resolve_action(id) {
         return Some(MenuAction::Account(action));
     }
@@ -249,6 +249,7 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             handle_menu_event(app, event.id().as_ref());
         })
         .build(app)?;
+    crate::proof_tray_menu::write_if_enabled(app.handle(), &menu);
 
     // Apply tray promotion on startup. The NotifyIconSettings entry is created
     // by Windows only after the icon is first registered, so on first run /
@@ -355,6 +356,26 @@ fn handle_menu_event(app: &AppHandle, id: &str) {
     }
 }
 
+/// Pure gate for `proof_activate_tray_item`: proof mode only, and only ids that
+/// resolve to a menu action. Status rows and unknown ids never dispatch.
+pub(crate) fn activation_allowed(proof_mode: bool, id: &str) -> bool {
+    proof_mode && resolve_menu_action(id).is_some()
+}
+
+/// Proof-only: run the same handler a native click on `id` runs.
+///
+/// The handler runs on the main thread through `run_on_main_thread`, not in
+/// this command, so window-building actions stay out of an IPC command.
+#[tauri::command]
+pub(crate) async fn proof_activate_tray_item(app: AppHandle, id: String) -> Result<(), String> {
+    if !activation_allowed(crate::proof_harness::is_proof_mode(&app), &id) {
+        return Err("tray item is not a proof-activatable menu action".into());
+    }
+    let handle = app.clone();
+    app.run_on_main_thread(move || handle_menu_event(&handle, &id))
+        .map_err(|error| error.to_string())
+}
+
 /// Rebuild the native tray menu from current provider + settings state.
 pub(crate) fn rebuild_tray_menu(app: &AppHandle) {
     let catalog = crate::commands::get_provider_catalog();
@@ -372,7 +393,8 @@ pub(crate) fn rebuild_tray_menu(app: &AppHandle) {
     if let Ok(menu) = build_native_tray_menu(app, &catalog, &status_labels)
         && let Some(tray) = app.tray_by_id("codexbar-main")
     {
-        let _ = tray.set_menu(Some(menu));
+        let _ = tray.set_menu(Some(menu.clone()));
+        crate::proof_tray_menu::write_if_enabled(app, &menu);
     }
 }
 
@@ -392,7 +414,8 @@ pub fn update_tray_status_items(
     if let Ok(menu) = build_native_tray_menu(app, &catalog, &status_labels)
         && let Some(tray) = app.tray_by_id("codexbar-main")
     {
-        let _ = tray.set_menu(Some(menu));
+        let _ = tray.set_menu(Some(menu.clone()));
+        crate::proof_tray_menu::write_if_enabled(app, &menu);
     }
 }
 
@@ -560,7 +583,79 @@ mod tests {
     use super::*;
 
     use crate::surface::SurfaceMode;
+    use crate::tray_menu::tests::{actionable_ids, flatten, sample_provider_catalog};
     use crate::tray_presentation::tests::{fake_snapshot, fake_snapshot_with};
+    use codexbar::settings::Language;
+
+    #[test]
+    fn proof_activation_requires_proof_mode_and_a_menu_action() {
+        assert!(!activation_allowed(false, "refresh"));
+        assert!(activation_allowed(true, "refresh"));
+        assert!(activation_allowed(true, "settings"));
+        assert!(activation_allowed(true, "toggle_provider:codex"));
+        assert!(activation_allowed(true, "switch_claude_account:a:org"));
+        assert!(!activation_allowed(true, "status_codex"));
+        assert!(!activation_allowed(true, "stay_awake_active"));
+        assert!(!activation_allowed(true, "not_a_menu_item"));
+        assert!(!activation_allowed(true, ""));
+    }
+
+    #[test]
+    fn every_spec_action_resolves_and_status_rows_do_not() {
+        let labels = vec![
+            ("claude".to_string(), "Claude 60%".to_string()),
+            ("codex".to_string(), "Codex 30%".to_string()),
+        ];
+        let spec = build_tray_menu_with(
+            &sample_provider_catalog(),
+            &labels,
+            &crate::tray_menu::tests::both_enabled(),
+            MenuState {
+                float_bar_enabled: true,
+                stay_awake_held: true,
+            },
+            Language::English,
+        );
+
+        let actionable = actionable_ids(&spec);
+        for expected in [
+            "refresh",
+            "pop_out",
+            "toggle_float_bar",
+            "toggle_provider:codex",
+            "toggle_provider:claude",
+            "settings",
+            "check_for_updates",
+            "about",
+            "quit",
+        ] {
+            assert!(
+                actionable.iter().any(|id| id == expected),
+                "{expected} should be actionable in the spec"
+            );
+        }
+        for id in &actionable {
+            assert!(
+                resolve_menu_action(id).is_some(),
+                "spec id {id} does not resolve to a menu action"
+            );
+        }
+
+        let mut inert = Vec::new();
+        for entry in flatten(&spec) {
+            if let Some(id) = entry.id.as_deref()
+                && (id.starts_with("status_") || id == "stay_awake_active")
+            {
+                assert!(resolve_menu_action(id).is_none(), "{id} must not dispatch");
+                inert.push(id.to_string());
+            }
+        }
+        assert_eq!(
+            inert,
+            vec!["status_claude", "status_codex", "stay_awake_active"],
+            "the drift guard must see every status row"
+        );
+    }
 
     #[test]
     fn toggle_float_bar_routes_to_toggle_action() {
