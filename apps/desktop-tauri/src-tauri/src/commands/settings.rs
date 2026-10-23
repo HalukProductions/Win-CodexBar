@@ -799,6 +799,7 @@ pub async fn update_settings(
     let tray_promotion_changed = patch.changes_tray_promotion();
     let tray_panel_always_on_top_changed = patch.tray_panel_always_on_top.is_some();
     let share_usage_with_cli_changed = patch.share_usage_with_cli.is_some();
+    let overview_all_accounts_turned_on = patch.merged_overview_all_accounts == Some(true);
     let previous_promoted = settings.promote_tray_icon;
     let previous_language = settings.ui_language;
     let previous_limit_reset = settings.limit_reset_notifications_enabled;
@@ -833,6 +834,10 @@ pub async fn update_settings(
             &app.state::<Mutex<AppState>>(),
             settings.share_usage_with_cli,
         );
+    }
+
+    if overview_all_accounts_turned_on {
+        crate::commands::spawn_background_pool_read(&app, &settings, true);
     }
 
     if refresh_provider_data {
