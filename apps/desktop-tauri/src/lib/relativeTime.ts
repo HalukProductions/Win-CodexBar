@@ -23,12 +23,16 @@ export function formatRelativeUpdated(
   }
   const diffMins = Math.floor(diffSecs / 60);
   if (diffMins < 60) {
-    return t("UpdatedMinutesAgo").replace("{}", String(diffMins));
+    return countAgo(t, diffMins, "UpdatedOneMinuteAgo", "UpdatedMinutesAgo");
   }
   const diffHours = Math.floor(diffMins / 60);
   if (diffHours < 24) {
-    return t("UpdatedHoursAgo").replace("{}", String(diffHours));
+    return countAgo(t, diffHours, "UpdatedOneHourAgo", "UpdatedHoursAgo");
   }
   const diffDays = Math.floor(diffHours / 24);
-  return t("UpdatedDaysAgo").replace("{}", String(diffDays));
+  return countAgo(t, diffDays, "UpdatedOneDayAgo", "UpdatedDaysAgo");
+}
+
+function countAgo(t: Translate, count: number, one: LocaleKey, many: LocaleKey): string {
+  return t(count === 1 ? one : many).replace("{}", String(count));
 }

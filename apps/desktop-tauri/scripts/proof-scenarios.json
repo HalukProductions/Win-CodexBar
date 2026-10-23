@@ -5,7 +5,8 @@
       "query": "window=main&fixture=default",
       "size": [310, 1032],
       "steps": [
-        { "expectText": ["Usage & Spend", "dev@example.com", "claude.user@example.com"] },
+        { "expectText": ["Usage & Spend", "dev@example.com", "claude.user@example.com", "1 minute ago"] },
+        { "expectNoText": "1 minutes ago" },
         { "screenshot": "tray-default", "clip": "panel" },
         { "click": { "selector": ".provider-grid__item", "label": "Claude" } },
         { "expectNoText": "dev@example.com" },

@@ -16,6 +16,12 @@ const t = (key: LocaleKey): string => {
       return "{} hr ago";
     case "UpdatedDaysAgo":
       return "{} d ago";
+    case "UpdatedOneMinuteAgo":
+      return "{} minute ago";
+    case "UpdatedOneHourAgo":
+      return "{} hour ago";
+    case "UpdatedOneDayAgo":
+      return "{} day ago";
     default:
       return key;
   }
@@ -44,17 +50,25 @@ describe("formatRelativeUpdated", () => {
   });
 
   it("renders hours for sub-day diffs", () => {
-    expect(formatRelativeUpdated(NOW - 60 * 60_000, t, NOW)).toBe("1 hr ago");
+    expect(formatRelativeUpdated(NOW - 2 * 3600_000, t, NOW)).toBe("2 hr ago");
     expect(formatRelativeUpdated(NOW - 23 * 3600_000, t, NOW)).toBe(
       "23 hr ago",
     );
   });
 
   it("renders days beyond 24h", () => {
-    expect(formatRelativeUpdated(NOW - 24 * 3600_000, t, NOW)).toBe("1 d ago");
+    expect(formatRelativeUpdated(NOW - 2 * 24 * 3600_000, t, NOW)).toBe("2 d ago");
     expect(formatRelativeUpdated(NOW - 9 * 24 * 3600_000, t, NOW)).toBe(
       "9 d ago",
     );
+  });
+
+  it("uses the singular string for exactly one minute, hour or day", () => {
+    expect(formatRelativeUpdated(NOW - 60_000, t, NOW)).toBe("1 minute ago");
+    expect(formatRelativeUpdated(NOW - 119_000, t, NOW)).toBe("1 minute ago");
+    expect(formatRelativeUpdated(NOW - 60 * 60_000, t, NOW)).toBe("1 hour ago");
+    expect(formatRelativeUpdated(NOW - 24 * 3600_000, t, NOW)).toBe("1 day ago");
+    expect(formatRelativeUpdated(NOW - 47 * 3600_000, t, NOW)).toBe("1 day ago");
   });
 
   it("defaults `nowMs` to Date.now()", () => {
