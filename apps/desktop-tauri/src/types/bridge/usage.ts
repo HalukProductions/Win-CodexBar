@@ -89,6 +89,17 @@ export interface WindowPaceSnapshot {
    * pace whatever the window's length. Omitted when false.
    */
   resetWindow?: boolean;
+  /**
+   * Per-day share of a monthly allowance (upstream `monthlyTargetMetrics`).
+   * Omitted outside monthly windows and when usage or the reset is unknown.
+   */
+  dailyTarget?: DailyTargetSnapshot | null;
+}
+
+/** Remaining allowance over the local days left, in `unit` (`%`, `credits` or `requests`). */
+export interface DailyTargetSnapshot {
+  amount: number;
+  unit: string;
 }
 
 export interface PaceSnapshot {
