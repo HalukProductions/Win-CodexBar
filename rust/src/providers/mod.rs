@@ -109,6 +109,7 @@ pub mod tavily;
 #[cfg(test)]
 pub(crate) mod test_support;
 pub mod tinyapi;
+pub mod traecn;
 pub mod typesafe;
 pub mod v0;
 pub mod venice;
@@ -222,6 +223,7 @@ pub use synthetic::SyntheticProvider;
 pub use t3chat::T3ChatProvider;
 pub use tavily::TavilyProvider;
 pub use tinyapi::TinyApiProvider;
+pub use traecn::TraeCnProvider;
 pub use typesafe::TypeSafeProvider;
 pub use v0::V0Provider;
 pub use venice::VeniceProvider;

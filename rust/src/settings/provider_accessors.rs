@@ -41,7 +41,8 @@ impl Settings {
                 | ProviderId::TinyApi
                 | ProviderId::Xapi
                 | ProviderId::Parallel
-                | ProviderId::ClaudePlatform => "auto",
+                | ProviderId::ClaudePlatform
+                | ProviderId::TraeCn => "auto",
                 _ => DEFAULT_COOKIE_SOURCE,
             })
     }

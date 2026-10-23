@@ -108,4 +108,5 @@ export const TEST_PROVIDER_CATALOG: Array<[string, string]> = [
   ["futureagi", "Future AGI"],
   ["munito", "Munito"],
   ["claudeplatform", "Claude Platform"],
+  ["traecn", "Trae CN"],
 ];

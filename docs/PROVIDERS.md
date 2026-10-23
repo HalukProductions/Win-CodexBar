@@ -764,6 +764,39 @@ GET https://platform.claude.com/api/organizations/<uuid>/current_spend
   showing $0. 429 reports rate limiting and 5xx reports the Console as
   unavailable. Response bodies are never echoed in errors.
 
+### Trae CN
+
+Trae CN is disabled by default and shows the credit allowance of a Trae CN
+(trae.cn) account. Sign in to trae.cn in your browser, and CodexBar uses the
+`api.trae.cn` session cookies.
+
+- **Automatic:** CodexBar tries each detected browser holding an api.trae.cn
+  session. If Trae rejects a session (401, 403 or a redirect), it moves to the
+  next browser. No session means sign in to trae.cn.
+- **Manual:** Paste the Cookie header from an api.trae.cn request. Manual mode
+  does not fall back to browser sessions.
+- **Off:** Cookies are disabled.
+
+The provider makes two read-only POST requests per session and never makes a
+billable call:
+
+```text
+POST https://api.trae.cn/cloudide/api/v3/common/GetUserToken
+POST https://api.trae.cn/trae/api/v2/pay/user_current_entitlement_list
+```
+
+- The token from `GetUserToken` lives only for one refresh and is sent only to
+  api.trae.cn as a `Cloud-IDE-JWT` authorization header.
+- The gauge is consumed over total credits. A zero allowance shows the details
+  without a gauge. Used, Total and Remaining appear in the **Credits** section.
+- The plan name comes from the active plan entitlement and is shown as the
+  login method. Pack expiry dates do not set a reset: the provider infers no
+  renewal or reset date.
+- Malformed responses (no `is_credits_billing`, non-numeric or negative amounts,
+  or no token) fail parsing instead of showing zero usage. 429 reports rate
+  limiting, 408 and 5xx report the service as unavailable, and response bodies
+  are never echoed in errors.
+
 ### Aerostack
 
 Aerostack is disabled by default. In Settings → Providers → Aerostack, enter an

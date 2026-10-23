@@ -328,6 +328,7 @@ fn cookie_source_provider(provider_id: &str) -> Option<codexbar::core::ProviderI
         "xapi" => ProviderId::Xapi,
         "parallel" => ProviderId::Parallel,
         "claudeplatform" => ProviderId::ClaudePlatform,
+        "traecn" => ProviderId::TraeCn,
         _ => return None,
     })
 }
@@ -1024,6 +1025,13 @@ pub fn cookie_source_options_for(provider_id: &str, lang: Language) -> Vec<Cooki
         // Upstream's Claude Platform picker: automatic browser import, a
         // pasted platform.claude.com header, or off.
         "claudeplatform" => vec![
+            cookie_option(lang, "auto", None),
+            cookie_option(lang, "manual", None),
+            cookie_option(lang, "off", None),
+        ],
+        // Upstream's Trae CN picker: automatic browser import, a pasted
+        // api.trae.cn Cookie header, or off.
+        "traecn" => vec![
             cookie_option(lang, "auto", None),
             cookie_option(lang, "manual", None),
             cookie_option(lang, "off", None),
