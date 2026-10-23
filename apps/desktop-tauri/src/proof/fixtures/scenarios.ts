@@ -35,6 +35,7 @@ export const PROOF_SCENARIO_NAMES = [
   "overview-all-accounts-private",
   "errors",
   "empty",
+  "cursor-weekly",
   "openai-live-spend",
   "claude-plan-hidden",
   "codex-tool-activity",
@@ -54,6 +55,7 @@ export const PROOF_SCENARIO_NAMES = [
   "cookie-no-browsers",
   "vercel",
   "vercel-team-id-invalid",
+  "kimi-bonus-credits",
   "agent-sessions-hosts",
 ] as const;
 
@@ -188,6 +190,38 @@ function cursorSnapshot(now: Date, updatedMinutesAgo = 3): ProviderUsageSnapshot
   );
 }
 
+/**
+ * X Subscription Cursor account (upstream #4695): the unified weekly pool is the
+ * primary "Weekly" meter. The monthly Auto/API lanes and the Grok Bot extra are
+ * gone; on-demand spend stays in the cost section.
+ */
+function cursorWeeklySnapshot(now: Date): ProviderUsageSnapshot {
+  return providerSnapshot(
+    {
+      providerId: "cursor",
+      displayName: "Cursor",
+      primary: rateWindow(now, 10.2, WEEK_MINUTES, 5 * DAY_MINUTES),
+      primaryLabel: "Weekly",
+      updatedAt: isoBefore(now, 3),
+    },
+    {
+      planName: "Cursor Enterprise",
+      accountEmail: "cursor.user@example.com",
+      sourceLabel: "web",
+      cost: {
+        used: 4.47,
+        limit: null,
+        remaining: null,
+        currencyCode: "USD",
+        period: "On-demand (billing cycle)",
+        resetsAt: isoAfter(now, 12 * DAY_MINUTES),
+        formattedUsed: "$4.47",
+        formattedLimit: null,
+      },
+    },
+  );
+}
+
 function geminiSnapshot(now: Date): ProviderUsageSnapshot {
   return providerSnapshot(
     {
@@ -283,6 +317,52 @@ function vercelSnapshot(now: Date): ProviderUsageSnapshot {
           value: "$58.00",
           secondaryValue: null,
           progress: null,
+        },
+      ],
+    },
+  );
+}
+
+/**
+ * Lapsed Kimi plan (upstream #4700): no Code pool, so the weekly lane is
+ * informational. The membership "Total usage" pool and two live gift pools
+ * (upstream #4691) remain. Expired and malformed gifts never reach the fixture.
+ */
+function kimiSnapshot(now: Date): ProviderUsageSnapshot {
+  return providerSnapshot(
+    {
+      providerId: "kimi",
+      displayName: "Kimi",
+      primary: { ...rateWindow(now, 0, null, null), isInformational: true, resetDescription: "No weekly quota reported" },
+      primaryLabel: "Weekly",
+      updatedAt: isoBefore(now, 1),
+    },
+    {
+      extraRateWindows: [
+        {
+          id: "kimi-monthly",
+          title: "Total usage",
+          window: rateWindow(now, 36, MONTH_MINUTES, 14 * DAY_MINUTES),
+        },
+      ],
+      accountEmail: null,
+      sourceLabel: "web",
+      displayDetails: [
+        {
+          id: "kimi-gift-0",
+          sectionTitle: "Bonus credits",
+          title: "Invite to Earn Credit",
+          value: "75% left",
+          secondaryValue: "Expires Dec 31, 2026 at 11:59 PM",
+          progress: { used: 0.25, total: 1 },
+        },
+        {
+          id: "kimi-gift-1",
+          sectionTitle: "Bonus credits",
+          title: "Welcome Credit",
+          value: "40% left",
+          secondaryValue: "Expires Jan 15, 2027 at 9:00 AM",
+          progress: { used: 0.6, total: 1 },
         },
       ],
     },
@@ -496,6 +576,19 @@ function errorsScenario(now: Date): ProofScenario {
     codexAccounts: singleCodexAccount(now),
     claudeAccounts: [],
     localSpend: [codexSpend(), claudeSpend()],
+  };
+}
+
+/** Cursor card on the unified weekly pool, with on-demand spend in the cost section. */
+function cursorWeeklyScenario(now: Date): ProofScenario {
+  return {
+    name: "cursor-weekly",
+    settings: baseSettings({ enabledProviders: ["cursor"] }),
+    catalog: PROOF_PROVIDER_CATALOG,
+    providers: [cursorWeeklySnapshot(now)],
+    codexAccounts: emptyCodexAccounts(),
+    claudeAccounts: [],
+    localSpend: [],
   };
 }
 
@@ -1046,6 +1139,19 @@ function cookieNoBrowsersScenario(now: Date): ProofScenario {
   };
 }
 
+/** Kimi on a lapsed plan, showing the "Bonus credits" rows beside the membership pool. */
+function kimiBonusCreditsScenario(now: Date): ProofScenario {
+  return {
+    name: "kimi-bonus-credits",
+    settings: baseSettings({ enabledProviders: ["kimi"] }),
+    catalog: PROOF_PROVIDER_CATALOG,
+    providers: [kimiSnapshot(now)],
+    codexAccounts: emptyCodexAccounts(),
+    claudeAccounts: [],
+    localSpend: [],
+  };
+}
+
 function proofAgentSession(
   id: string,
   host: string,
@@ -1102,6 +1208,7 @@ const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   "overview-all-accounts-private": (now) => overviewAllAccountsScenario(now, true),
   errors: errorsScenario,
   empty: emptyScenario,
+  "cursor-weekly": cursorWeeklyScenario,
   "openai-live-spend": openAiLiveSpendScenario,
   "claude-plan-hidden": claudePlanHiddenScenario,
   "codex-tool-activity": codexToolActivityScenario,
@@ -1121,6 +1228,7 @@ const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   "cookie-no-browsers": cookieNoBrowsersScenario,
   vercel: vercelScenario,
   "vercel-team-id-invalid": vercelTeamIdInvalidScenario,
+  "kimi-bonus-credits": kimiBonusCreditsScenario,
   "agent-sessions-hosts": agentSessionsHostsScenario,
 };
 

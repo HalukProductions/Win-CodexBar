@@ -444,7 +444,9 @@ Configure the API key in Settings → Providers → Tavily (or `TAVILY_API_KEY`)
   usage percentage. Remaining credits are the nonnegative difference between
   reported cap and usage.
 - Pay-as-you-go totals, when present (`account.paygo_usage` and
-  `account.paygo_limit`), appear in a separate detail section.
+  `account.paygo_limit`), appear in a separate detail section. A null
+  pay-as-you-go limit leaves the cap unspecified: the section shows only the
+  reported usage, with no Limit or Remaining row.
 - The plan name (`account.current_plan`) identifies the account plan. No email
   or account ID is inferred; unknown plans do not create a phantom identity.
 - Non-200 responses report "Tavily returned HTTP <status>."; response bodies
@@ -932,6 +934,7 @@ The Antigravity quota summary picks one Gemini row for the primary and secondary
 - The ordinary Gemini buckets win: `gemini-5h` (or a session alias such as `gemini-session`) and `gemini-weekly`. Their IDs are matched after lowercasing, with `_` read as `-` and a trailing ` limit` ignored. Display labels never decide this.
 - A model-specific Gemini allowance, such as `gemini-2.5-pro-5h`, represents Gemini only when the ordinary bucket of that cadence is absent, unknown or disabled.
 - Every bucket stays visible as an extra window with its own usage and reset.
+- A group named like "Gemini" with no digit is shown as **Gemini** (for example **Gemini weekly**). A versioned Gemini group keeps its own name from the usage response, so a separate Gemini 4 Argon group is shown as **Gemini 4 Argon weekly**, alongside the ordinary **Gemini weekly** quota (upstream #4585).
 
 ## Window lengths that match the Mac
 
@@ -1037,7 +1040,7 @@ OpenCode reads usage from `opencode.ai` cookies. Which API it uses depends on th
 - OpenCode reuses the OpenCode Go Console client (`providers/opencodego/console.rs`). The monthly Go meter appears only on OpenCode Go.
 - For OpenCode Go, a manual cookie keeps the configured usage source (Auto, Web or Local) instead of forcing Web (upstream #4616). The cookie scopes only the web session. The source label shows the source that actually supplied the result, such as `web` or `local estimate`.
 
-OpenCode Go's local SQLite reader reads only its own `opencode-go` assistant records. OpenAI API-platform usage is a separate provider.
+OpenCode Go's local SQLite reader reads only records attributed to `opencode-go`: legacy assistant messages and v2 `session_message` assistant and compaction requests. A v2 request is skipped only when a legacy copy with the same id has a usable timestamp and a non-negative finite cost, so migrated requests count once and an invalid legacy copy never hides a valid v2 request. V2-only databases (no `message` table, no `auth.json`) still read. OpenAI API-platform usage is a separate provider.
 
 For `codexbar cost --provider opencodego` (upstream #4629), token counts follow the same rule per row. A row with missing, malformed, negative or overflowing tokens is unknown, not zero, and any window or model containing one has no exact token total. A row that records a total but omits input or output keeps that exact total, while its input and output are unknown. The text report says `unknown` for the affected totals while still reporting cost. The JSON payload uses `null` for them and adds `unknownTokenRowCount` and `byModelTokens`. Per-model token counts sum only what rows recorded. The `spendContract` per-model rows still carry those usable partial counts; the desktop Usage & Spend view is unchanged.
 

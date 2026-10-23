@@ -17,6 +17,7 @@ fn sand_usage_maps_to_weekly_extra_window() {
         has_non_zero_included_limit: Some(true),
         included_limit_zero: None,
         sand_trial_expires_at: None,
+        is_unified: None,
     };
     let row = status
         .to_window("2026-08-20T00:00:00Z".parse().unwrap())
@@ -36,6 +37,7 @@ fn sand_usage_hides_accounts_without_included_allowance() {
         has_non_zero_included_limit: Some(false),
         included_limit_zero: None,
         sand_trial_expires_at: None,
+        is_unified: None,
     };
     assert!(
         status
@@ -53,6 +55,7 @@ fn sand_usage_maps_paid_allowance_from_explicit_zero_flag() {
         has_non_zero_included_limit: Some(false),
         included_limit_zero: Some(false),
         sand_trial_expires_at: None,
+        is_unified: None,
     };
     let row = status
         .to_window("2026-08-20T00:00:00Z".parse().unwrap())
@@ -73,6 +76,7 @@ fn sand_usage_maps_an_active_trial_without_a_recurring_reset() {
         has_non_zero_included_limit: Some(false),
         included_limit_zero: Some(true),
         sand_trial_expires_at: Some("2026-08-28T00:00:00Z".into()),
+        is_unified: None,
     };
     let row = status
         .to_window("2026-08-20T00:00:00Z".parse().unwrap())
@@ -91,6 +95,7 @@ fn sand_usage_hides_expired_trial() {
         has_non_zero_included_limit: Some(false),
         included_limit_zero: Some(true),
         sand_trial_expires_at: Some("2026-08-19T00:00:00Z".into()),
+        is_unified: None,
     };
     assert!(
         status
@@ -493,6 +498,159 @@ fn unified_summary_spend_is_kept_when_monthly_usage_is_not_valid() {
     assert!((cost.used - 2.5).abs() < 1e-9);
     assert_eq!(cost.limit, Some(10.0));
     assert_eq!(cost.resets_at, parse_iso_date("2026-10-25T00:00:00Z"));
+}
+
+const WEEKLY_NOW: &str = "2026-10-16T06:50:00Z";
+/// Upstream #4545 X Subscription shape: the monthly plan is exhausted while the
+/// unified weekly pool is barely used.
+const X_SUBSCRIPTION_SUMMARY: &str = r#"{
+    "billingCycleStart": "2026-10-01T00:00:00.000Z",
+    "billingCycleEnd": "2026-11-01T00:00:00.000Z",
+    "membershipType": "enterprise",
+    "individualUsage": {
+        "plan": {
+            "enabled": true, "used": 4615, "limit": 4615, "remaining": 0,
+            "breakdown": { "included": 4615, "bonus": 2288, "total": 6903 },
+            "autoPercentUsed": 62.860238353196095, "apiPercentUsed": 0,
+            "totalPercentUsed": 100
+        },
+        "onDemand": { "enabled": true, "used": 447, "limit": null, "remaining": null }
+    }
+}"#;
+
+/// A sand feed whose weekly window runs 2026-10-15 to 2026-10-22 (10080 minutes).
+fn weekly_sand(extra: &str) -> SandUsageStatus {
+    let tail = if extra.is_empty() {
+        String::new()
+    } else {
+        format!(",{extra}")
+    };
+    let json = format!(
+        r#"{{"currentPeriodStart":"2026-10-15T10:27:36.178Z",
+            "nextResetTimestampUtc":"2026-10-22T10:27:36.178Z",
+            "usagePercent":10.205850487540628,"hasNonZeroIncludedLimit":true{tail}}}"#
+    );
+    serde_json::from_str(&json).expect("sand fixture should parse")
+}
+
+fn result_with_sand(sand: &SandUsageStatus, now: &str) -> CursorUsageResult {
+    let mut result =
+        api().build_result_with_team_budget(parse_summary(X_SUBSCRIPTION_SUMMARY), None, None);
+    apply_sand_usage(
+        &mut result,
+        Some(sand),
+        parse_iso_date(now).expect("fixture time"),
+    );
+    result
+}
+
+#[test]
+fn unified_weekly_pool_with_a_future_reset_takes_the_primary_meter() {
+    let result = result_with_sand(&weekly_sand(r#""isUnified":true"#), WEEKLY_NOW);
+
+    assert!((result.primary.used_percent - 10.205850487540628).abs() < 0.000001);
+    assert_eq!(result.primary.window_minutes, Some(10080));
+    assert_eq!(
+        result.primary.resets_at,
+        parse_iso_date("2026-10-22T10:27:36.178Z")
+    );
+    assert_eq!(result.primary_label, Some("Weekly"));
+    assert!(result.secondary.is_none(), "monthly Auto lane is hidden");
+    assert!(
+        result.model_specific.is_none(),
+        "monthly API lane is hidden"
+    );
+    assert!(result.grok_bot.is_none(), "Grok Bot duplicates the pool");
+    let cost = result.cost.expect("on-demand spend stays");
+    assert!((cost.used - 4.47).abs() < 1e-9);
+}
+
+#[test]
+fn unified_weekly_pool_without_a_usable_reset_keeps_the_monthly_layout() {
+    // Each case stays on the previous layout: the monthly plan percent, the
+    // monthly Auto lane, and no "Weekly" label.
+    let cases = [
+        ("non-unified", r#""isUnified":false"#, WEEKLY_NOW),
+        ("missing flag", "", WEEKLY_NOW),
+        (
+            "trial only",
+            r#""isUnified":true,"includedLimitZero":true,"sandTrialExpiresAt":"2026-10-28T00:00:00Z""#,
+            WEEKLY_NOW,
+        ),
+        // The reset (2026-10-22) is already past at this clock.
+        (
+            "expired reset",
+            r#""isUnified":true"#,
+            "2026-10-23T00:00:00Z",
+        ),
+    ];
+    for (name, extra, now) in cases {
+        let result = result_with_sand(&weekly_sand(extra), now);
+        assert!(
+            (result.primary.used_percent - 100.0).abs() < 1e-9,
+            "{name}: monthly plan percent"
+        );
+        assert_eq!(result.primary_label, None, "{name}");
+        assert!(result.secondary.is_some(), "{name}: monthly Auto lane");
+    }
+}
+
+#[test]
+fn unified_pool_that_is_not_seven_days_keeps_the_monthly_layout() {
+    let sand: SandUsageStatus = serde_json::from_str(
+        r#"{"currentPeriodStart":"2026-10-20T00:00:00Z",
+            "nextResetTimestampUtc":"2026-10-22T00:00:00Z",
+            "usagePercent":10,"hasNonZeroIncludedLimit":true,"isUnified":true}"#,
+    )
+    .expect("sand fixture should parse");
+    let result = result_with_sand(&sand, WEEKLY_NOW);
+    assert!((result.primary.used_percent - 100.0).abs() < 1e-9);
+    assert_eq!(result.primary_label, None);
+    assert!(result.secondary.is_some());
+}
+
+#[tokio::test]
+async fn unified_weekly_pool_is_read_from_the_sand_feed_over_http() {
+    let now = Utc::now();
+    let reset = now + chrono::Duration::days(5);
+    let start = reset - chrono::Duration::days(7);
+    let sand_body = format!(
+        r#"{{"currentPeriodStart":"{}","nextResetTimestampUtc":"{}",
+            "usagePercent":10.5,"hasNonZeroIncludedLimit":true,"isUnified":true}}"#,
+        start.to_rfc3339(),
+        reset.to_rfc3339()
+    );
+    let mut server = mockito::Server::new_async().await;
+    let _summary = server
+        .mock("GET", "/api/usage-summary")
+        .with_status(200)
+        .with_body(X_SUBSCRIPTION_SUMMARY)
+        .create_async()
+        .await;
+    let _me = server
+        .mock("GET", "/api/auth/me")
+        .with_status(500)
+        .create_async()
+        .await;
+    let sand = server
+        .mock("POST", "/api/dashboard/get-sand-usage-status")
+        .with_status(200)
+        .with_body(sand_body)
+        .expect(1)
+        .create_async()
+        .await;
+
+    let result = CursorApi::with_base_url(&server.url())
+        .fetch_usage_with_cookie_header("auth=fixture")
+        .await
+        .expect("usage-summary should succeed");
+    sand.assert_async().await;
+
+    assert!((result.primary.used_percent - 10.5).abs() < 1e-9);
+    assert_eq!(result.primary.window_minutes, Some(10080));
+    assert_eq!(result.primary_label, Some("Weekly"));
+    assert!(result.secondary.is_none());
+    assert!(result.grok_bot.is_none());
 }
 
 #[tokio::test]
