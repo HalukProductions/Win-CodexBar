@@ -285,7 +285,7 @@ export function createProofRouter(
       manualCookies: "Windows Credential Manager",
       apiKeys: "Windows Credential Manager",
       tokenAccounts: "Windows Credential Manager",
-      accessTokens: "Windows Credential Manager",
+      accessTokens: "missing",
     }),
     get_provider_detail: (args) => {
       const detail = providerDetail(current(), stringArg(args, "providerId"));
