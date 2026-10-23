@@ -565,6 +565,7 @@ AgentSessionsSshHostsLabel = Additional SSH hosts
 AgentSessionsSshHostsHelper = Comma-separated SSH targets. Connections use non-interactive mode and short timeouts.
 AgentSessionsLoading = Looking for agent sessions...
 AgentSessionsEmpty = No active agent sessions.
+AgentSessionsHostUnreachable = unreachable
 UpdatesTitle = Updates
 AboutBuilt = Built { "{}" }
 SectionLinks = Links

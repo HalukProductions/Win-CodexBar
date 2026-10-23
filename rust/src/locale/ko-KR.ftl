@@ -533,6 +533,7 @@ AgentSessionsSshHostsLabel = SSH 호스트
 AgentSessionsSshHostsHelper = 쉼표로 구분된 SSH 대상입니다. 연결은 비대화형 모드와 짧은 제한 시간을 사용합니다.
 AgentSessionsLoading = 에이전트 세션을 찾는 중...
 AgentSessionsEmpty = 활성 에이전트 세션이 없습니다.
+AgentSessionsHostUnreachable = 연결할 수 없음
 UpdatesTitle = 업데이트
 AboutBuilt = 빌드 날짜 { "{}" }
 SectionLinks = 링크

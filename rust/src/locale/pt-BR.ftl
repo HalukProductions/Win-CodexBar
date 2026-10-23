@@ -552,6 +552,7 @@ AgentSessionsSshHostsLabel = Hosts SSH
 AgentSessionsSshHostsHelper = Destinos SSH separados por vírgula. As conexões usam modo não interativo e tempos limites curtos.
 AgentSessionsLoading = Procurando sessões de agente...
 AgentSessionsEmpty = Nenhuma sessão de agente ativa.
+AgentSessionsHostUnreachable = inacessível
 UpdatesTitle = Atualizações
 AboutBuilt = Compilado em { "{}" }
 SectionLinks = Links

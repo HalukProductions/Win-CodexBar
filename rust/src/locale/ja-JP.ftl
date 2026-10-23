@@ -533,6 +533,7 @@ AgentSessionsSshHostsLabel = SSH ホスト
 AgentSessionsSshHostsHelper = カンマ区切りの SSH ターゲット。接続は非対話モード・短いタイムアウトを使用。
 AgentSessionsLoading = エージェントセッションを検索中…
 AgentSessionsEmpty = アクティブなエージェントセッションはありません。
+AgentSessionsHostUnreachable = 接続できません
 UpdatesTitle = アップデート
 AboutBuilt = ビルド日 { "{}" }
 SectionLinks = リンク

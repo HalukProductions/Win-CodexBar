@@ -565,6 +565,7 @@ AgentSessionsSshHostsLabel = SSH-хости
 AgentSessionsSshHostsHelper = SSH-адреси через кому. З’єднання працюють у неінтерактивному режимі з короткими тайм-аутами.
 AgentSessionsLoading = Пошук сеансів агентів...
 AgentSessionsEmpty = Немає активних сеансів агентів.
+AgentSessionsHostUnreachable = недоступний
 UpdatesTitle = Оновлення
 AboutBuilt = Збірка від { "{}" }
 SectionLinks = Посилання

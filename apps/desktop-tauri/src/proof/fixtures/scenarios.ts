@@ -1,5 +1,7 @@
 import type {
   AccountUsageEntryBridge,
+  AgentSession,
+  AgentSessionDiscoveryResult,
   ClaudeAccount,
   ClaudeSwapAccount,
   ClaudeSwapAccountsState,
@@ -54,6 +56,7 @@ export const PROOF_SCENARIO_NAMES = [
   "vercel",
   "vercel-team-id-invalid",
   "kimi-bonus-credits",
+  "agent-sessions-hosts",
 ] as const;
 
 export type ProofScenarioName = (typeof PROOF_SCENARIO_NAMES)[number];
@@ -92,6 +95,8 @@ export interface ProofScenario {
   workspaceIds?: Record<string, string>;
   /** Error a workspace-value save rejects with, by provider id; absent means saves succeed. */
   workspaceIdSaveErrors?: Record<string, string>;
+  /** Agent-session discovery served by `list_agent_sessions`; absent means disabled. */
+  agentSessions?: AgentSessionDiscoveryResult;
 }
 
 export interface LocalSpendFixture {
@@ -1147,6 +1152,55 @@ function kimiBonusCreditsScenario(now: Date): ProofScenario {
   };
 }
 
+function proofAgentSession(
+  id: string,
+  host: string,
+  provider: AgentSession["provider"],
+  projectName: string,
+): AgentSession {
+  return {
+    id,
+    provider,
+    source: "cli",
+    state: "active",
+    pid: null,
+    transcriptPath: null,
+    host,
+    workspace: { cwd: null, projectName },
+    activity: { startedAt: null, lastActivityAt: null },
+    focusTarget: { kind: "none" },
+  };
+}
+
+/** Two reachable hosts with sessions and one unreachable host; all names are synthetic. */
+function agentSessionsHostsScenario(now: Date): ProofScenario {
+  const base = defaultScenario(now);
+  return {
+    ...base,
+    name: "agent-sessions-hosts",
+    settings: { ...base.settings, agentSessionsEnabled: true, agentSessionsLocalOnly: false },
+    agentSessions: {
+      status: "hosts",
+      hosts: [
+        {
+          host: "WORKSTATION-A",
+          sessions: [
+            proofAgentSession("proof-1", "WORKSTATION-A", "codex", "example-project"),
+            proofAgentSession("proof-2", "WORKSTATION-A", "claude", "example-notes"),
+          ],
+          error: null,
+        },
+        {
+          host: "BUILD-BOX",
+          sessions: [proofAgentSession("proof-3", "BUILD-BOX", "claude", "example-ci")],
+          error: null,
+        },
+        { host: "LAB-HOST", sessions: [], error: "ssh: connection timed out" },
+      ],
+    },
+  };
+}
+
 const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   default: defaultScenario,
   "two-codex-accounts": twoCodexAccountsScenario,
@@ -1175,6 +1229,7 @@ const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   vercel: vercelScenario,
   "vercel-team-id-invalid": vercelTeamIdInvalidScenario,
   "kimi-bonus-credits": kimiBonusCreditsScenario,
+  "agent-sessions-hosts": agentSessionsHostsScenario,
 };
 
 export function isProofScenarioName(value: string): value is ProofScenarioName {

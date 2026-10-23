@@ -565,6 +565,7 @@ AgentSessionsSshHostsLabel = SSH-хосты
 AgentSessionsSshHostsHelper = Цели SSH, разделенные запятыми. Соединения используют неинтерактивный режим и короткие таймауты.
 AgentSessionsLoading = Ищу агентские сессии...
 AgentSessionsEmpty = Нет сеансов активных агентов.
+AgentSessionsHostUnreachable = недоступен
 UpdatesTitle = Обновления
 AboutBuilt = Сборка от { "{}" }
 SectionLinks = Ссылки

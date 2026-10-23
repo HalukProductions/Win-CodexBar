@@ -533,6 +533,7 @@ AgentSessionsSshHostsLabel = SSH 主机
 AgentSessionsSshHostsHelper = 以逗号分隔的 SSH 目标。连接使用非交互模式和短超时。
 AgentSessionsLoading = 正在查找 Agent 会话…
 AgentSessionsEmpty = 没有活跃的 Agent 会话。
+AgentSessionsHostUnreachable = 无法连接
 UpdatesTitle = 更新
 AboutBuilt = 构建于 { "{}" }
 SectionLinks = 链接
