@@ -171,3 +171,13 @@ fn default_logical_origin_matches_first_open_policy() {
         (854.5, 1_032.0),
     );
 }
+
+#[test]
+fn proof_placement_flag_follows_the_last_show() {
+    set_proof_placement_applied(true);
+    assert!(proof_placement_applied());
+    // An origin outside every monitor falls back to normal placement, so
+    // the next show clears the flag and user moves save again.
+    set_proof_placement_applied(false);
+    assert!(!proof_placement_applied());
+}
