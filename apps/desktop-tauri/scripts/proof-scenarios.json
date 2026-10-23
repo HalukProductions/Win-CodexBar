@@ -467,6 +467,16 @@
       ]
     },
     {
+      "name": "flyout-kimi-bonus-credits",
+      "query": "window=flyout&fixture=kimi-bonus-credits&theme=dark",
+      "size": [310, 1032],
+      "steps": [
+        { "expectText": ["Kimi", "Total usage", "Bonus credits", "Invite to Earn Credit", "75% left", "Expires Dec 31, 2026", "Welcome Credit", "40% left"] },
+        { "expectNoText": ["Reservation Bonus", "Expired grant"] },
+        { "screenshot": "flyout-kimi-bonus-credits", "clip": "panel" }
+      ]
+    },
+    {
       "name": "settings-gemini-usage-source",
       "query": "window=settings&tab=providers:gemini&fixture=default&theme=dark",
       "size": [880, 620],
