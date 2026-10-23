@@ -52,6 +52,7 @@ export const PROOF_SCENARIO_NAMES = [
   "cookie-no-browsers",
   "vercel",
   "vercel-team-id-invalid",
+  "kimi-bonus-credits",
 ] as const;
 
 export type ProofScenarioName = (typeof PROOF_SCENARIO_NAMES)[number];
@@ -278,6 +279,52 @@ function vercelSnapshot(now: Date): ProviderUsageSnapshot {
           value: "$58.00",
           secondaryValue: null,
           progress: null,
+        },
+      ],
+    },
+  );
+}
+
+/**
+ * Lapsed Kimi plan (upstream #4700): no Code pool, so the weekly lane is
+ * informational. The membership "Total usage" pool and two live gift pools
+ * (upstream #4691) remain. Expired and malformed gifts never reach the fixture.
+ */
+function kimiSnapshot(now: Date): ProviderUsageSnapshot {
+  return providerSnapshot(
+    {
+      providerId: "kimi",
+      displayName: "Kimi",
+      primary: { ...rateWindow(now, 0, null, null), isInformational: true, resetDescription: "No weekly quota reported" },
+      primaryLabel: "Weekly",
+      updatedAt: isoBefore(now, 1),
+    },
+    {
+      extraRateWindows: [
+        {
+          id: "kimi-monthly",
+          title: "Total usage",
+          window: rateWindow(now, 36, MONTH_MINUTES, 14 * DAY_MINUTES),
+        },
+      ],
+      accountEmail: null,
+      sourceLabel: "web",
+      displayDetails: [
+        {
+          id: "kimi-gift-0",
+          sectionTitle: "Bonus credits",
+          title: "Invite to Earn Credit",
+          value: "75% left",
+          secondaryValue: "Expires Dec 31, 2026 at 11:59 PM",
+          progress: { used: 0.25, total: 1 },
+        },
+        {
+          id: "kimi-gift-1",
+          sectionTitle: "Bonus credits",
+          title: "Welcome Credit",
+          value: "40% left",
+          secondaryValue: "Expires Jan 15, 2027 at 9:00 AM",
+          progress: { used: 0.6, total: 1 },
         },
       ],
     },
@@ -1041,6 +1088,19 @@ function cookieNoBrowsersScenario(now: Date): ProofScenario {
   };
 }
 
+/** Kimi on a lapsed plan, showing the "Bonus credits" rows beside the membership pool. */
+function kimiBonusCreditsScenario(now: Date): ProofScenario {
+  return {
+    name: "kimi-bonus-credits",
+    settings: baseSettings({ enabledProviders: ["kimi"] }),
+    catalog: PROOF_PROVIDER_CATALOG,
+    providers: [kimiSnapshot(now)],
+    codexAccounts: emptyCodexAccounts(),
+    claudeAccounts: [],
+    localSpend: [],
+  };
+}
+
 const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   default: defaultScenario,
   "two-codex-accounts": twoCodexAccountsScenario,
@@ -1067,6 +1127,7 @@ const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   "cookie-no-browsers": cookieNoBrowsersScenario,
   vercel: vercelScenario,
   "vercel-team-id-invalid": vercelTeamIdInvalidScenario,
+  "kimi-bonus-credits": kimiBonusCreditsScenario,
 };
 
 export function isProofScenarioName(value: string): value is ProofScenarioName {
