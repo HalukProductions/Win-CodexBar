@@ -141,12 +141,15 @@ impl Provider for SonioxProvider {
 }
 
 /// The organization API base: a valid `SONIOX_BASE_URL` override, otherwise
-/// production. An invalid override is ignored with a warning.
+/// production. An invalid or blank override is ignored with a warning.
 fn base_url_from_override(raw: Option<&str>) -> String {
-    let Some(raw) = raw.map(clean_override).filter(|raw| !raw.is_empty()) else {
+    let Some(raw) = raw.map(clean_override) else {
         return BASE_URL.to_owned();
     };
-    match validated_base_url(&raw) {
+    match Some(raw.as_str())
+        .filter(|raw| !raw.is_empty())
+        .and_then(validated_base_url)
+    {
         Some(base) => base,
         None => {
             tracing::warn!(
