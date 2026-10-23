@@ -532,6 +532,23 @@ describe("TrayPanel provider grid", () => {
     );
   });
 
+  it("removes a disabled provider's card as soon as settings change", async () => {
+    const { container } = renderTrayPanel([
+      provider("codex", "Codex", 35),
+      provider("claude", "Claude", 20),
+    ]);
+    await waitFor(() => expect(container.querySelector("#card-codex")).not.toBeNull());
+    expect(container.querySelector("#card-claude")).not.toBeNull();
+
+    // The shell prunes the disabled provider from its cache before broadcasting.
+    tauriMocks.getCachedProviders.mockResolvedValue([provider("claude", "Claude", 20)]);
+    tauriMocks.getSettingsSnapshot.mockResolvedValue(settings({ enabledProviders: ["claude"] }));
+    await act(async () => emitEvent("settings-changed", null));
+
+    await waitFor(() => expect(container.querySelector("#card-codex")).toBeNull());
+    expect(container.querySelector("#card-claude")).not.toBeNull();
+  });
+
   it("dismisses the tray panel on unmodified Escape", async () => {
     const { container } = renderTrayPanel([provider("claude", "Claude", 35)]);
 

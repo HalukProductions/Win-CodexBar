@@ -326,7 +326,7 @@ pub(super) fn summarize_with_identity(
                 let input = usage.system_prompt.checked_add(usage.new_input);
                 let output = usage.output.checked_add(usage.reasoning);
                 if let (Some(input), Some(output)) = (input, output) {
-                    estimate_cost_usd(model, input, usage.cache_read, 0, output)
+                    estimate_cost_usd(at, model, input, usage.cache_read, 0, output)
                 } else {
                     None
                 }

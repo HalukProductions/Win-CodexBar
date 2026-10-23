@@ -1,5 +1,13 @@
 use super::super::{claude_routed_pricing, models_dev_pricing};
-use super::{CLAUDE_PRICING, CODEX_PRICING, ClaudePricing, CostUsagePricing};
+use super::{
+    CLAUDE_HISTORICAL_LONG_CONTEXT, CLAUDE_PRICING, CODEX_PRICING, ClaudePricing, CostUsagePricing,
+};
+use chrono::{DateTime, Utc};
+
+/// Unix seconds (2026-03-13T00:00:00Z) from which Opus 4.6 and Sonnet 4.6 bill the full
+/// context at standard rates. Usage dated strictly before it keeps the 200k tier
+/// (upstream `claudeFullContextStandardPricingCutoff`).
+const CLAUDE_FULL_CONTEXT_STANDARD_PRICING_CUTOFF: i64 = 1_773_360_000;
 
 const CODEX_LONG_CONTEXT_THRESHOLD_FOR_CLAUDE: u64 = 272_000;
 
@@ -12,14 +20,76 @@ pub(crate) fn bundled_codex_long_context_threshold(model: &str) -> Option<u64> {
     })
 }
 
+fn builtin_selected_rates(
+    pricing: ClaudePricing,
+    use_tier: bool,
+) -> claude_routed_pricing::SelectedCostRates {
+    let pick = |base: f64, above: Option<f64>| {
+        if use_tier {
+            above.unwrap_or(base)
+        } else {
+            base
+        }
+    };
+    claude_routed_pricing::SelectedCostRates {
+        input: pick(
+            pricing.input_cost_per_token,
+            pricing.input_cost_per_token_above_threshold,
+        ),
+        cache_read: pick(
+            pricing.cache_read_input_cost_per_token,
+            pricing.cache_read_input_cost_per_token_above_threshold,
+        ),
+        cache_write: pick(
+            pricing.cache_creation_input_cost_per_token,
+            pricing.cache_creation_input_cost_per_token_above_threshold,
+        ),
+        output: pick(
+            pricing.output_cost_per_token,
+            pricing.output_cost_per_token_above_threshold,
+        ),
+    }
+}
+
 /// Resolved Claude pricing source used by the local scanner's invocation memo.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum ClaudePricingResolution {
-    BuiltIn(ClaudePricing),
+    BuiltIn {
+        current: ClaudePricing,
+        /// Rates for usage dated before the full-context cutoff, when they differ.
+        historical: Option<ClaudePricing>,
+    },
     ModelsDev {
         pricing: models_dev_pricing::DynamicModelPricing,
         threshold_tokens: Option<u64>,
     },
+}
+
+impl ClaudePricingResolution {
+    fn builtin(normalized: &str) -> Option<Self> {
+        CLAUDE_PRICING.get(normalized).map(|current| Self::BuiltIn {
+            current: *current,
+            historical: CLAUDE_HISTORICAL_LONG_CONTEXT.get(normalized).copied(),
+        })
+    }
+
+    /// Built-in rates in effect at `pricing_date`. Undated usage and models.dev rows keep
+    /// the current rates, as upstream does.
+    fn rates_at(self, pricing_date: Option<DateTime<Utc>>) -> Self {
+        match (self, pricing_date) {
+            (
+                Self::BuiltIn {
+                    historical: Some(historical),
+                    ..
+                },
+                Some(date),
+            ) if date.timestamp() < CLAUDE_FULL_CONTEXT_STANDARD_PRICING_CUTOFF => Self::BuiltIn {
+                current: historical,
+                historical: None,
+            },
+            (resolution, _) => resolution,
+        }
+    }
 }
 
 impl CostUsagePricing {
@@ -64,8 +134,8 @@ impl CostUsagePricing {
         normalized: &str,
         pricing_snapshot: Option<&models_dev_pricing::ModelsDevPricingSnapshot>,
     ) -> Option<ClaudePricingResolution> {
-        if let Some(pricing) = CLAUDE_PRICING.get(normalized) {
-            return Some(ClaudePricingResolution::BuiltIn(*pricing));
+        if let Some(builtin) = ClaudePricingResolution::builtin(normalized) {
+            return Some(builtin);
         }
         pricing_snapshot
             .and_then(|snapshot| {
@@ -79,7 +149,8 @@ impl CostUsagePricing {
             )
     }
 
-    /// Calculate cost from a previously resolved Claude pricing source.
+    /// Calculate undated cost from a previously resolved Claude pricing source.
+    #[cfg(test)]
     pub(crate) fn claude_cost_usd_from_resolution(
         resolution: ClaudePricingResolution,
         input_tokens: i32,
@@ -98,6 +169,7 @@ impl CostUsagePricing {
 
     /// Calculate cost from a resolved Claude pricing source without narrowing
     /// untrusted local-history counters to the API-oriented signed type.
+    #[cfg(test)]
     pub(crate) fn claude_cost_usd_u64_from_resolution(
         resolution: ClaudePricingResolution,
         input_tokens: u64,
@@ -105,75 +177,34 @@ impl CostUsagePricing {
         cache_creation_input_tokens: u64,
         output_tokens: u64,
     ) -> f64 {
-        match resolution {
-            ClaudePricingResolution::BuiltIn(pricing) => {
-                fn tiered(
-                    tokens: u64,
-                    base: f64,
-                    above: Option<f64>,
-                    threshold: Option<i32>,
-                ) -> f64 {
-                    match (threshold, above) {
-                        (Some(thresh), Some(above_rate)) => {
-                            let thresh = u64::try_from(thresh).unwrap_or(0);
-                            let below = tokens.min(thresh);
-                            let over = tokens.saturating_sub(thresh);
-                            (below as f64) * base + (over as f64) * above_rate
-                        }
-                        _ => (tokens as f64) * base,
-                    }
-                }
-
-                tiered(
-                    input_tokens,
-                    pricing.input_cost_per_token,
-                    pricing.input_cost_per_token_above_threshold,
-                    pricing.threshold_tokens,
-                ) + tiered(
-                    cache_read_input_tokens,
-                    pricing.cache_read_input_cost_per_token,
-                    pricing.cache_read_input_cost_per_token_above_threshold,
-                    pricing.threshold_tokens,
-                ) + tiered(
-                    cache_creation_input_tokens,
-                    pricing.cache_creation_input_cost_per_token,
-                    pricing.cache_creation_input_cost_per_token_above_threshold,
-                    pricing.threshold_tokens,
-                ) + tiered(
-                    output_tokens,
-                    pricing.output_cost_per_token,
-                    pricing.output_cost_per_token_above_threshold,
-                    pricing.threshold_tokens,
-                )
-            }
-            ClaudePricingResolution::ModelsDev {
-                pricing,
-                threshold_tokens,
-            } => claude_routed_pricing::cost_usd_from_u64_counts_with_threshold(
-                pricing,
-                threshold_tokens,
-                input_tokens,
-                cache_read_input_tokens,
-                cache_creation_input_tokens,
-                output_tokens,
-            ),
-        }
+        Self::claude_cost_usd_u64_from_resolution_with_one_hour_writes(
+            resolution,
+            None,
+            input_tokens,
+            cache_read_input_tokens,
+            cache_creation_input_tokens,
+            0,
+            output_tokens,
+        )
     }
 
     /// Cost from a resolved Claude pricing source when the cache-write total includes a
-    /// one-hour share. Models.dev routes follow upstream `claudeCostUSD(pricing:tokens:)`: the
-    /// long-context tier is chosen from input, cache read and total cache writes, and the
-    /// one-hour share bills at twice the selected input rate. Built-in rows keep the
-    /// per-bucket split and add the one-hour share at twice the base input rate.
+    /// one-hour share. Built-in and models.dev rows both follow upstream
+    /// `claudeCostUSD(pricing:tokens:)`: one long-context decision for the whole request,
+    /// from input, cache read and total cache writes, then every bucket (output included)
+    /// bills at that tier's rate, and the one-hour share at twice the selected input rate.
+    /// `pricing_date` is the usage timestamp; built-in rows dated before the full-context
+    /// cutoff use their historical long-context rates.
     pub(crate) fn claude_cost_usd_u64_from_resolution_with_one_hour_writes(
         resolution: ClaudePricingResolution,
+        pricing_date: Option<DateTime<Utc>>,
         input_tokens: u64,
         cache_read_input_tokens: u64,
         cache_creation_input_tokens: u64,
         cache_creation_1h_input_tokens: u64,
         output_tokens: u64,
     ) -> f64 {
-        match resolution {
+        match resolution.rates_at(pricing_date) {
             ClaudePricingResolution::ModelsDev {
                 pricing,
                 threshold_tokens,
@@ -186,28 +217,25 @@ impl CostUsagePricing {
                 cache_creation_1h_input_tokens,
                 output_tokens,
             ),
-            builtin @ ClaudePricingResolution::BuiltIn(_) => {
-                let one_hour = cache_creation_1h_input_tokens.min(cache_creation_input_tokens);
-                let five_minute = cache_creation_input_tokens - one_hour;
-                Self::claude_cost_usd_u64_from_resolution(
-                    builtin,
+            ClaudePricingResolution::BuiltIn {
+                current: pricing, ..
+            } => {
+                let use_tier = claude_routed_pricing::exceeds_long_context_threshold(
+                    pricing
+                        .threshold_tokens
+                        .and_then(|threshold| u64::try_from(threshold).ok()),
                     input_tokens,
                     cache_read_input_tokens,
-                    five_minute,
+                    cache_creation_input_tokens,
+                );
+                builtin_selected_rates(pricing, use_tier).cost_usd(
+                    input_tokens,
+                    cache_read_input_tokens,
+                    cache_creation_input_tokens,
+                    cache_creation_1h_input_tokens,
                     output_tokens,
-                ) + (one_hour as f64)
-                    * Self::claude_input_cost_per_token_from_resolution(builtin)
-                    * 2.0
+                )
             }
-        }
-    }
-
-    pub(crate) fn claude_input_cost_per_token_from_resolution(
-        resolution: ClaudePricingResolution,
-    ) -> f64 {
-        match resolution {
-            ClaudePricingResolution::BuiltIn(pricing) => pricing.input_cost_per_token,
-            ClaudePricingResolution::ModelsDev { pricing, .. } => pricing.input_cost_per_token,
         }
     }
 
@@ -223,7 +251,7 @@ impl CostUsagePricing {
         claude_routed_pricing::models_dev_targets(model, Self::normalize_claude_model(model))
     }
 
-    /// Calculate cost for Claude usage in USD
+    /// Calculate cost for undated Claude usage in USD, at current rates.
     pub fn claude_cost_usd(
         model: &str,
         input_tokens: i32,
@@ -231,15 +259,39 @@ impl CostUsagePricing {
         cache_creation_input_tokens: i32,
         output_tokens: i32,
     ) -> Option<f64> {
+        Self::claude_cost_usd_at_date(
+            model,
+            None,
+            input_tokens,
+            cache_read_input_tokens,
+            cache_creation_input_tokens,
+            output_tokens,
+        )
+    }
+
+    /// Calculate cost for Claude usage in USD at the rates in effect at `pricing_date`.
+    pub fn claude_cost_usd_at_date(
+        model: &str,
+        pricing_date: Option<DateTime<Utc>>,
+        input_tokens: i32,
+        cache_read_input_tokens: i32,
+        cache_creation_input_tokens: i32,
+        output_tokens: i32,
+    ) -> Option<f64> {
         let key = Self::normalize_claude_model(model);
-        if let Some(pricing) = CLAUDE_PRICING.get(key.as_str()) {
-            return Some(Self::claude_cost_usd_from_resolution(
-                ClaudePricingResolution::BuiltIn(*pricing),
-                input_tokens,
-                cache_read_input_tokens,
-                cache_creation_input_tokens,
-                output_tokens,
-            ));
+        if let Some(builtin) = ClaudePricingResolution::builtin(&key) {
+            let count = |tokens: i32| u64::try_from(tokens).unwrap_or(0);
+            return Some(
+                Self::claude_cost_usd_u64_from_resolution_with_one_hour_writes(
+                    builtin,
+                    pricing_date,
+                    count(input_tokens),
+                    count(cache_read_input_tokens),
+                    count(cache_creation_input_tokens),
+                    0,
+                    count(output_tokens),
+                ),
+            );
         }
 
         claude_routed_pricing::cost_usd(
@@ -281,9 +333,14 @@ impl CostUsagePricing {
     /// `snapshot`. Pricing follows
     /// [`Self::claude_cost_usd_u64_from_resolution_with_one_hour_writes`].
     /// `None` when the model resolves to no pricing at all.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "one row's five token counters plus its model, catalog and date"
+    )]
     pub(crate) fn claude_cost_usd_with_cache_ttl(
         model: &str,
         snapshot: &models_dev_pricing::ModelsDevPricingSnapshot,
+        pricing_date: Option<DateTime<Utc>>,
         input: u64,
         cache_read: u64,
         cache_write: u64,
@@ -295,6 +352,7 @@ impl CostUsagePricing {
         Some(
             Self::claude_cost_usd_u64_from_resolution_with_one_hour_writes(
                 resolution,
+                pricing_date,
                 input,
                 cache_read,
                 cache_write,
@@ -378,6 +436,50 @@ mod tests {
             assert!((actual - expected_usd).abs() < 1e-12);
             assert!((actual - routed).abs() < 1e-12);
         }
+    }
+
+    #[test]
+    fn cache_ttl_cost_prices_builtin_rows_at_their_date() {
+        let snapshot =
+            models_dev_pricing::ModelsDevPricingSnapshot::from_catalog_json_for_tests("{}")
+                .expect("empty catalog");
+        let cutoff = DateTime::from_timestamp(CLAUDE_FULL_CONTEXT_STANDARD_PRICING_CUTOFF, 0)
+            .expect("cutoff");
+        let price = |date| {
+            CostUsagePricing::claude_cost_usd_with_cache_ttl(
+                "claude-sonnet-4-6",
+                &snapshot,
+                date,
+                120_000,
+                0,
+                90_000,
+                90_000,
+                0,
+            )
+            .expect("built-in pricing")
+        };
+        // 210k with one-hour writes: 120k * $6 + 90k * $12 before the cutoff,
+        // 120k * $3 + 90k * $6 from it and when undated.
+        assert!((price(Some(cutoff - chrono::Duration::seconds(1))) - 1.80).abs() < 1e-9);
+        assert!((price(Some(cutoff)) - 0.90).abs() < 1e-9);
+        assert!((price(None) - 0.90).abs() < 1e-9);
+    }
+
+    #[test]
+    fn models_dev_rows_ignore_the_full_context_cutoff() {
+        let (pricing, threshold) = routed_pricing();
+        let resolution = ClaudePricingResolution::ModelsDev {
+            pricing,
+            threshold_tokens: threshold,
+        };
+        let cutoff = DateTime::from_timestamp(CLAUDE_FULL_CONTEXT_STANDARD_PRICING_CUTOFF, 0);
+        let before = cutoff.map(|at| at - chrono::Duration::seconds(1));
+        let costs = [before, cutoff, None].map(|date| {
+            CostUsagePricing::claude_cost_usd_u64_from_resolution_with_one_hour_writes(
+                resolution, date, 220_000, 10_000, 2_000, 0, 50,
+            )
+        });
+        assert!(costs.iter().all(|cost| (cost - 1.563_55).abs() < 1e-12));
     }
 
     #[test]

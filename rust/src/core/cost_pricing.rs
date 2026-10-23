@@ -217,9 +217,11 @@ static CODEX_PRICING: LazyLock<HashMap<&'static str, CodexPricing>> = LazyLock::
 const CLAUDE_HAIKU_4_5: ClaudePricing = ClaudePricing::new(1e-6, 5e-6, 1.25e-6, 1e-7);
 // Opus 4.5 through 4.8 share one price.
 const CLAUDE_OPUS_4_5: ClaudePricing = ClaudePricing::new(5e-6, 2.5e-5, 6.25e-6, 5e-7);
-// Sonnet 4 through 4.6 share one price, with tiered pricing at 200k tokens.
+// Sonnet 4 through 4.5 share one price, with tiered pricing at 200k tokens.
 const CLAUDE_SONNET_4: ClaudePricing =
     ClaudePricing::new(3e-6, 1.5e-5, 3.75e-6, 3e-7).with_200k_tier(6e-6, 2.25e-5, 7.5e-6, 6e-7);
+// Sonnet 4.6 bills its full context at the standard rate.
+const CLAUDE_SONNET_4_6: ClaudePricing = ClaudePricing::new(3e-6, 1.5e-5, 3.75e-6, 3e-7);
 const CLAUDE_OPUS_4: ClaudePricing = ClaudePricing::new(1.5e-5, 7.5e-5, 1.875e-5, 1.5e-6);
 
 /// Claude model pricing table
@@ -239,12 +241,25 @@ static CLAUDE_PRICING: LazyLock<HashMap<&'static str, ClaudePricing>> = LazyLock
         ("claude-opus-4-5-20251101", CLAUDE_OPUS_4_5),
         ("claude-sonnet-4-5", CLAUDE_SONNET_4),
         ("claude-sonnet-4-5-20250929", CLAUDE_SONNET_4),
-        ("claude-sonnet-4-6", CLAUDE_SONNET_4),
+        ("claude-sonnet-4-6", CLAUDE_SONNET_4_6),
         ("claude-opus-4-20250514", CLAUDE_OPUS_4),
         ("claude-opus-4-1", CLAUDE_OPUS_4),
         ("claude-sonnet-4-20250514", CLAUDE_SONNET_4),
     ])
 });
+
+/// Long-context rates Opus 4.6 and Sonnet 4.6 billed before full-context standard
+/// pricing (upstream `claudeHistoricalLongContext`), keyed like `CLAUDE_PRICING`.
+static CLAUDE_HISTORICAL_LONG_CONTEXT: LazyLock<HashMap<&'static str, ClaudePricing>> =
+    LazyLock::new(|| {
+        HashMap::from([
+            (
+                "claude-opus-4-6",
+                CLAUDE_OPUS_4_5.with_200k_tier(1e-5, 3.75e-5, 1.25e-5, 1e-6),
+            ),
+            ("claude-sonnet-4-6", CLAUDE_SONNET_4),
+        ])
+    });
 
 /// Cost usage pricing utilities
 pub struct CostUsagePricing;

@@ -493,7 +493,7 @@ fn remote_summary_decoder_rejects_wrong_version_and_oversized_output() {
 }
 
 #[test]
-fn remote_summary_decoder_rejects_numeric_totals_with_incomplete_coverage() {
+fn remote_summary_decoder_drops_numeric_totals_with_incomplete_coverage() {
     let source = CostSummary {
         history_coverage_established: true,
         known_zero: true,
@@ -511,5 +511,54 @@ fn remote_summary_decoder_rejects_numeric_totals_with_incomplete_coverage() {
     summary.history.cost_usd = Some(1.25);
 
     let wire = serde_json::to_string(&[summary]).unwrap();
-    assert!(decode_remote_codex_summary(&wire, 30).is_err());
+    let decoded = decode_remote_codex_summary(&wire, 30).unwrap();
+    assert!(!decoded.history_coverage_is_established);
+    assert_eq!(decoded.history.total_tokens, None);
+    assert_eq!(decoded.history.cost_usd, None);
+    assert_eq!(decoded.today.total_tokens, None);
+}
+
+/// Upstream `cost --provider codex --format json --summary-only` output:
+/// `printJSON([CodexCostSummary])` (RemoteCodexCostFetcher.swift), with the
+/// extra `incompleteRequestCount` window field and `.iso8601` dates.
+const UPSTREAM_COST_SUMMARY: &str = r#"[{"schemaVersion":1,"provider":"codex","updatedAt":"2026-08-03T12:00:00Z","bucketTimeZone":"America\/Los_Angeles","currencyCode":"USD","historyDays":30,"historyCoverageIsEstablished":true,"today":{"totalTokens":1200,"costUSD":0.42,"incompleteRequestCount":0,"coverage":{"priced":3,"unpriced":0,"unmetered":0,"estimated":3},"provenance":"listPriceEstimate"},"history":{"totalTokens":98000,"costUSD":12.5,"incompleteRequestCount":2,"coverage":{"priced":40,"unpriced":1,"unmetered":0,"estimated":40},"provenance":"listPriceEstimate"}}]"#;
+
+#[test]
+fn remote_summary_decoder_accepts_upstream_summary_output() {
+    let decoded = decode_remote_codex_summary(UPSTREAM_COST_SUMMARY, 30).unwrap();
+    assert_eq!(decoded.bucket_time_zone, "America/Los_Angeles");
+    assert_eq!(decoded.today.total_tokens, Some(1200));
+    assert_eq!(decoded.history.cost_usd, Some(12.5));
+    assert_eq!(decoded.history.coverage.unpriced, 1);
+
+    let partial = UPSTREAM_COST_SUMMARY.replace(
+        r#""historyCoverageIsEstablished":true"#,
+        r#""historyCoverageIsEstablished":false"#,
+    );
+    let decoded = decode_remote_codex_summary(&partial, 30).unwrap();
+    assert_eq!(decoded.history.total_tokens, None);
+    assert_eq!(decoded.today.cost_usd, None);
+    assert!(decode_remote_codex_summary(UPSTREAM_COST_SUMMARY, 7).is_err());
+}
+
+#[test]
+fn remote_summary_decoder_accepts_windows_summary_only_output() {
+    let source = CostSummary {
+        history_coverage_established: true,
+        known_zero: true,
+        ..Default::default()
+    };
+    let summary = CodexCostSummary::from_summaries_at(
+        &source,
+        &source,
+        30,
+        DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
+        "UTC",
+    );
+    for wire in [
+        serde_json::to_string(std::slice::from_ref(&summary)).unwrap(),
+        serde_json::to_string_pretty(std::slice::from_ref(&summary)).unwrap(),
+    ] {
+        assert_eq!(decode_remote_codex_summary(&wire, 30).unwrap(), summary);
+    }
 }

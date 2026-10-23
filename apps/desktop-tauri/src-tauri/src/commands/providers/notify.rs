@@ -6,14 +6,31 @@ pub(super) fn update_tray_and_notifications(
     settings: &Settings,
     token_accounts: &HashMap<ProviderId, ProviderAccountData>,
 ) -> Result<(), String> {
-    let cached = {
+    let (cached, notifiable) = {
         let guard = state.lock().map_err(|e| e.to_string())?;
-        guard.provider_cache.clone()
+        let cached = guard.provider_cache.clone();
+        let notifiable = without_seeded_providers(&cached, &guard.seeded_provider_ids);
+        (cached, notifiable)
     };
     crate::tray_bridge::update_tray_status_items(app, &cached);
     crate::tray_bridge::update_tray_icon_and_tooltip(app, &cached);
-    notify_usage_thresholds(state, settings, token_accounts, &cached);
+    notify_usage_thresholds(state, settings, token_accounts, &notifiable);
     Ok(())
+}
+
+/// Synthetic proof seeds stay in the tray but must never fire toasts or
+/// quota hooks when a refresh of other providers publishes.
+fn without_seeded_providers(
+    cached: &[ProviderUsageSnapshot],
+    seeded: &std::collections::HashSet<ProviderId>,
+) -> Vec<ProviderUsageSnapshot> {
+    cached
+        .iter()
+        .filter(|snapshot| {
+            ProviderId::from_cli_name(&snapshot.provider_id).is_none_or(|id| !seeded.contains(&id))
+        })
+        .cloned()
+        .collect()
 }
 
 fn notify_usage_thresholds(
@@ -313,6 +330,45 @@ fn notify_predictive_pace(
             &rate_window,
             &pace,
             settings,
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn snapshot(provider_id: &str) -> ProviderUsageSnapshot {
+        crate::proof_harness::parse_seed_usage_snapshots(
+            &serde_json::json!([{ "providerId": provider_id, "primary": { "usedPercent": 95.0 } }])
+                .to_string(),
+            Some(&crate::proof_harness::ProofConfig {
+                target_surface: "trayPanel".into(),
+                settings_tab: None,
+                target_payload: None,
+            }),
+        )
+        .unwrap()
+        .remove(0)
+    }
+
+    #[test]
+    fn seeded_providers_are_left_out_of_notification_input() {
+        let cached = vec![snapshot("codex"), snapshot("claude")];
+        let seeded = std::collections::HashSet::from([ProviderId::Codex]);
+        let ids = |snapshots: Vec<ProviderUsageSnapshot>| {
+            snapshots
+                .into_iter()
+                .map(|s| s.provider_id)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ids(without_seeded_providers(&cached, &seeded)), ["claude"]);
+        assert_eq!(
+            ids(without_seeded_providers(
+                &cached,
+                &std::collections::HashSet::new()
+            )),
+            ["codex", "claude"]
         );
     }
 }

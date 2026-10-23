@@ -727,11 +727,11 @@ fn codex_pricing_rows() -> String {
         .collect()
 }
 
-fn claude_pricing_rows() -> String {
-    sorted_keys(&CLAUDE_PRICING)
+fn claude_pricing_rows(table: &HashMap<&'static str, ClaudePricing>) -> String {
+    sorted_keys(table)
         .into_iter()
         .map(|key| {
-            let p = CLAUDE_PRICING[key];
+            let p = table[key];
             format!(
                 "{key} {:?} {:?} {:?} {:?} {:?} {:?} {:?} {:?} {:?}\n",
                 p.input_cost_per_token,
@@ -785,7 +785,7 @@ gpt-6-astra 1e-5 5e-5 1e-6 Some(1.25e-5) None Some((2e-5, 7.5e-5, 2e-6, Some(2.5
 "
     );
     assert_eq!(
-        claude_pricing_rows(),
+        claude_pricing_rows(&CLAUDE_PRICING),
         "\
 claude-fable-5 1e-5 5e-5 1.25e-5 1e-6 None None None None None
 claude-haiku-4-5 1e-6 5e-6 1.25e-6 1e-7 None None None None None
@@ -801,6 +801,13 @@ claude-opus-4-8 5e-6 2.5e-5 6.25e-6 5e-7 None None None None None
 claude-sonnet-4-20250514 3e-6 1.5e-5 3.75e-6 3e-7 Some(200000) Some(6e-6) Some(2.25e-5) Some(7.5e-6) Some(6e-7)
 claude-sonnet-4-5 3e-6 1.5e-5 3.75e-6 3e-7 Some(200000) Some(6e-6) Some(2.25e-5) Some(7.5e-6) Some(6e-7)
 claude-sonnet-4-5-20250929 3e-6 1.5e-5 3.75e-6 3e-7 Some(200000) Some(6e-6) Some(2.25e-5) Some(7.5e-6) Some(6e-7)
+claude-sonnet-4-6 3e-6 1.5e-5 3.75e-6 3e-7 None None None None None
+"
+    );
+    assert_eq!(
+        claude_pricing_rows(&CLAUDE_HISTORICAL_LONG_CONTEXT),
+        "\
+claude-opus-4-6 5e-6 2.5e-5 6.25e-6 5e-7 Some(200000) Some(1e-5) Some(3.75e-5) Some(1.25e-5) Some(1e-6)
 claude-sonnet-4-6 3e-6 1.5e-5 3.75e-6 3e-7 Some(200000) Some(6e-6) Some(2.25e-5) Some(7.5e-6) Some(6e-7)
 "
     );

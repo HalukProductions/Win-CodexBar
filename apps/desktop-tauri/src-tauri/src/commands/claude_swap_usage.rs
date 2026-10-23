@@ -1,7 +1,9 @@
 //! Last usage read from the claude-swap or tcr account pool, so Overview can
 //! show one row per pool account without starting a fetch.
 //!
-//! Every successful pool read (the Settings list) records each listed account.
+//! Every successful pool read records each listed account: the Settings list,
+//! and a background read during full provider refreshes while Show all
+//! accounts in Overview is on (see [`spawn_background_pool_read`]).
 //! An account whose read carries no live usage keeps its last good entry. A
 //! read of the pool replaces the account list, so accounts that left the pool
 //! drop out, and a read that started before a newer one never overwrites it.
@@ -15,11 +17,13 @@ use std::collections::BTreeMap;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, FixedOffset};
 use codexbar::providers::claude::claude_swap::{
-    ClaudeSwapAccount, ClaudeSwapAccountList, ClaudeSwapAccountSource, project_accounts,
+    self, ClaudeSwapAccount, ClaudeSwapAccountList, ClaudeSwapAccountSource, project_accounts,
 };
+use codexbar::settings::Settings;
 use codexbar::{atomic_file, secure_file};
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
@@ -34,6 +38,9 @@ const STORE_RELATIVE_PATH: &str = "claude-swap-usage-v1.json";
 pub const CLAUDE_SWAP_USAGE_UPDATED_EVENT: &str = "claude-swap-usage-updated";
 const FIVE_HOUR_MINUTES: u32 = 300;
 const SEVEN_DAY_MINUTES: u32 = 10_080;
+/// Shortest gap between background pool reads, so a burst of refreshes runs the
+/// pool helper at most once.
+const BACKGROUND_READ_MIN_INTERVAL: Duration = Duration::from_secs(5 * 60);
 
 /// One pool account as Overview needs it. `label` is the unmasked label that
 /// Settings shows; the read path masks it when personal information is hidden.
@@ -66,6 +73,10 @@ pub struct ClaudeSwapUsageState {
     /// Highest read number applied so far. An older read that finishes late is
     /// ignored, so it cannot bring back an account a newer read dropped.
     pub reads_applied: u64,
+    /// A background read is running; another one waits for it to finish.
+    pub background_read_in_flight: bool,
+    /// When the last background read started.
+    pub last_background_read_at: Option<Instant>,
 }
 
 /// What one pool read saw.
@@ -404,6 +415,116 @@ pub(crate) fn observe_list(
     }
 }
 
+/// What a background read needs. Present only when Overview shows pool rows:
+/// Show all accounts in Overview is on, Claude is enabled, and the claude-swap
+/// or tcr integration is on with an executable configured.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct BackgroundPoolConfig {
+    executable_path: String,
+    source: ClaudeSwapAccountSource,
+}
+
+impl BackgroundPoolConfig {
+    pub(crate) fn from_settings(settings: &Settings) -> Option<Self> {
+        if !settings.merged_overview_all_accounts || !settings.claude_swap_active() {
+            return None;
+        }
+        let executable_path = settings.claude_swap_executable_path().trim();
+        if executable_path.is_empty() {
+            return None;
+        }
+        Some(Self {
+            executable_path: executable_path.to_string(),
+            source: settings.claude_swap_source(),
+        })
+    }
+}
+
+/// Reserve a background read and return its read number, or `None` when one
+/// is already running or the last one started less than
+/// [`BACKGROUND_READ_MIN_INTERVAL`] ago. `force` skips only the interval.
+pub(crate) fn begin_background_read(
+    usage: &mut ClaudeSwapUsageState,
+    now: Instant,
+    force: bool,
+) -> Option<u64> {
+    if usage.background_read_in_flight {
+        return None;
+    }
+    let recent = usage
+        .last_background_read_at
+        .is_some_and(|at| now.saturating_duration_since(at) < BACKGROUND_READ_MIN_INTERVAL);
+    if recent && !force {
+        return None;
+    }
+    usage.background_read_in_flight = true;
+    usage.last_background_read_at = Some(now);
+    Some(begin_read(usage))
+}
+
+pub(crate) fn finish_background_read(usage: &mut ClaudeSwapUsageState) {
+    usage.background_read_in_flight = false;
+}
+
+/// Run one read-only list through `read`. A failed read returns `None`, so the
+/// last good cache stays. The error text is not logged: it can carry helper
+/// output.
+fn background_observation<E>(
+    config: &BackgroundPoolConfig,
+    read: impl FnOnce(&str, ClaudeSwapAccountSource) -> Result<ClaudeSwapAccountList, E>,
+) -> Option<PoolObservation> {
+    match read(&config.executable_path, config.source) {
+        Ok(list) => Some(observe_list(&list, config.source)),
+        Err(_) => {
+            tracing::debug!(
+                source = config.source.label(),
+                "background pool read failed; keeping the cached pool"
+            );
+            None
+        }
+    }
+}
+
+/// Fill the Overview pool cache without the Settings pane: runs the same
+/// read-only list the Settings pane runs (`cswap --list --json` or
+/// `tcr list --json`, bounded by the runner's timeout) on a blocking thread.
+/// Does nothing unless [`BackgroundPoolConfig::from_settings`] allows it, and
+/// never starts a second read while one runs.
+pub(crate) fn spawn_background_pool_read(app: &tauri::AppHandle, settings: &Settings, force: bool) {
+    let Some(config) = BackgroundPoolConfig::from_settings(settings) else {
+        return;
+    };
+    let read = {
+        let Some(state) = app.try_state::<Mutex<AppState>>() else {
+            return;
+        };
+        let Ok(mut state) = state.lock() else {
+            return;
+        };
+        begin_background_read(&mut state.claude_swap_usage, Instant::now(), force)
+    };
+    let Some(read) = read else {
+        return;
+    };
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let observation = tauri::async_runtime::spawn_blocking(move || {
+            background_observation(&config, claude_swap::read_account_list)
+        })
+        .await
+        .ok()
+        .flatten();
+        if let Some(observation) = observation {
+            record_observation(&app, Some(read), &observation);
+        }
+        if let Some(state) = app.try_state::<Mutex<AppState>>()
+            && let Ok(mut state) = state.lock()
+        {
+            finish_background_read(&mut state.claude_swap_usage);
+        }
+    });
+}
+
 /// Cache-only read for Overview account rows. Never fetches.
 #[tauri::command]
 pub fn get_claude_swap_overview_accounts(
@@ -705,6 +826,103 @@ mod tests {
         assert_eq!(record["label"], "user1@example.com");
         assert!(!record.to_string().contains("organization"));
         assert!(!record.to_string().contains("Org"));
+    }
+
+    fn overview_pool_settings() -> Settings {
+        let mut settings = Settings {
+            merged_overview_all_accounts: true,
+            ..Settings::default()
+        };
+        settings.enabled_providers = ["claude".to_string()].into_iter().collect();
+        settings.set_claude_swap_enabled(true);
+        settings.set_claude_swap_executable_path(" C:\\tools\\tcr.exe ");
+        settings.set_claude_swap_source(ClaudeSwapAccountSource::Tcr);
+        settings
+    }
+
+    #[test]
+    fn background_read_runs_only_when_overview_shows_pool_rows() {
+        let settings = overview_pool_settings();
+        assert_eq!(
+            BackgroundPoolConfig::from_settings(&settings),
+            Some(BackgroundPoolConfig {
+                executable_path: "C:\\tools\\tcr.exe".to_string(),
+                source: ClaudeSwapAccountSource::Tcr,
+            })
+        );
+
+        let mut overview_off = overview_pool_settings();
+        overview_off.merged_overview_all_accounts = false;
+        assert_eq!(BackgroundPoolConfig::from_settings(&overview_off), None);
+
+        let mut claude_off = overview_pool_settings();
+        claude_off.enabled_providers = ["codex".to_string()].into_iter().collect();
+        assert_eq!(BackgroundPoolConfig::from_settings(&claude_off), None);
+
+        let mut integration_off = overview_pool_settings();
+        integration_off.set_claude_swap_enabled(false);
+        assert_eq!(BackgroundPoolConfig::from_settings(&integration_off), None);
+
+        let mut no_executable = overview_pool_settings();
+        no_executable.set_claude_swap_executable_path("  ");
+        assert_eq!(BackgroundPoolConfig::from_settings(&no_executable), None);
+    }
+
+    #[test]
+    fn background_reads_wait_for_the_interval_and_never_overlap() {
+        let mut usage = ClaudeSwapUsageState::default();
+        let start = Instant::now();
+        let first = begin_background_read(&mut usage, start, false).unwrap();
+        assert!(begin_background_read(&mut usage, start, true).is_none());
+
+        finish_background_read(&mut usage);
+        let soon = start + Duration::from_secs(60);
+        assert!(begin_background_read(&mut usage, soon, false).is_none());
+        let forced = begin_background_read(&mut usage, soon, true).unwrap();
+        assert!(forced > first);
+
+        finish_background_read(&mut usage);
+        let later = soon + BACKGROUND_READ_MIN_INTERVAL;
+        assert!(begin_background_read(&mut usage, later, false).unwrap() > forced);
+    }
+
+    #[test]
+    fn background_read_records_the_listed_pool_through_the_runner() {
+        let config = BackgroundPoolConfig::from_settings(&overview_pool_settings()).unwrap();
+        let mut calls = Vec::new();
+        let observation = background_observation(&config, |path, source| {
+            calls.push((path.to_string(), source));
+            let raw = json!({
+                "schemaVersion": 1,
+                "activeAccountNumber": 1,
+                "accounts": [ok_row(1, 40.0, "2026-09-12T00:30:00.000Z"), expired_row(2)],
+            });
+            parse_account_list(&raw.to_string())
+        })
+        .unwrap();
+        assert_eq!(
+            calls,
+            vec![(
+                "C:\\tools\\tcr.exe".to_string(),
+                ClaudeSwapAccountSource::Tcr
+            )]
+        );
+
+        let mut usage = ClaudeSwapUsageState::default();
+        let read = begin_background_read(&mut usage, Instant::now(), false).unwrap();
+        assert!(apply_observation(&mut usage, read, &observation));
+        let bridge = overview_accounts(&usage.cache, Some(ClaudeSwapAccountSource::Tcr));
+        assert_eq!(bridge.accounts.len(), 2);
+        assert_eq!(bridge.accounts[0].id, "tcr:1");
+        assert!(bridge.usage.contains_key("tcr:1"));
+    }
+
+    #[test]
+    fn failed_background_read_keeps_the_cached_pool() {
+        let config = BackgroundPoolConfig::from_settings(&overview_pool_settings()).unwrap();
+        let observation =
+            background_observation(&config, |_, _| Err::<ClaudeSwapAccountList, _>("timed out"));
+        assert!(observation.is_none());
     }
 
     #[test]

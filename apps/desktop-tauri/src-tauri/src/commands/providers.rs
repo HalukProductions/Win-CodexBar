@@ -1,7 +1,7 @@
 use super::credential_alerts::{self, FetchAttempt};
 use super::provider_refresh::{
     ProviderRefreshCompletion, ProviderRefreshReservation, complete_provider_refresh,
-    reserve_provider_refresh,
+    reserve_provider_refresh, unpinned_refresh_ids,
 };
 use super::warning_identity::WarningIdentity;
 use super::*;
@@ -187,12 +187,13 @@ async fn do_refresh_providers_with_policy(
     }
 
     let inputs = ProviderRefreshInputs::load(settings, enabled_ids);
-    let reservation = reserve_provider_refresh(
-        &mut *state.lock().map_err(|e| e.to_string())?,
-        force,
-        &refresh_ids,
-        expected_generation,
-    );
+    let (refresh_ids, reservation) = {
+        let mut guard = state.lock().map_err(|e| e.to_string())?;
+        let refresh_ids = unpinned_refresh_ids(&guard, force, &refresh_ids);
+        let reservation =
+            reserve_provider_refresh(&mut guard, force, &refresh_ids, expected_generation);
+        (refresh_ids, reservation)
+    };
     let generation = match reservation {
         ProviderRefreshReservation::Reserved { generation } => generation,
         ProviderRefreshReservation::Skipped(reason) => {
@@ -229,6 +230,9 @@ async fn do_refresh_providers_with_policy(
         generation,
         scope.refresh_account_lanes(),
     );
+    if scope == RefreshScope::AllEnabled {
+        super::claude_swap_usage::spawn_background_pool_read(app, &inputs.settings, false);
+    }
     for handle in handles {
         let _ = handle.await;
     }

@@ -144,8 +144,9 @@ fn open_with_anchor(
 
     if cursor.is_some() {
         reanchor(app)?;
-    } else if let Some((x, y)) =
-        position.or_else(|| super::position::default_surface_position(app, SurfaceMode::TrayPanel))
+    } else if let Some((x, y)) = position
+        .or_else(|| proof_origin_position(&win, (props.width, props.height)))
+        .or_else(|| super::position::default_surface_position(app, SurfaceMode::TrayPanel))
     {
         // Best-effort initial placement; the frontend re-reveals the
         // window, so a failed set_position here is non-fatal.
@@ -160,6 +161,17 @@ fn open_with_anchor(
     }
     arm_reveal(app, activation)?;
     Ok(())
+}
+
+/// Proof runs with `CODEXBAR_PROOF_WINDOW_ORIGIN` place the flyout there
+/// instead of next to the tray.
+fn proof_origin_position(
+    window: &tauri::WebviewWindow,
+    logical_size: (f64, f64),
+) -> Option<(i32, i32)> {
+    crate::proof_harness::window_origin()?;
+    let monitors = window.available_monitors().ok()?;
+    crate::proof_harness::window_origin_position(&monitors, logical_size)
 }
 
 fn apply_window_always_on_top(window: &tauri::WebviewWindow, enabled: bool) -> Result<(), String> {
@@ -337,6 +349,14 @@ pub fn reanchor(app: &AppHandle) -> Result<(), String> {
         width: (outer.width as f64 / scale).round() as u32,
         height: (outer.height as f64 / scale).round() as u32,
     };
+
+    if let Some((x, y)) = proof_origin_position(
+        &window,
+        (f64::from(panel_size.width), f64::from(panel_size.height)),
+    ) {
+        let _set_position = window.set_position(tauri::PhysicalPosition::new(x, y));
+        return Ok(());
+    }
 
     let (anchor, cursor) = app
         .try_state::<Mutex<AppState>>()

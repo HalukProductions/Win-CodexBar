@@ -47,9 +47,19 @@ pub fn open_or_focus(app: &tauri::AppHandle, tab: &str) -> Result<(), String> {
     // Force DWM caption to dark; keep WS_THICKFRAME since window is resizable
     super::dwm::force_dark_caption_resizable(&win);
 
-    // Manually center: Tauri's .center() is unreliable on Windows when
-    // called from async commands. Compute position from the primary monitor.
-    if let Ok(Some(monitor)) = win.primary_monitor() {
+    let proof_origin = crate::proof_harness::window_origin()
+        .and_then(|_| win.available_monitors().ok())
+        .and_then(|monitors| {
+            crate::proof_harness::window_origin_position(
+                &monitors,
+                (SETTINGS_WINDOW_WIDTH, SETTINGS_WINDOW_HEIGHT),
+            )
+        });
+    if let Some((x, y)) = proof_origin {
+        let _ = win.set_position(PhysicalPosition::new(x, y));
+    } else if let Ok(Some(monitor)) = win.primary_monitor() {
+        // Manually center: Tauri's .center() is unreliable on Windows when
+        // called from async commands. Compute position from the primary monitor.
         let pos = monitor.position();
         let size = monitor.size();
         let scale = win.scale_factor().unwrap_or(1.0);

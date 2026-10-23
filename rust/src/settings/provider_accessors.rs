@@ -434,6 +434,15 @@ impl Settings {
             .unwrap_or(false)
     }
 
+    /// Whether the claude-swap / tcr integration can feed Claude rows: the
+    /// integration is on and Claude itself is enabled.
+    pub fn claude_swap_active(&self) -> bool {
+        self.claude_swap_enabled()
+            && self
+                .get_enabled_provider_ids()
+                .contains(&ProviderId::Claude)
+    }
+
     pub fn set_claude_swap_enabled(&mut self, value: bool) {
         self.provider_config_mut(ProviderId::Claude)
             .claude_swap_enabled = value;

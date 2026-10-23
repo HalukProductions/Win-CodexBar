@@ -274,6 +274,7 @@ fn summarize_paths_with_budget(
             cost_estimate.record_list_price(
                 model.as_deref(),
                 estimate_cost_usd(
+                    at,
                     model.as_deref(),
                     input,
                     cache_read,

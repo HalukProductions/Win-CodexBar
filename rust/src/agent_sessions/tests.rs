@@ -657,7 +657,15 @@ bad line
         let bundled_v2 = shell.rfind("sessions --json-v2").expect("bundled v2 fallback");
         assert!(v2 < v1, "v2 negotiated before legacy PATH fallback");
         assert!(v1 < bundled_v2, "PATH fallback before bundled CLI");
-        assert!(shell.ends_with("sessions --json"), "bundled legacy fallback present");
+        assert!(shell.ends_with("sessions --json'"), "bundled legacy fallback present");
+        assert!(
+            shell.starts_with("'codexbar sessions --json-v2 || "),
+            "the whole chain reaches sh -lc as one shell word"
+        );
+        assert!(
+            shell.contains("'\\''/Applications/CodexBar.app/Contents/Helpers/CodexBarCLI'\\'' sessions"),
+            "bundled path quoting survives the outer quotes"
+        );
     }
 
     #[tokio::test]
