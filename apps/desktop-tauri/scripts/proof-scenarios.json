@@ -219,6 +219,28 @@
       ]
     },
     {
+      "name": "settings-auto-follows-windows-light",
+      "query": "window=settings&tab=general&theme=auto&system=light",
+      "size": [880, 620],
+      "steps": [
+        { "expectCall": { "cmd": "get_system_theme" } },
+        { "expectTheme": "light" },
+        { "expectText": "Refresh interval" },
+        { "screenshot": "settings-auto-follows-windows-light" }
+      ]
+    },
+    {
+      "name": "settings-auto-follows-windows-dark",
+      "query": "window=settings&tab=general&theme=auto&system=dark",
+      "size": [880, 620],
+      "steps": [
+        { "expectCall": { "cmd": "get_system_theme" } },
+        { "expectTheme": "dark" },
+        { "expectText": "Refresh interval" },
+        { "screenshot": "settings-auto-follows-windows-dark" }
+      ]
+    },
+    {
       "name": "settings-providers",
       "query": "window=settings&tab=providers&theme=dark",
       "size": [880, 620],

@@ -339,6 +339,7 @@ fn main() {
             commands::unregister_global_shortcut,
             commands::get_work_area_rect,
             commands::get_system_accent_color,
+            commands::get_system_theme,
             commands::play_notification_sound,
             commands::open_external_url,
             commands::reanchor_tray_panel,

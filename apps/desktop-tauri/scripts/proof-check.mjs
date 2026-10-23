@@ -15,7 +15,7 @@
 // Scenario steps (scripts/proof-scenarios.json), run in order:
 //   expectText / expectNoText   page text includes / excludes each string
 //   expectSelector              a DOM selector matches
-//   expectTheme                 documentElement dataset.theme
+//   expectTheme                 documentElement dataset.theme (waits for the value)
 //   expectField                 a native <select> by label: value, options, enabled
 //   expectCall                  a backend command was invoked (optional args match)
 //   expectNoCall                a backend command was not invoked (waits 300 ms first)
@@ -384,8 +384,11 @@ async function runStep(page, step, ctx) {
       .map((el) => el.textContent)`);
     if (clipped.length > 0) throw new Error(`text clipped in ${step.expectNoOverflow}: ${js(clipped)}`);
   } else if (step.expectTheme !== undefined) {
-    const theme = await page.eval("document.documentElement.dataset.theme");
-    if (theme !== step.expectTheme) throw new Error(`theme is ${js(theme)}, expected ${js(step.expectTheme)}`);
+    // Polled: under `auto` the theme arrives after an async shell read.
+    const theme = "document.documentElement.dataset.theme";
+    if (!(await page.poll(`${theme} === ${js(step.expectTheme)}`))) {
+      throw new Error(`theme is ${js(await page.eval(theme))}, expected ${js(step.expectTheme)}`);
+    }
   } else if (step.click !== undefined) {
     // `near` picks, among same-label matches, the one whose closest ancestor
     // containing that text is nearest (e.g. the Switch button of one account row).

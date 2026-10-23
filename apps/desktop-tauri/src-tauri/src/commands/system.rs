@@ -204,6 +204,44 @@ fn abgr_to_hex(value: u32) -> String {
     format!("#{r:02x}{g:02x}{b:02x}")
 }
 
+/// The Windows app-theme setting (`"light"` or `"dark"`) for the Settings
+/// window under the `auto` theme.
+///
+/// Every native window is pinned to Dark (see `shell/settings_window.rs`), so
+/// `prefers-color-scheme` inside the webview always reports dark. This reads
+/// the OS setting directly instead.
+#[tauri::command]
+pub fn get_system_theme() -> String {
+    theme_from_apps_use_light(apps_use_light_theme_value()).to_string()
+}
+
+/// Maps `HKCU\...\Themes\Personalize\AppsUseLightTheme` to a theme name.
+/// Only a non-zero value means light. A zero, a missing value or a read error
+/// resolves to dark, the theme these windows used before the OS was read.
+fn theme_from_apps_use_light(value: Option<u32>) -> &'static str {
+    match value {
+        Some(0) | None => "dark",
+        Some(_) => "light",
+    }
+}
+
+#[cfg(windows)]
+fn apps_use_light_theme_value() -> Option<u32> {
+    use winreg::RegKey;
+    use winreg::enums::HKEY_CURRENT_USER;
+
+    RegKey::predef(HKEY_CURRENT_USER)
+        .open_subkey(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
+        .ok()?
+        .get_value::<u32, _>("AppsUseLightTheme")
+        .ok()
+}
+
+#[cfg(not(windows))]
+fn apps_use_light_theme_value() -> Option<u32> {
+    None
+}
+
 #[tauri::command]
 pub fn play_notification_sound(
     event: codexbar::sound::NotificationSoundEvent,
@@ -499,5 +537,16 @@ mod tests {
         let accounts = vec![legacy.clone(), identified];
         assert_eq!(find_copilot_account_by_identity(&accounts, 123), Some(1));
         assert!(copilot_label_matches_login(&legacy, Some("octocat")));
+    }
+
+    #[test]
+    fn apps_use_light_theme_nonzero_reads_as_light() {
+        assert_eq!(theme_from_apps_use_light(Some(1)), "light");
+    }
+
+    #[test]
+    fn apps_use_light_theme_zero_or_unreadable_reads_as_dark() {
+        assert_eq!(theme_from_apps_use_light(Some(0)), "dark");
+        assert_eq!(theme_from_apps_use_light(None), "dark");
     }
 }

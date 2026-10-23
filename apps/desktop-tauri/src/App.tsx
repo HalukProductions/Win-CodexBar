@@ -63,7 +63,11 @@ function AppInner() {
   const [error, setError] = useState<string | null>(null);
   const [themePreference, setThemePreference] = useState<ThemePreference>("dark");
 
-  useTheme(themePreference);
+  // Settings follows the Windows app theme under `auto`; the other surfaces
+  // keep the pinned-Dark media query.
+  useTheme(themePreference, {
+    followSystem: isSettingsWindow() || surface.mode === "settings",
+  });
   useDeepSeekPricingStatus();
 
   const reloadBootstrapState = useCallback(

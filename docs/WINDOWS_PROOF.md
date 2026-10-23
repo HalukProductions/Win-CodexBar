@@ -219,6 +219,7 @@ URL parameters:
 | `tab` | any settings tab id, or `providers:<id>` | `general` |
 | `fixture` | `default`, `two-codex-accounts`, `errors`, `empty`, `claude-plan-hidden`, `kpi-long-titles`, `codex-conversations`, `codex-conversations-private` | `default` |
 | `theme` | `dark`, `light`, `auto` (overrides the fixture) | fixture value |
+| `system` | `dark`, `light`: the Windows app theme that `get_system_theme` reports, which Settings follows under `auto` | `dark` |
 
 Example: `proof.html?window=settings&tab=providers:codex&fixture=two-codex-accounts`.
 
