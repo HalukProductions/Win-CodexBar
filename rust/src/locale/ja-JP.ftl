@@ -1419,6 +1419,7 @@ ProviderTextNoEditPredictions = 編集予測は含まれていません
 ProviderTextDailyUsage = 日次の使用量
 ProviderTextResetsDaily = 毎日リセット
 ProviderTextNoActiveSession = 有効な 5 時間セッションがありません
+ProviderTextLimitsNotAvailable = 上限は利用できません
 ProviderTextKeyQuota = キーのクォータ
 ProviderTextAccountBalance = アカウント残高
 ProviderTextMonthlyBudget = 月間予算

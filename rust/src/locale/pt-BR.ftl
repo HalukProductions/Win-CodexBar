@@ -1423,6 +1423,7 @@ ProviderTextNoEditPredictions = Nenhuma previsão de edição incluída
 ProviderTextDailyUsage = Uso diário
 ProviderTextResetsDaily = redefine diariamente
 ProviderTextNoActiveSession = Nenhuma sessão de 5 h ativa
+ProviderTextLimitsNotAvailable = Limites indisponíveis
 ProviderTextKeyQuota = Cota da chave
 ProviderTextAccountBalance = Saldo da conta
 ProviderTextMonthlyBudget = Orçamento mensal

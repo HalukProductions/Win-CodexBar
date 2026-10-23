@@ -1836,6 +1836,7 @@ locale_keys! {
     ProviderTextDailyUsage,
     ProviderTextResetsDaily,
     ProviderTextNoActiveSession,
+    ProviderTextLimitsNotAvailable,
     ProviderTextKeyQuota,
     ProviderTextAccountBalance,
     ProviderTextMonthlyBudget,

@@ -32,6 +32,7 @@ const SENTENCES: Record<string, LocaleKey> = {
   "daily usage": "ProviderTextDailyUsage",
   "resets daily": "ProviderTextResetsDaily",
   "no active 5h session": "ProviderTextNoActiveSession",
+  "limits not available": "ProviderTextLimitsNotAvailable",
   "key quota": "ProviderTextKeyQuota",
   "account balance": "ProviderTextAccountBalance",
   "monthly budget": "ProviderTextMonthlyBudget",

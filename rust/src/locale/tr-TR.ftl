@@ -1419,6 +1419,7 @@ ProviderTextNoEditPredictions = Düzenleme tahmini dahil değil
 ProviderTextDailyUsage = Günlük kullanım
 ProviderTextResetsDaily = her gün sıfırlanır
 ProviderTextNoActiveSession = Etkin 5 saatlik oturum yok
+ProviderTextLimitsNotAvailable = Limitler kullanılamıyor
 ProviderTextKeyQuota = Anahtar kotası
 ProviderTextAccountBalance = Hesap bakiyesi
 ProviderTextMonthlyBudget = Aylık bütçe

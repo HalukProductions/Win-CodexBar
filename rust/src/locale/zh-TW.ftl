@@ -1419,6 +1419,7 @@ ProviderTextNoEditPredictions = 不含編輯預測
 ProviderTextDailyUsage = 每日用量
 ProviderTextResetsDaily = 每日重設
 ProviderTextNoActiveSession = 沒有進行中的 5 小時會話
+ProviderTextLimitsNotAvailable = 限額無法使用
 ProviderTextKeyQuota = 金鑰配額
 ProviderTextAccountBalance = 帳戶餘額
 ProviderTextMonthlyBudget = 每月預算
