@@ -5,6 +5,7 @@
 
 use tauri::{LogicalPosition, LogicalSize, Manager, PhysicalPosition, PhysicalSize, WebviewUrl};
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use super::placement::{self, MonitorLayout, MoveKind};
@@ -22,6 +23,19 @@ const WINDOWS_MINIMIZED_COORDINATE: i32 = -32_000;
 /// threshold are treated as unusable while multi-monitor origins like
 /// (-3840, 0) or (-8000, -8000) still restore.
 const STORED_LOGICAL_PARK_THRESHOLD: i32 = -15_000;
+
+/// True while the open bar was placed at the proof window origin. Only then
+/// is its geometry kept out of the user's store; a configured origin that no
+/// monitor contains falls back to normal placement and normal saving.
+static PROOF_PLACEMENT_APPLIED: AtomicBool = AtomicBool::new(false);
+
+fn set_proof_placement_applied(applied: bool) {
+    PROOF_PLACEMENT_APPLIED.store(applied, Ordering::Relaxed);
+}
+
+fn proof_placement_applied() -> bool {
+    PROOF_PLACEMENT_APPLIED.load(Ordering::Relaxed)
+}
 
 /// Windows parks minimized windows at the exact physical coordinate pair
 /// (-32000, -32000). Keep this strict so legitimate negative monitor origins
@@ -286,6 +300,7 @@ pub fn show(app: &tauri::AppHandle, settings: &codexbar::settings::Settings) -> 
     // near the bottom while the original floating style keeps its top-center
     // placement. A proof origin wins over both; the placement record below
     // then keeps the bar there instead of snapping it back.
+    set_proof_placement_applied(proof_origin.is_some());
     if let Some((x, y)) = proof_origin {
         let _ = win.set_position(PhysicalPosition::new(x, y));
     } else if let Some(g) = geometry_store::load_entry(FLOATBAR_LABEL)
@@ -351,7 +366,7 @@ pub fn hide(app: &tauri::AppHandle) -> Result<(), String> {
 /// `&WebviewWindow`.
 pub fn remember_geometry<R: tauri::Runtime, M: WindowGeometry<R>>(window: &M) {
     // A proof placement must not become the user's saved float bar position.
-    if crate::proof_harness::window_origin().is_some() {
+    if proof_placement_applied() {
         return;
     }
     let Ok(pos) = window.outer_position() else {
