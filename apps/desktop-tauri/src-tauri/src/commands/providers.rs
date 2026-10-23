@@ -230,6 +230,9 @@ async fn do_refresh_providers_with_policy(
         generation,
         scope.refresh_account_lanes(),
     );
+    if scope == RefreshScope::AllEnabled {
+        super::claude_swap_usage::spawn_background_pool_read(app, &inputs.settings, false);
+    }
     for handle in handles {
         let _ = handle.await;
     }
