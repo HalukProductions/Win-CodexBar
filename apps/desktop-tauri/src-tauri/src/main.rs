@@ -176,10 +176,10 @@ fn main() {
                 initial_state
                     .provider_cache_updated_at_by_provider
                     .insert(provider, seeded_at);
+                initial_state.seeded_provider_ids.insert(provider);
             }
         }
         initial_state.provider_cache.extend(snapshots);
-        initial_state.provider_cache_seeded = true;
         initial_state.provider_cache_updated_at = Some(seeded_at);
     }
 
@@ -191,7 +191,7 @@ fn main() {
         http_server::controller()
     };
     let http_server_controller_for_exit = http_server_controller.clone();
-    let has_usage_seed = initial_state.provider_cache_seeded;
+    let has_usage_seed = !initial_state.seeded_provider_ids.is_empty();
 
     let context = tauri::generate_context!();
     if is_proof_mode {

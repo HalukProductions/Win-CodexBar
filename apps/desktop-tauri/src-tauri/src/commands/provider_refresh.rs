@@ -69,11 +69,44 @@ pub(super) fn reserve_provider_refresh(
         });
     }
 
+    if force {
+        // An explicit refresh replaces seeded snapshots with live data, so
+        // later background refreshes must keep that data current.
+        state
+            .seeded_provider_ids
+            .retain(|id| !provider_ids.contains(id));
+    }
     state.provider_refresh_generation = state.provider_refresh_generation.wrapping_add(1);
     let generation = state.provider_refresh_generation;
     state.is_refreshing = true;
     state.provider_refresh_started_at = Some(std::time::Instant::now());
     ProviderRefreshReservation::Reserved { generation }
+}
+
+/// Providers a refresh should fetch. A non-forced refresh skips providers
+/// whose proof-seeded snapshot is still cached, so seeding one provider does
+/// not leave the others unrefreshed or the seed replaced by a live fetch.
+pub(super) fn unpinned_refresh_ids(
+    state: &AppState,
+    force: bool,
+    provider_ids: &[ProviderId],
+) -> Vec<ProviderId> {
+    if force {
+        return provider_ids.to_vec();
+    }
+    provider_ids
+        .iter()
+        .copied()
+        .filter(|id| !is_pinned_seed(state, *id))
+        .collect()
+}
+
+fn is_pinned_seed(state: &AppState, id: ProviderId) -> bool {
+    state.seeded_provider_ids.contains(&id)
+        && state
+            .provider_cache
+            .iter()
+            .any(|snapshot| snapshot.provider_id == id.cli_name())
 }
 
 fn provider_cache_can_skip_refresh(
@@ -87,9 +120,6 @@ fn provider_cache_can_skip_refresh(
             .iter()
             .any(|snapshot| snapshot.provider_id == id.cli_name())
     });
-    if !force && state.provider_cache_seeded && cache_has_all {
-        return true;
-    }
     !force
         && cache_has_all
         && provider_ids.iter().all(|id| {
@@ -125,8 +155,7 @@ pub(super) fn complete_provider_refresh(
 mod tests {
     use super::*;
 
-    #[test]
-    fn validated_seed_pins_only_complete_nonforced_cache() {
+    fn state_with_codex_seed() -> AppState {
         let mut state = AppState::new();
         state.provider_cache.push(
             crate::proof_harness::parse_seed_usage_snapshot(
@@ -134,27 +163,78 @@ mod tests {
             )
             .unwrap(),
         );
-        assert!(!provider_cache_can_skip_refresh(
-            &state,
-            false,
-            &[ProviderId::Codex]
+        state.seeded_provider_ids.insert(ProviderId::Codex);
+        state
+    }
+
+    #[test]
+    fn seeded_providers_are_pinned_per_provider() {
+        let state = state_with_codex_seed();
+        let enabled = [ProviderId::Codex, ProviderId::Claude];
+        assert_eq!(
+            unpinned_refresh_ids(&state, false, &enabled),
+            vec![ProviderId::Claude]
+        );
+        assert_eq!(
+            unpinned_refresh_ids(&state, false, &[ProviderId::Codex]),
+            Vec::<ProviderId>::new()
+        );
+        // A forced refresh fetches every requested provider.
+        assert_eq!(unpinned_refresh_ids(&state, true, &enabled), enabled);
+
+        // An unseeded cache entry is not pinned.
+        let mut unseeded = state_with_codex_seed();
+        unseeded.seeded_provider_ids.clear();
+        assert_eq!(
+            unpinned_refresh_ids(&unseeded, false, &enabled),
+            enabled.to_vec()
+        );
+
+        // A seed whose snapshot left the cache is no longer pinned.
+        let mut evicted = state_with_codex_seed();
+        evicted.provider_cache.clear();
+        assert_eq!(
+            unpinned_refresh_ids(&evicted, false, &enabled),
+            enabled.to_vec()
+        );
+    }
+
+    #[test]
+    fn fully_seeded_refresh_skips_as_cache_fresh() {
+        let mut state = state_with_codex_seed();
+        let generation = state.provider_refresh_generation;
+        let ids = unpinned_refresh_ids(&state, false, &[ProviderId::Codex]);
+        assert_eq!(
+            reserve_provider_refresh(&mut state, false, &ids, generation),
+            ProviderRefreshReservation::Skipped(ProviderRefreshSkipReason::CacheFresh {
+                generation
+            })
+        );
+        assert!(!state.is_refreshing);
+    }
+
+    #[test]
+    fn partially_seeded_refresh_reserves_only_unseeded_providers() {
+        let mut state = state_with_codex_seed();
+        let generation = state.provider_refresh_generation;
+        let ids = unpinned_refresh_ids(&state, false, &[ProviderId::Codex, ProviderId::Claude]);
+        assert_eq!(ids, vec![ProviderId::Claude]);
+        assert!(matches!(
+            reserve_provider_refresh(&mut state, false, &ids, generation),
+            ProviderRefreshReservation::Reserved { .. }
         ));
-        state.provider_cache_seeded = true;
-        assert!(provider_cache_can_skip_refresh(
-            &state,
-            false,
-            &[ProviderId::Codex]
+        assert!(state.seeded_provider_ids.contains(&ProviderId::Codex));
+    }
+
+    #[test]
+    fn forced_refresh_unpins_the_providers_it_fetches() {
+        let mut state = state_with_codex_seed();
+        let generation = state.provider_refresh_generation;
+        assert!(matches!(
+            reserve_provider_refresh(&mut state, true, &[ProviderId::Codex], generation),
+            ProviderRefreshReservation::Reserved { .. }
         ));
-        assert!(!provider_cache_can_skip_refresh(
-            &state,
-            true,
-            &[ProviderId::Codex]
-        ));
-        assert!(!provider_cache_can_skip_refresh(
-            &state,
-            false,
-            &[ProviderId::Codex, ProviderId::Claude]
-        ));
+        assert!(state.seeded_provider_ids.is_empty());
     }
 
     #[test]
