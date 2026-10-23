@@ -170,8 +170,10 @@ export function useProviders(options: UseProvidersOptions = {}): UseProvidersRes
       pendingSnapshotsRef.current.clear();
       getCachedProviders()
         .then((cached) => {
+          // The backend prunes disabled providers from its cache before it
+          // broadcasts, so the reload replaces local state instead of merging.
           if (!cancelled && epoch === settingsReloadEpochRef.current) {
-            mergeSnapshots(cached);
+            setProviders(cached);
           }
         })
         .finally(() => {

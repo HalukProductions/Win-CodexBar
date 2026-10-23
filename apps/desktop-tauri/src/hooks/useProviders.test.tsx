@@ -138,6 +138,22 @@ describe("useProviders", () => {
     expect(tauriMocks.getCachedProviders).toHaveBeenCalledTimes(2);
   });
 
+  it("drops providers the backend pruned when settings change", async () => {
+    tauriMocks.getCachedProviders.mockResolvedValueOnce([provider("codex"), provider("claude")]);
+
+    const { result } = renderHook(() => useProviders({ refreshOnMount: false }));
+    await waitFor(() => expect(result.current.providers).toHaveLength(2));
+
+    tauriMocks.getCachedProviders.mockResolvedValueOnce([provider("claude")]);
+    act(() => emitProviderEvent("settings-changed", undefined));
+
+    await waitFor(() =>
+      expect(result.current.providers.map((snapshot) => snapshot.providerId)).toEqual([
+        "claude",
+      ]),
+    );
+  });
+
   it("discards queued pre-change snapshots before reloading settings presentation", async () => {
     vi.useFakeTimers();
     try {

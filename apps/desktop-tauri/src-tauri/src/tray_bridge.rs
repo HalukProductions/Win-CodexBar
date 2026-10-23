@@ -319,9 +319,27 @@ fn handle_menu_event(app: &AppHandle, id: &str) {
             } else {
                 settings.enabled_providers.insert(provider_id);
             }
-            let _ = settings.save();
+            if settings.save().is_err() {
+                rebuild_tray_menu(app);
+                return;
+            }
+            // Same follow-up as `update_settings`: without the prune and the
+            // broadcast, open surfaces keep the disabled provider's card.
+            let enabled_ids = settings.get_enabled_provider_ids();
+            if let Some(state) = app.try_state::<Mutex<AppState>>() {
+                let _ = crate::commands::invalidate_provider_refresh_and_prune_disabled(
+                    &state,
+                    &enabled_ids,
+                );
+            }
             crate::floatbar::notify_settings_changed(app);
-            rebuild_tray_menu(app);
+            crate::status_poller::settings_changed(app, &settings, false);
+            refresh_tray_presentation(app);
+            crate::events::emit_settings_changed(app);
+            let handle = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = crate::commands::do_refresh_providers(&handle).await;
+            });
         }
         Some(MenuAction::ToggleFloatBar) => {
             crate::floatbar::toggle(app);
