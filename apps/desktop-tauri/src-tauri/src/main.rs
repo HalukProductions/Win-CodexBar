@@ -191,6 +191,7 @@ fn main() {
         http_server::controller()
     };
     let http_server_controller_for_exit = http_server_controller.clone();
+    let has_usage_seed = initial_state.provider_cache_seeded;
 
     let context = tauri::generate_context!();
     if is_proof_mode {
@@ -362,6 +363,11 @@ fn main() {
                 window.hide()?;
             }
             tray_bridge::setup(app)?;
+            if has_usage_seed {
+                // A pinned seed makes the startup refresh skip as cache-fresh,
+                // and only a published refresh repaints the tray.
+                tray_bridge::refresh_tray_presentation(app.handle());
+            }
             shortcut_bridge::register(app.handle());
             floatbar::install(app.handle());
             auto_refresh::install(app.handle().clone());
