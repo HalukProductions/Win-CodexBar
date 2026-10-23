@@ -156,15 +156,28 @@ fn cache_root() -> PathBuf {
         .join("CodexBar")
 }
 
-/// Daily token totals for the last `days` calendar days, ascending, with a zero
-/// slot for each day that has no events. An empty report stays empty, so the chart
-/// keeps its empty state when no local history exists.
-pub fn token_history_slots(daily: &[DailyUsage], days: u32) -> Vec<(String, u64)> {
+/// Daily token totals for the last `days` calendar days, ascending. A complete
+/// scan gets a zero slot for each day that has no events. A partial scan keeps
+/// only the reported days, because an unscanned day is unknown, not idle. An
+/// empty report stays empty, so the chart keeps its empty state when no local
+/// history exists.
+pub fn token_history_slots(report: &Report, days: u32) -> Vec<(String, u64)> {
     let end = crate::cost_reporting_period::cost_bucket_zone().date(Utc::now());
-    fill_token_slots(daily, end, days)
+    fill_token_slots(&report.daily, report.is_complete(), end, days)
 }
 
-fn fill_token_slots(daily: &[DailyUsage], end: NaiveDate, days: u32) -> Vec<(String, u64)> {
+fn fill_token_slots(
+    daily: &[DailyUsage],
+    complete: bool,
+    end: NaiveDate,
+    days: u32,
+) -> Vec<(String, u64)> {
+    if !complete {
+        return daily
+            .iter()
+            .map(|day| (day.day.clone(), day.total_tokens))
+            .collect();
+    }
     if daily.is_empty() {
         return Vec::new();
     }
@@ -559,7 +572,7 @@ mod slot_tests {
         let end = NaiveDate::from_ymd_opt(2026, 9, 10).unwrap();
         let daily = [day("2026-09-05", 100), day("2026-09-08", 50)];
 
-        let slots = fill_token_slots(&daily, end, 7);
+        let slots = fill_token_slots(&daily, true, end, 7);
 
         assert_eq!(
             slots,
@@ -579,6 +592,22 @@ mod slot_tests {
     fn token_slots_stay_empty_without_local_history() {
         let end = NaiveDate::from_ymd_opt(2026, 9, 10).unwrap();
 
-        assert!(fill_token_slots(&[], end, 30).is_empty());
+        assert!(fill_token_slots(&[], true, end, 30).is_empty());
+    }
+
+    #[test]
+    fn partial_scan_keeps_only_reported_days() {
+        let end = NaiveDate::from_ymd_opt(2026, 9, 10).unwrap();
+        let daily = [day("2026-09-05", 100), day("2026-09-08", 50)];
+
+        let slots = fill_token_slots(&daily, false, end, 7);
+
+        assert_eq!(
+            slots,
+            vec![
+                ("2026-09-05".to_string(), 100),
+                ("2026-09-08".to_string(), 50),
+            ]
+        );
     }
 }
