@@ -713,10 +713,11 @@ mod tests {
         (ProviderId::OpenCode, "#3B82F6"),
     ];
 
-    /// Mac CodexBar 0.70.0 descriptor colors adopted for parity: (provider,
-    /// previous Windows accent, Mac color). Source: the `color:` of each
-    /// `CodexBarCore/Providers/<Name>/<Name>ProviderDescriptor.swift`.
-    const MAC_PARITY_ACCENTS: [(ProviderId, &str, &str); 24] = [
+    /// Mac CodexBar descriptor colors adopted for parity: (provider, previous
+    /// Windows accent, Mac color). Source: the `color:` of each
+    /// `CodexBarCore/Providers/<Name>/<Name>ProviderDescriptor.swift`. Pi is
+    /// the later upstream change to its official brand color (#4690).
+    const MAC_PARITY_ACCENTS: [(ProviderId, &str, &str); 25] = [
         (ProviderId::Chutes, "#FF5C35", "#3184FF"),
         (ProviderId::Deepgram, "#13EF93", "#6467F2"),
         (ProviderId::Doubao, "#2563EB", "#3370FF"),
@@ -730,6 +731,7 @@ mod tests {
         (ProviderId::OpenAIApi, "#10A37F", "#0F826E"),
         (ProviderId::OpenRouter, "#6B7280", "#6467F2"),
         (ProviderId::Perplexity, "#1FB8CD", "#20B2AA"),
+        (ProviderId::Pi, "#7C3AED", "#4D9ABF"),
         (ProviderId::Poe, "#5D5FEF", "#5D5CDE"),
         (ProviderId::Qoder, "#2563EB", "#10B981"),
         (ProviderId::Sakana, "#0EA5E9", "#2975DB"),
@@ -846,6 +848,18 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn pi_uses_its_official_brand_color_and_current_repository() {
+        // Upstream #4690: Pi's logo blue, and the project link it points to.
+        assert_eq!(brand_color(ProviderId::Pi), "#4D9ABF");
+        assert_eq!(
+            ProviderId::Pi.spec().metadata.dashboard_url,
+            Some("https://github.com/earendil-works/pi")
+        );
+        // `pi-mono` is kept as a parse alias for existing configs and CLI use.
+        assert_eq!(ProviderId::from_cli_name("pi-mono"), Some(ProviderId::Pi));
     }
 
     #[test]
