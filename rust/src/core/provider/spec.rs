@@ -183,9 +183,9 @@ pub(crate) static SPECS: [ProviderSpec; COUNT] = [
         .dashboard("https://platform.claude.com/usage")
         .status("https://status.claude.com/")
         .aliases(&["anthropic"]),
-    spec(P::Pi, "pi", "Pi", "#7C3AED")
+    spec(P::Pi, "pi", "Pi", "#4D9ABF")
         .labels("Session", "Weekly")
-        .dashboard("https://github.com/badlogic/pi-mono")
+        .dashboard("https://github.com/earendil-works/pi")
         .parse_aliases(&["pi-mono"]),
     // Upstream #2338: Cursor has no account credit balance to advertise.
     spec(P::Cursor, "cursor", "Cursor", "#F54E00")

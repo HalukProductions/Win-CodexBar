@@ -9,7 +9,7 @@
 
 use super::code_api::{KimiCliCredential, kimi_cli_credential_error};
 use super::web::WebFetchFailure;
-use crate::core::{ProviderError, ProviderFetchResult, UsageSnapshot};
+use crate::core::{ProviderError, ProviderFetchResult};
 
 pub(super) async fn fetch_cli_then_web<C, CF, W, WF>(
     cli_credential: KimiCliCredential,
@@ -18,9 +18,9 @@ pub(super) async fn fetch_cli_then_web<C, CF, W, WF>(
 ) -> Result<ProviderFetchResult, ProviderError>
 where
     C: FnOnce(String) -> CF,
-    CF: Future<Output = Result<UsageSnapshot, ProviderError>>,
+    CF: Future<Output = Result<ProviderFetchResult, ProviderError>>,
     W: FnOnce() -> WF,
-    WF: Future<Output = Result<UsageSnapshot, WebFetchFailure>>,
+    WF: Future<Output = Result<ProviderFetchResult, WebFetchFailure>>,
 {
     let cli_failure = match cli_credential {
         KimiCliCredential::Unavailable => None,
@@ -29,7 +29,7 @@ where
             Some(kimi_cli_credential_error())
         }
         KimiCliCredential::Fresh(token) => match fetch_cli(token).await {
-            Ok(usage) => return Ok(ProviderFetchResult::new(usage, "code-cli")),
+            Ok(fetched) => return Ok(labeled(fetched, "code-cli")),
             Err(error) => {
                 tracing::debug!(
                     error = %error,
@@ -41,12 +41,19 @@ where
     };
 
     match fetch_web().await {
-        Ok(usage) => Ok(ProviderFetchResult::new(usage, "web")),
+        Ok(fetched) => Ok(labeled(fetched, "web")),
         Err(failure) => match cli_failure {
             Some(cli_error) if !failure.had_token => Err(cli_error),
             _ => Err(failure.error),
         },
     }
+}
+
+/// Stamps the Auto source that produced `fetched`. The usage and its display
+/// rows are kept exactly as the source returned them.
+fn labeled(mut fetched: ProviderFetchResult, source_label: &str) -> ProviderFetchResult {
+    fetched.source_label = source_label.to_string();
+    fetched
 }
 
 /// Upstream `normalizedCodeAPIError`: a CLI token the Code API rejects (401)
@@ -63,23 +70,23 @@ mod tests {
     use std::cell::{Cell, RefCell};
 
     use super::*;
-    use crate::core::RateWindow;
+    use crate::core::{RateWindow, UsageSnapshot};
 
     const OFF_SOURCE_ERROR: &str =
         "Kimi cookie source is Off; provide a manual cookie header or enable browser import.";
 
-    fn usage(percent: f64) -> UsageSnapshot {
-        UsageSnapshot::new(RateWindow::new(percent))
+    fn usage(percent: f64) -> ProviderFetchResult {
+        ProviderFetchResult::new(UsageSnapshot::new(RateWindow::new(percent)), "test")
     }
 
     fn web_failure(
         error: ProviderError,
         had_token: bool,
-    ) -> Result<UsageSnapshot, WebFetchFailure> {
+    ) -> Result<ProviderFetchResult, WebFetchFailure> {
         Err(WebFetchFailure { error, had_token })
     }
 
-    fn web_without_token() -> Result<UsageSnapshot, WebFetchFailure> {
+    fn web_without_token() -> Result<ProviderFetchResult, WebFetchFailure> {
         web_failure(ProviderError::Other(OFF_SOURCE_ERROR.into()), false)
     }
 
@@ -105,8 +112,8 @@ mod tests {
     /// Runs the Auto CLI-then-web order with scripted sources.
     async fn run(
         credential: KimiCliCredential,
-        cli: Result<UsageSnapshot, ProviderError>,
-        web: Result<UsageSnapshot, WebFetchFailure>,
+        cli: Result<ProviderFetchResult, ProviderError>,
+        web: Result<ProviderFetchResult, WebFetchFailure>,
     ) -> Outcome {
         let cli_tokens = RefCell::new(Vec::new());
         let web_ran = Cell::new(false);

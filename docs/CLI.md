@@ -440,14 +440,14 @@ Text mode prints the URL and code (or only the URL, or only `Waiting for the bro
 | Exit code | Meaning | Final `--json` line |
 | --- | --- | --- |
 | `0` | Signed in. The credential is saved (Copilot and Grok) or kiro-cli reported success (Kiro), and the provider is enabled. | `{"status":"authorized"}` |
-| `1` | Any other failure: network error, provider server error, or a settings or store write error. Nothing is saved. | `{"status":"failed","reason":"error",...}` |
+| `1` | Any other failure: network error, provider server error, or a settings or store write error. Usually nothing is saved. If only the settings write that enables the provider fails, the sign-in already finished and the error says so: `Signed in and saved the account, but could not enable Copilot` (or `Grok`), or `Signed in, but could not enable Kiro`. Running the login again updates that account. | `{"status":"failed","reason":"error",...}` |
 | `5` | The user denied the request on GitHub (`access_denied`). Copilot only. Nothing is saved. | `{"status":"failed","reason":"denied",...}` |
 | `6` | The sign-in expired before approval: the GitHub device code (`expired_token`), or the Grok or Kiro sign-in window ran out. Nothing is saved. | `{"status":"failed","reason":"expired",...}` |
 | `7` | Stopped with Ctrl-C before the credential was saved. Nothing is saved. | `{"status":"cancelled"}` |
 | `8` | The provider's CLI is not installed: `grok` (Grok) or `kiro-cli` (Kiro). Copilot never uses this code. Nothing is saved. | `{"status":"failed","reason":"missing_binary",...}` |
 | `64` | Invalid arguments, including an unsupported `--provider`. No network call is made. | None; the error goes to stderr |
 
-Exit code `0` means the credential was saved, except for Kiro: there kiro-cli keeps the credential, so `0` means kiro-cli reported a successful sign-in. Any other code means the login did not finish.
+Only exit code `0` guarantees both that the sign-in finished and that the provider is enabled. For Kiro, kiro-cli keeps the credential, so `0` means kiro-cli reported a successful sign-in. Codes `5`, `6`, `7`, `8` and `64` mean nothing was saved; code `1` can follow a finished sign-in, as described above.
 
 Polling follows the interval GitHub returns. Each `slow_down` response adds 5 seconds for the rest of the login. GitHub's `access_denied` and `expired_token` responses end the login with the friendly errors above, and nothing is saved.
 

@@ -193,6 +193,22 @@ fn named_extra_without_a_reading_stays_unknown_instead_of_borrowing_a_lane() {
 }
 
 #[test]
+fn saved_grok_bot_reads_the_promoted_weekly_pool() {
+    let mut weekly = grok_bot_snapshot(None);
+    weekly.primary = window(10.0);
+    weekly.secondary = None;
+    weekly.primary_label = Some("Weekly".to_string());
+    let selected = selected_usage_window(&weekly, &grok_bot_settings());
+    assert!(!selected.is_informational);
+    assert_eq!(selected.used_percent, 10.0);
+
+    // Without the weekly layout, a missing Grok Bot reading stays unknown.
+    let mut monthly = weekly.clone();
+    monthly.primary_label = Some("Total".to_string());
+    assert!(selected_usage_window(&monthly, &grok_bot_settings()).is_informational);
+}
+
+#[test]
 fn undeclared_named_extra_falls_back_to_automatic() {
     let mut settings = Settings::default();
     settings.set_provider_metric(

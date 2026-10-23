@@ -30,8 +30,10 @@ const KIRO_TIMEOUT_SECS: u64 = 120;
 /// the credential is saved.
 pub async fn login_grok(json: bool, out: &mut impl Write) -> Result<(), ConfigLoginError> {
     let result = grok_sign_in(json, out).await;
-    let result = result
-        .and_then(|()| super::enable_provider(ProviderId::Grok).map_err(ConfigLoginError::other));
+    let result = result.and_then(|()| {
+        super::enable_provider(ProviderId::Grok)
+            .map_err(|e| super::enable_failed(ProviderId::Grok, true, e))
+    });
     report_outcome(json, out, result)
 }
 
@@ -39,8 +41,10 @@ pub async fn login_grok(json: bool, out: &mut impl Write) -> Result<(), ConfigLo
 /// `kiro-cli` reports a successful sign-in.
 pub async fn login_kiro(json: bool, out: &mut impl Write) -> Result<(), ConfigLoginError> {
     let result = kiro_sign_in(json, out).await;
-    let result = result
-        .and_then(|()| super::enable_provider(ProviderId::Kiro).map_err(ConfigLoginError::other));
+    let result = result.and_then(|()| {
+        super::enable_provider(ProviderId::Kiro)
+            .map_err(|e| super::enable_failed(ProviderId::Kiro, false, e))
+    });
     report_outcome(json, out, result)
 }
 

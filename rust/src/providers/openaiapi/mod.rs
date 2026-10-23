@@ -33,7 +33,7 @@ use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-mod history;
+pub(crate) mod history;
 pub mod live;
 pub mod org_limits;
 
@@ -479,7 +479,7 @@ fn result_from_admin_usage(
     now: DateTime<Utc>,
     project_id: Option<&str>,
 ) -> Result<ProviderFetchResult, ProviderError> {
-    let daily = history::daily_usage(costs, completions, now, HISTORY_DAYS)?;
+    let mut daily = history::daily_usage(costs, completions, now, HISTORY_DAYS)?;
 
     let cost_total: f64 = daily.iter().map(|day| day.cost_usd).sum();
     let request_total: u128 = daily.iter().map(|day| u128::from(day.requests)).sum();
@@ -550,6 +550,13 @@ fn result_from_admin_usage(
         "USD",
         format!("Last {HISTORY_DAYS} days"),
     ));
+    // Every UTC day of the window gets a slot: a day without a bucket is zero, since
+    // the fetch above returned data for the whole window (upstream keeps calendar days).
+    let today_start = now.timestamp().div_euclid(SECONDS_PER_DAY) * SECONDS_PER_DAY;
+    history::fill_missing_days(
+        &mut daily,
+        (0..i64::from(HISTORY_DAYS)).map(|ago| today_start - ago * SECONDS_PER_DAY),
+    );
     if let Some(history) = history::usage_history(daily, HISTORY_DAYS, project_id) {
         result = result.with_open_ai_api_usage(history);
     }

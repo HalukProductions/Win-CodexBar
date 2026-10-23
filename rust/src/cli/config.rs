@@ -830,6 +830,25 @@ fn enable_provider(id: ProviderId) -> anyhow::Result<()> {
     settings.save()
 }
 
+/// The error for a sign-in that finished but whose settings write failed.
+/// `saved_account` is true when CodexBar itself stored the credential, so the
+/// message tells the user the account is already there.
+fn enable_failed(
+    id: ProviderId,
+    saved_account: bool,
+    error: impl std::fmt::Display,
+) -> ConfigLoginError {
+    let done = if saved_account {
+        "Signed in and saved the account"
+    } else {
+        "Signed in"
+    };
+    ConfigLoginError::other(format!(
+        "{done}, but could not enable {}: {error}",
+        id.display_name()
+    ))
+}
+
 /// Runs the Copilot device login and writes progress to `out`. In JSON mode
 /// each event is one line; in text mode the URL and code are two lines.
 ///
@@ -851,7 +870,7 @@ async fn run_copilot_login(
         saved = copilot_steps(flow, api, store, json, out) => saved,
     };
     let result = result.and_then(|mut saved| {
-        enable().map_err(ConfigLoginError::other)?;
+        enable().map_err(|error| enable_failed(ProviderId::Copilot, true, error))?;
         saved.enabled = true;
         Ok(saved)
     });

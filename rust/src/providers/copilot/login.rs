@@ -72,10 +72,18 @@ async fn save_device_token(
         (None, None) => "GitHub Copilot".to_string(),
     };
 
-    let mut data = store.load_provider(ProviderId::Copilot)?;
     let identity_id = identity.as_ref().and_then(|identity| identity.id);
+    let snapshot = store.load_provider(ProviderId::Copilot)?;
+    let existing_id =
+        find_existing_copilot_account(api, &snapshot.accounts, identity_id, login.as_deref())
+            .await
+            .map(|index| snapshot.accounts[index].id);
+
+    // The match above can make one network call per legacy account; reload so
+    // edits saved meanwhile by the desktop app or another CLI are kept.
+    let mut data = store.load_provider(ProviderId::Copilot)?;
     let existing_index =
-        find_existing_copilot_account(api, &data.accounts, identity_id, login.as_deref()).await;
+        existing_id.and_then(|id| data.accounts.iter().position(|account| account.id == id));
 
     let saved = SavedCopilotAccount {
         label: label.clone(),

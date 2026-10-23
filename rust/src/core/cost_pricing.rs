@@ -231,6 +231,16 @@ static CLAUDE_PRICING: LazyLock<HashMap<&'static str, ClaudePricing>> = LazyLock
             "claude-fable-5",
             ClaudePricing::new(1e-5, 5e-5, 1.25e-5, 1e-6),
         ),
+        // Mythos is served to verified organizations only and is absent from the models.dev
+        // anthropic catalog. Rates: https://platform.claude.com/docs/en/about-claude/pricing
+        (
+            "claude-mythos-5",
+            ClaudePricing::new(1e-5, 5e-5, 1.25e-5, 1e-6),
+        ),
+        (
+            "claude-mythos-5-1",
+            ClaudePricing::new(1e-5, 5e-5, 1.25e-5, 2.5e-7),
+        ),
         ("claude-haiku-4-5", CLAUDE_HAIKU_4_5),
         ("claude-haiku-4-5-20251001", CLAUDE_HAIKU_4_5),
         ("claude-opus-4-6", CLAUDE_OPUS_4_5),

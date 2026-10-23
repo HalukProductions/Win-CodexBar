@@ -106,7 +106,12 @@ impl CopilotDeviceFlow {
 
     pub(crate) fn with_endpoints(endpoints: &GitHubEndpoints) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            // A stalled poll would otherwise never reach the expiry check.
+            client: crate::core::credentialed_http_client_builder()
+                .use_rustls_tls()
+                .timeout(Duration::from_secs(30))
+                .build()
+                .unwrap_or_else(|_| reqwest::Client::new()),
             web_root: endpoints.web_root.clone(),
         }
     }
