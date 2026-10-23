@@ -237,9 +237,9 @@ describe("expandOverviewAccountRows", () => {
       ...OPTIONS,
       hidePersonalInfo: true,
     }, claudeState());
-    // Ordinals follow the sorted account id, as the managed Claude accounts do:
-    // "tok-personal" sorts first, so it is Account 1.
-    expect(entries.map((e) => e.provider.accountEmail)).toEqual(["Account 2", "Account 1"]);
+    // Ordinals follow the row order, not the sorted id ("tok-personal" sorts
+    // first but is listed second), so the first row reads Account 1.
+    expect(entries.map((e) => e.provider.accountEmail)).toEqual(["Account 1", "Account 2"]);
     const serialized = JSON.stringify(entries.map((e) => e.provider));
     expect(serialized).not.toContain("Team Alpha");
     expect(serialized).not.toContain("Side Project");

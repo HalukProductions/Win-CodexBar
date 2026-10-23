@@ -267,17 +267,16 @@ fn codex_account_menu_label(
     )
 }
 
-/// Number accounts 1..n by their sorted stable id, not by list order, so an
-/// account keeps its "Account N" when a switch reorders the list. Settings
-/// uses the same rule (`buildAccountOrdinals`).
-fn ordinals_by_sorted_id<'a>(ids: impl IntoIterator<Item = &'a str>) -> HashMap<&'a str, usize> {
-    let mut ids: Vec<&str> = ids.into_iter().collect();
-    ids.sort_unstable();
-    ids.dedup();
-    ids.into_iter()
-        .enumerate()
-        .map(|(index, id)| (id, index + 1))
-        .collect()
+/// Number accounts 1..n in list order, so the first row shown is "Account 1".
+/// Saved accounts keep their stored order across switches. Settings uses the
+/// same rule (`buildAccountOrdinals`).
+fn ordinals_in_list_order<'a>(ids: impl IntoIterator<Item = &'a str>) -> HashMap<&'a str, usize> {
+    let mut ordinals = HashMap::new();
+    for id in ids {
+        let next = ordinals.len() + 1;
+        ordinals.entry(id).or_insert(next);
+    }
+    ordinals
 }
 
 /// "Account N": Hide Personal Info shows no part of an email (Mac
@@ -337,7 +336,7 @@ fn claude_accounts_menu(
     usage: &HashMap<String, crate::commands::ClaudeAccountUsageState>,
 ) -> TrayMenuEntry {
     let text = |key| locale::get_text(lang, key);
-    let ordinals = ordinals_by_sorted_id(accounts.iter().map(|account| account.id.as_str()));
+    let ordinals = ordinals_in_list_order(accounts.iter().map(|account| account.id.as_str()));
     let now = chrono::Utc::now();
     let mut children: Vec<_> = accounts
         .iter()
@@ -395,7 +394,7 @@ fn grok_accounts_menu(
     hide_personal_info: bool,
 ) -> TrayMenuEntry {
     let text = |key| locale::get_text(lang, key);
-    let ordinals = ordinals_by_sorted_id(accounts.iter().map(|account| account.id.as_str()));
+    let ordinals = ordinals_in_list_order(accounts.iter().map(|account| account.id.as_str()));
     let mut children: Vec<_> = accounts
         .iter()
         .map(|account| {
@@ -807,8 +806,8 @@ mod tests {
             .collect();
         assert_eq!(labels, ["Account 1", "Account 2", "Account 1"]);
 
-        // An unsaved live login is listed first; numbering still follows the
-        // sorted ids, so "b:org" stays "Account 2" whatever the list order.
+        // An unsaved live login is listed first; numbering follows the list,
+        // so the first row reads "Account 1" and the saved rows follow it.
         let live = ClaudeAccount {
             is_active: true,
             is_saved: false,
@@ -832,8 +831,8 @@ mod tests {
             by_id,
             [
                 ("switch_claude_account:0:org", "Account 1"),
-                ("switch_claude_account:b:org", "Account 3"),
-                ("switch_claude_account:a:org", "Account 2"),
+                ("switch_claude_account:b:org", "Account 2"),
+                ("switch_claude_account:a:org", "Account 3"),
             ]
         );
         let grok_reordered = grok_accounts_menu(
@@ -862,7 +861,7 @@ mod tests {
             .iter()
             .map(|entry| entry.label.as_str())
             .collect();
-        assert_eq!(grok_labels, ["Account 2", "Account 1"]);
+        assert_eq!(grok_labels, ["Account 1", "Account 2"]);
         for entry in claude_menu.children.iter().chain(&grok_menu.children) {
             assert!(!entry.label.contains('@'), "{}", entry.label);
             assert!(!entry.label.contains("example.com"), "{}", entry.label);

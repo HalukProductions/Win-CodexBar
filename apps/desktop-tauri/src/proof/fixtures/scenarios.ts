@@ -437,6 +437,8 @@ function twoCodexAccountsScenario(now: Date): ProofScenario {
  * Overview with "Show all accounts in Overview" on: Codex expands to one row per
  * cached managed account, and Claude to one row per saved token account. Only
  * the Work token account has cached usage, so Personal shows "No usage data".
+ * The private variant lists Personal first although its id sorts second, so
+ * "Account N" must follow the row order.
  */
 function overviewAllAccountsScenario(now: Date, hidePersonalInfo: boolean): ProofScenario {
   const scenario = twoCodexAccountsScenario(now);
@@ -448,7 +450,7 @@ function overviewAllAccountsScenario(now: Date, hidePersonalInfo: boolean): Proo
       mergedOverviewAllAccounts: true,
       hidePersonalInfo,
     }),
-    claudeTokenAccounts: claudeTokenAccounts(),
+    claudeTokenAccounts: hidePersonalInfo ? claudeTokenAccounts().reverse() : claudeTokenAccounts(),
     claudeTokenAccountUsage: {
       [CLAUDE_WORK_TOKEN_ID]: {
         primary: { usedPercent: 22, windowMinutes: 300, resetsAt: isoAfter(now, 61) },

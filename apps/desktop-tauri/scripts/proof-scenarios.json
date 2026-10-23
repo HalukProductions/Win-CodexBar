@@ -142,6 +142,7 @@
       "steps": [
         { "expectText": ["Account 1", "Account 2", "No usage data"] },
         { "expectNoText": ["work@example.com", "personal@example.com"] },
+        { "expectOrder": { "selector": "[id^=\"card-claude/account/\"] .card-header__email", "texts": ["Account 1", "Account 2"] } },
         { "screenshot": "tray-overview-all-accounts-private", "clip": "panel" }
       ]
     },
