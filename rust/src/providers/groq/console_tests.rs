@@ -10,6 +10,7 @@ use super::console::{
     parse_activity,
 };
 use crate::core::{FetchContext, ProviderError, ProviderFetchResult, SourceMode};
+use crate::providers::openaiapi::history::fill_missing_days;
 
 const ACTIVITY: &str = include_str!("fixtures/activity.json");
 /// The pack's unsigned session JWT: org `org_parity_0008`.
@@ -261,6 +262,44 @@ fn days_are_bucketed_by_local_date_and_labelled_with_it() {
         .timestamp();
     let oct10 = oct9 + 86_400;
     assert_eq!(days, vec![(oct9, oct10, 1), (oct10, oct10 + 86_400, 2)]);
+}
+
+#[test]
+fn groq_history_keeps_every_local_day_of_the_window_in_a_non_utc_zone() {
+    // Tokyo is ahead of UTC, so its local dates and UTC days differ; each day is
+    // stamped at UTC midnight of its local date and the idle days stay as zero slots.
+    let tokyo = chrono::FixedOffset::east_opt(9 * 3600).unwrap();
+    let now_local = now().with_timezone(&tokyo);
+    let today = now_local.date_naive();
+    let used_day = today.checked_sub_days(chrono::Days::new(3)).unwrap();
+    let used = used_day.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp();
+    let mut daily = vec![crate::core::OpenAiApiDailyUsage {
+        start_time: used,
+        end_time: used + 86_400,
+        cost_usd: 1.0,
+        requests: 1,
+        input_tokens: 1,
+        cached_input_tokens: 0,
+        output_tokens: 0,
+        total_tokens: 1,
+        line_items: Vec::new(),
+        models: Vec::new(),
+    }];
+
+    fill_missing_days(&mut daily, console::history_day_starts(&now_local, 30));
+
+    assert_eq!(daily.len(), 30);
+    assert_eq!(daily.iter().filter(|day| day.total_tokens > 0).count(), 1);
+    assert_eq!(
+        daily[daily.len() - 1].start_time,
+        today.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp()
+    );
+    assert!(
+        daily
+            .windows(2)
+            .all(|pair| pair[0].start_time < pair[1].start_time)
+    );
+    assert!(daily.iter().all(|day| day.start_time % 86_400 == 0));
 }
 
 #[test]
