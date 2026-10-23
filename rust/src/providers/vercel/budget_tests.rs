@@ -346,27 +346,122 @@ async fn pagination_follows_the_cursor_and_stops_when_it_is_null() {
     assert!((result.usage.primary.used_percent - 25.0).abs() < 1e-9);
 }
 
+fn other_message(result: Result<ProviderFetchResult, ProviderError>) -> String {
+    match result {
+        Err(ProviderError::Other(message)) => message,
+        other => panic!("expected a plain error, got {:?}", other.map(|_| ())),
+    }
+}
+
 #[tokio::test]
-async fn a_repeated_cursor_fails_the_refresh() {
-    let (result, _) = budget(vec![
+async fn a_match_on_page_three_is_found() {
+    let (result, heads) = budget_ok(vec![
+        ("200 OK", user_body("fixtureUser")),
+        (
+            "200 OK",
+            page(
+                vec![budget_row("someoneElse", 1.0, 2.0, "monthly")],
+                Some("cursor-2"),
+            ),
+        ),
+        ("200 OK", page(vec![], Some("cursor-3"))),
+        (
+            "200 OK",
+            page(
+                vec![budget_row("usr_fixtureUser", 42.0, 84.0, "monthly")],
+                None,
+            ),
+        ),
+    ])
+    .await;
+    assert_eq!(heads.len(), 4);
+    assert!(heads[3].contains("cursor=cursor-3"), "{}", heads[3]);
+    assert!((result.usage.primary.used_percent - 50.0).abs() < 1e-9);
+}
+
+#[tokio::test]
+async fn an_empty_cursor_ends_the_list_without_a_match() {
+    let (result, heads) = budget_ok(vec![
+        ("200 OK", user_body("fixtureUser")),
+        (
+            "200 OK",
+            page(
+                vec![budget_row("someoneElse", 1.0, 2.0, "monthly")],
+                Some("cursor-2"),
+            ),
+        ),
+        ("200 OK", page(vec![], Some(""))),
+    ])
+    .await;
+    assert_eq!(heads.len(), 3);
+    assert!(result.usage.primary.is_informational);
+    assert_eq!(
+        result.display_details()[0].title(),
+        "No personal budget configured"
+    );
+}
+
+#[tokio::test]
+async fn an_empty_cursor_after_a_match_keeps_the_match() {
+    let (result, heads) = budget_ok(vec![
+        ("200 OK", user_body("fixtureUser")),
+        (
+            "200 OK",
+            page(
+                vec![budget_row("fixtureUser", 30.0, 120.0, "monthly")],
+                Some(""),
+            ),
+        ),
+    ])
+    .await;
+    assert_eq!(heads.len(), 2);
+    assert!((result.usage.primary.used_percent - 25.0).abs() < 1e-9);
+}
+
+#[tokio::test]
+async fn a_repeated_cursor_stops_with_a_loop_message() {
+    let (result, heads) = budget(vec![
         ("200 OK", user_body("fixtureUser")),
         ("200 OK", page(vec![], Some("same"))),
         ("200 OK", page(vec![], Some("same"))),
     ])
     .await;
-    assert_parse_failure(result);
+    assert_eq!(heads.len(), 3);
+    let message = other_message(result);
+    assert_eq!(message, CURSOR_LOOP);
+    assert!(!message.starts_with("Parse error"));
 }
 
 #[tokio::test]
-async fn pagination_is_capped_at_twenty_pages() {
+async fn pagination_is_capped_at_twenty_pages_with_its_own_message() {
     let mut responses = vec![("200 OK", user_body("fixtureUser"))];
     for index in 0..MAX_BUDGET_PAGES {
         let next = format!("cursor-{index}");
-        responses.push(("200 OK", page(vec![], Some(&next))));
+        let rows = if index == 0 {
+            vec![budget_row("fixtureUser", 30.0, 120.0, "monthly")]
+        } else {
+            vec![]
+        };
+        responses.push(("200 OK", page(rows, Some(&next))));
     }
     let (result, heads) = budget(responses).await;
-    assert_parse_failure(result);
     assert_eq!(heads.len(), 1 + MAX_BUDGET_PAGES);
+    let message = other_message(result);
+    assert!(message.contains("more than 20 pages"), "{message}");
+    assert!(!message.contains("unrecognized"), "{message}");
+}
+
+#[tokio::test]
+async fn a_non_string_cursor_is_still_a_parse_failure() {
+    let (result, _) = budget(vec![
+        ("200 OK", user_body("fixtureUser")),
+        (
+            "200 OK",
+            json!({"budgets": [], "nextCursor": 7}).to_string(),
+        ),
+    ])
+    .await;
+    assert_parse_failure(result);
 }
 
 #[tokio::test]

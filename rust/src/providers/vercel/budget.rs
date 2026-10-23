@@ -33,6 +33,7 @@ const TEAM_HINT: &str =
     "Set the Vercel Team ID in Settings or VERCEL_TEAM_ID to read your personal budget.";
 const TEAM_FORMAT: &str = "Invalid Vercel Team ID. Enter the team ID or slug without spaces.";
 const UNRECOGNIZED: &str = "Vercel returned an unrecognized personal budget.";
+const CURSOR_LOOP: &str = "Vercel's budget list repeated a page cursor. CodexBar stopped reading to avoid a loop, so your personal budget could not be determined.";
 
 /// The access token from settings, else `VERCEL_ACCESS_TOKEN`. Blank values
 /// count as unconfigured, so the team-credit path keeps running.
@@ -77,6 +78,14 @@ pub(crate) fn is_team_id(value: &str) -> bool {
 /// Fixed message only: response data never reaches the user-facing error.
 fn parse_failure() -> ProviderError {
     ProviderError::Parse(UNRECOGNIZED.into())
+}
+
+/// The list did not end within the page cap, so a custom budget on a later
+/// page could still override what was seen.
+fn page_cap_reached() -> ProviderError {
+    ProviderError::Other(format!(
+        "Vercel's budget list for this team has more than {MAX_BUDGET_PAGES} pages. CodexBar stopped reading before the end of the list, so your personal budget could not be determined."
+    ))
 }
 
 /// The two requests on the personal budget path. A 403 means different things
@@ -310,7 +319,7 @@ impl VercelProvider {
         let mut seen_cursors: HashSet<String> = HashSet::new();
         let mut cursor: Option<String> = None;
         let mut finished = false;
-        for page in 0..MAX_BUDGET_PAGES {
+        for _ in 0..MAX_BUDGET_PAGES {
             let mut query = vec![
                 ("teamId", team.as_str()),
                 ("scopeType", "user"),
@@ -331,23 +340,24 @@ impl VercelProvider {
                     matches.push(budget.clone());
                 }
             }
-            match body.get("nextCursor") {
-                None | Some(Value::Null) => {
-                    finished = true;
-                    break;
-                }
-                Some(Value::String(next))
-                    if !next.is_empty()
-                        && page + 1 < MAX_BUDGET_PAGES
-                        && seen_cursors.insert(next.clone()) =>
-                {
-                    cursor = Some(next.clone());
-                }
+            // An empty cursor ends the list like a null one does.
+            let next = match body.get("nextCursor") {
+                None | Some(Value::Null) => None,
+                Some(Value::String(next)) if next.is_empty() => None,
+                Some(Value::String(next)) => Some(next.clone()),
                 Some(_) => return Err(parse_failure()),
+            };
+            let Some(next) = next else {
+                finished = true;
+                break;
+            };
+            if !seen_cursors.insert(next.clone()) {
+                return Err(ProviderError::Other(CURSOR_LOOP.into()));
             }
+            cursor = Some(next);
         }
         if !finished {
-            return Err(parse_failure());
+            return Err(page_cap_reached());
         }
 
         let budget = effective_budget(&matches)?;
