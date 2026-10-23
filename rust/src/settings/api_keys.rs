@@ -770,7 +770,7 @@ pub fn get_api_key_providers() -> Vec<ProviderConfigInfo> {
             name: "Soniox",
             api_key_env_var: Some("SONIOX_ORG_API_KEY"),
             api_key_help: Some(
-                "Organization API key with Balance and spend and Usage and limits access. Project API keys are not supported. Or set SONIOX_ORG_API_KEY.",
+                "Organization API key with Balance and spend and Usage and limits access. Project API keys are not supported. Or set SONIOX_ORG_API_KEY. Optional base URL override: SONIOX_BASE_URL.",
             ),
             dashboard_url: Some(
                 "https://soniox.com/docs/guides/organization-api#organization-api-keys",

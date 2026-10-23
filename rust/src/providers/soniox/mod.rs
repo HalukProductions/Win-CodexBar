@@ -29,6 +29,9 @@ use crate::core::{
 use crate::providers::{BoundedBodyError, format, read_bounded_response, resolve_api_key};
 
 const BASE_URL: &str = "https://api.soniox.com/v1/organization";
+/// Optional override for the organization API base (proof runs and fake servers).
+/// Accepts `https://` or loopback `http://` only; anything else is ignored.
+const BASE_URL_ENV: &str = "SONIOX_BASE_URL";
 const CREDENTIAL_TARGET: &str = "codexbar-soniox";
 pub const API_KEY_ENV: &str = "SONIOX_ORG_API_KEY";
 const MAX_RESPONSE_BYTES: usize = 256 * 1024;
@@ -56,7 +59,8 @@ pub struct SonioxProvider {
 
 impl SonioxProvider {
     pub fn new() -> Self {
-        Self::with_base_url(BASE_URL)
+        let override_url = std::env::var(BASE_URL_ENV).ok();
+        Self::with_base_url(&base_url_from_override(override_url.as_deref()))
     }
 
     fn with_base_url(base_url: &str) -> Self {
@@ -133,6 +137,84 @@ impl Provider for SonioxProvider {
 
     fn available_sources(&self) -> Vec<SourceMode> {
         vec![SourceMode::Auto, SourceMode::OAuth]
+    }
+}
+
+/// The organization API base: a valid `SONIOX_BASE_URL` override, otherwise
+/// production. An invalid override is ignored with a warning.
+fn base_url_from_override(raw: Option<&str>) -> String {
+    let Some(raw) = raw.map(clean_override).filter(|raw| !raw.is_empty()) else {
+        return BASE_URL.to_owned();
+    };
+    match validated_base_url(&raw) {
+        Some(base) => base,
+        None => {
+            tracing::warn!(
+                "Ignoring {BASE_URL_ENV}: use an https:// URL or a loopback http:// URL without credentials, query, or fragment"
+            );
+            BASE_URL.to_owned()
+        }
+    }
+}
+
+fn clean_override(raw: &str) -> String {
+    let value = raw.trim();
+    let unquoted = value
+        .strip_prefix('"')
+        .and_then(|inner| inner.strip_suffix('"'))
+        .or_else(|| {
+            value
+                .strip_prefix('\'')
+                .and_then(|inner| inner.strip_suffix('\''))
+        })
+        .unwrap_or(value);
+    unquoted.trim().to_owned()
+}
+
+/// Same policy as the Sub2API base URL: `https://`, or `http://` only for a
+/// loopback host, with no userinfo, query, fragment, or encoded host delimiters.
+/// Returns the URL without a trailing slash.
+fn validated_base_url(raw: &str) -> Option<String> {
+    let lower = raw.to_ascii_lowercase();
+    if ["%2f", "%5c", "%3f", "%23", "%40", "%3a"]
+        .iter()
+        .any(|encoded| lower.contains(encoded))
+    {
+        return None;
+    }
+    let url = reqwest::Url::parse(raw).ok()?;
+    let host = url.host_str()?;
+    let scheme_ok = match url.scheme() {
+        "https" => true,
+        "http" => is_loopback_host(host),
+        _ => false,
+    };
+    if !scheme_ok
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || host.contains('%')
+        || host.chars().any(|c| c.is_control() || c.is_whitespace())
+    {
+        return None;
+    }
+    Some(url.as_str().trim_end_matches('/').to_owned())
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    let normalized = host.trim_end_matches('.').to_ascii_lowercase();
+    if normalized == "localhost" {
+        return true;
+    }
+    let ip_candidate = normalized
+        .strip_prefix('[')
+        .and_then(|value| value.strip_suffix(']'))
+        .unwrap_or(&normalized);
+    match ip_candidate.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V4(ip)) => ip.is_loopback(),
+        Ok(std::net::IpAddr::V6(ip)) => ip.is_loopback(),
+        Err(_) => false,
     }
 }
 

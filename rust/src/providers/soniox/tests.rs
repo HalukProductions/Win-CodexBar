@@ -433,3 +433,57 @@ fn next_month_start_handles_december_and_leap_february() {
     assert_eq!(next_month_start("2028-02").ok(), Some(utc(2028, 3, 1)));
     assert!(next_month_start("2026-00").is_err());
 }
+
+#[test]
+fn base_url_override_accepts_https_and_loopback_http() {
+    assert_eq!(
+        validated_base_url("https://api.soniox.com/v1/organization").as_deref(),
+        Some("https://api.soniox.com/v1/organization")
+    );
+    assert_eq!(
+        validated_base_url("http://127.0.0.1:4010/v1/organization/").as_deref(),
+        Some("http://127.0.0.1:4010/v1/organization")
+    );
+    assert_eq!(
+        validated_base_url("http://localhost:9/v1/organization").as_deref(),
+        Some("http://localhost:9/v1/organization")
+    );
+    assert_eq!(
+        validated_base_url("http://[::1]:9/v1/organization").as_deref(),
+        Some("http://[::1]:9/v1/organization")
+    );
+}
+
+#[test]
+fn base_url_override_rejects_remote_plain_http_and_unsafe_forms() {
+    for raw in [
+        "http://api.soniox.com/v1/organization",
+        "http://localhost.attacker.test/v1/organization",
+        "ftp://127.0.0.1/v1/organization",
+        "https://user:pass@api.soniox.com/v1/organization",
+        "https://api.soniox.com/v1/organization?x=1",
+        "https://api.soniox.com/v1/organization#frag",
+        "http://127.0.0.1%2f.attacker.test/v1/organization",
+        "not a url",
+        "",
+    ] {
+        assert!(
+            validated_base_url(raw).is_none(),
+            "{raw} should be rejected"
+        );
+    }
+}
+
+#[test]
+fn base_url_override_falls_back_to_production_when_unset_or_invalid() {
+    assert_eq!(base_url_from_override(None), BASE_URL);
+    assert_eq!(base_url_from_override(Some("   ")), BASE_URL);
+    assert_eq!(
+        base_url_from_override(Some("http://attacker.example.com/v1/organization")),
+        BASE_URL
+    );
+    assert_eq!(
+        base_url_from_override(Some("\"http://127.0.0.1:4010/v1/organization\"")),
+        "http://127.0.0.1:4010/v1/organization"
+    );
+}

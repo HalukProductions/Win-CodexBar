@@ -724,6 +724,11 @@ organization billing. Create keys in the
 [organization API guide](https://soniox.com/docs/guides/organization-api#organization-api-keys).
 The key is stored with the other API keys and is never written to logs.
 
+For proof runs and fake servers, `SONIOX_BASE_URL` replaces the organization API
+base (default `https://api.soniox.com/v1/organization`). It accepts `https://`,
+or `http://` only for a loopback host (`127.0.0.1`, `localhost`, `[::1]`), with
+no credentials, query, or fragment. Any other value is ignored with a warning.
+
 The provider makes two read-only requests in order. Refresh never submits
 transcription or synthesis work:
 
