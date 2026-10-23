@@ -4,6 +4,10 @@
 
 mod api;
 pub mod device_flow;
+pub(crate) mod endpoints;
+pub mod login;
+#[cfg(test)]
+pub(crate) mod test_server;
 
 use async_trait::async_trait;
 

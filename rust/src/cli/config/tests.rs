@@ -458,3 +458,165 @@ fn sanitize_settings_for_dump_show_secrets_keeps_raw() {
     assert_eq!(out["api_key"], "keep-me");
     assert_eq!(out["nested"]["token"], "also-keep");
 }
+
+#[test]
+fn config_login_parses_the_positional_or_provider_option() {
+    let ConfigCommand::Login { target, output } =
+        parse_config(&["login", "--provider", "copilot", "--json"]).unwrap()
+    else {
+        panic!("expected login");
+    };
+    assert_eq!(target.name(), "copilot");
+    assert!(output.is_json());
+
+    let ConfigCommand::Login { target, output } =
+        parse_config(&["login", "-p", "copilot", "--format", "json", "--pretty"]).unwrap()
+    else {
+        panic!("expected login");
+    };
+    assert_eq!(target.name(), "copilot");
+    assert!(output.is_json());
+
+    let ConfigCommand::Login { target, output } = parse_config(&["login", "copilot"]).unwrap()
+    else {
+        panic!("expected login");
+    };
+    assert_eq!(target.name(), "copilot");
+    assert!(!output.is_json());
+
+    assert!(parse_config(&["login"]).is_err(), "provider is required");
+}
+
+#[tokio::test]
+async fn config_login_rejects_other_providers_before_any_io() {
+    let error = super::login("cursor", ConfigOutputArgs::default())
+        .await
+        .expect_err("cursor has no CLI login");
+    assert_eq!(
+        error.to_string(),
+        "Login is only supported for copilot. Use --provider copilot."
+    );
+}
+
+mod copilot_login_output {
+    use super::super::{CopilotApi, CopilotDeviceFlow, TokenAccountStore, run_copilot_login};
+    use crate::core::ProviderId;
+    use crate::providers::copilot::endpoints::GitHubEndpoints;
+    use crate::providers::copilot::test_server::{FakeGitHub, Reply, ok};
+
+    const DEVICE_JSON: &str = r#"{"device_code":"device-example","user_code":"ABCD-1234","verification_uri":"https://github.com/login/device","expires_in":900,"interval":0}"#;
+    const TOKEN_JSON: &str =
+        r#"{"access_token":"gho_example_token","token_type":"bearer","scope":"read:user"}"#;
+    const USER_JSON: &str = r#"{"login":"octocat","id":42}"#;
+    const USAGE_JSON: &str = r#"{"copilot_plan":"individual","quota_snapshots":{}}"#;
+
+    fn fake(token_replies: Vec<Reply>) -> FakeGitHub {
+        FakeGitHub::start(vec![
+            ("/login/device/code", vec![ok(DEVICE_JSON)]),
+            ("/login/oauth/access_token", token_replies),
+            ("/user", vec![ok(USER_JSON)]),
+            ("/copilot_internal/user", vec![ok(USAGE_JSON)]),
+        ])
+    }
+
+    /// The returned `TempDir` must stay alive while the store is read back.
+    async fn run(
+        fake: &FakeGitHub,
+        json: bool,
+    ) -> (
+        anyhow::Result<()>,
+        String,
+        TokenAccountStore,
+        tempfile::TempDir,
+    ) {
+        let endpoints = GitHubEndpoints::with_origin(&fake.origin).expect("loopback origin");
+        let flow = CopilotDeviceFlow::with_endpoints(&endpoints);
+        let api = CopilotApi::with_endpoints(endpoints);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = TokenAccountStore::with_path(dir.path().join("token-accounts.json"));
+        let mut out = Vec::new();
+        let result = run_copilot_login(&flow, &api, &store, json, &mut out).await;
+        (result, String::from_utf8(out).expect("utf8"), store, dir)
+    }
+
+    #[tokio::test]
+    async fn text_output_shows_url_and_code_then_connected_and_never_the_token() {
+        let fake = fake(vec![ok(TOKEN_JSON)]);
+        let (result, out, store, _dir) = run(&fake, false).await;
+
+        result.expect("login succeeds");
+        assert_eq!(
+            out,
+            "https://github.com/login/device\nABCD-1234\nConnected\n"
+        );
+        assert!(!out.contains("gho_example_token"));
+
+        let data = store.load_provider(ProviderId::Copilot).expect("load");
+        assert_eq!(data.accounts[0].token, "gho_example_token");
+    }
+
+    #[tokio::test]
+    async fn json_output_is_upstream_shaped_events_without_the_token() {
+        let fake = fake(vec![
+            ok(r#"{"error":"authorization_pending"}"#),
+            ok(TOKEN_JSON),
+        ]);
+        let (result, out, _store, _dir) = run(&fake, true).await;
+
+        result.expect("login succeeds");
+        assert!(!out.contains("gho_example_token"));
+        let events: Vec<serde_json::Value> = out
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("one JSON object per line"))
+            .collect();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0]["status"], "authorization_pending");
+        assert_eq!(
+            events[0]["verificationURI"],
+            "https://github.com/login/device"
+        );
+        assert_eq!(events[0]["userCode"], "ABCD-1234");
+        assert_eq!(events[0]["expiresIn"], 900);
+        assert!(events[0].get("error").is_none());
+        assert_eq!(events[1], serde_json::json!({ "status": "authorized" }));
+    }
+
+    #[tokio::test]
+    async fn denied_json_reports_a_failed_event_and_returns_the_error() {
+        let fake = fake(vec![ok(r#"{"error":"access_denied"}"#)]);
+        let (result, out, store, _dir) = run(&fake, true).await;
+
+        let error = result.expect_err("denied");
+        assert_eq!(
+            error.to_string(),
+            "GitHub device login failed: Access denied by user"
+        );
+        let failed: serde_json::Value =
+            serde_json::from_str(out.lines().last().expect("event")).expect("failed event is JSON");
+        assert_eq!(failed["status"], "failed");
+        assert_eq!(
+            failed["error"],
+            "GitHub device login failed: Access denied by user"
+        );
+        assert!(!out.contains("gho_example_token"));
+        assert!(
+            store
+                .load_provider(ProviderId::Copilot)
+                .expect("load")
+                .accounts
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn expired_text_login_prints_the_code_and_returns_an_error() {
+        let fake = fake(vec![ok(r#"{"error":"expired_token"}"#)]);
+        let (result, out, _store, _dir) = run(&fake, false).await;
+
+        assert_eq!(
+            result.expect_err("expired").to_string(),
+            "GitHub device login failed: Device code expired"
+        );
+        assert_eq!(out, "https://github.com/login/device\nABCD-1234\n");
+    }
+}
