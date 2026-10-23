@@ -110,6 +110,24 @@ describe("ClaudeSwapAccountsSection", () => {
     expect(mocks.claudeSwapAccountsList).toHaveBeenCalledTimes(2);
   });
 
+  it("reloads the masked labels when Hide personal information changes", async () => {
+    mocks.claudeSwapAccountsList.mockResolvedValue(enabledState([active]));
+    const { rerender } = render(
+      <ClaudeSwapAccountsSection t={t} enabled executablePath="C:/tools/cswap.exe" />,
+    );
+    await screen.findByText("work@example.com");
+
+    mocks.claudeSwapAccountsList.mockResolvedValue(
+      enabledState([{ ...active, label: "Account 1" }]),
+    );
+    rerender(
+      <ClaudeSwapAccountsSection t={t} enabled executablePath="C:/tools/cswap.exe" hidePersonalInfo />,
+    );
+    await screen.findByText("Account 1");
+    expect(screen.queryByText("work@example.com")).toBeNull();
+    expect(mocks.claudeSwapAccountsList).toHaveBeenCalledTimes(2);
+  });
+
   it("shows each card's own session forecast and none where history is missing", async () => {
     const forecasted: ClaudeSwapAccount = {
       ...active,

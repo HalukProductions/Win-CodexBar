@@ -219,6 +219,7 @@ export function ClaudeAccountsSection({
         executablePath={claudeSwapExecutablePath}
         source={claudeSwapSource}
         showAsUsed={showAsUsed}
+        hidePersonalInfo={hidePersonalInfo}
       />
     </>
   );

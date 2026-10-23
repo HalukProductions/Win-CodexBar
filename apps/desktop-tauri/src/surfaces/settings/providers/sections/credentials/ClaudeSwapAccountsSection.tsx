@@ -32,6 +32,8 @@ interface Props {
   source?: ClaudeSwapAccountSource;
   /** Settings `showAsUsed`; quota windows read as used instead of left. */
   showAsUsed?: boolean;
+  /** Settings `hidePersonalInfo`. The backend masks the labels, so a change reloads the list. */
+  hidePersonalInfo?: boolean;
 }
 
 interface SourceText {
@@ -165,6 +167,7 @@ export function ClaudeSwapAccountsSection({
   executablePath,
   source = "claude-swap",
   showAsUsed = false,
+  hidePersonalInfo = false,
 }: Props) {
   const [state, setState] = useState<ClaudeSwapAccountsState>(EMPTY_STATE);
   const locale = languageLocale(language);
@@ -212,7 +215,7 @@ export function ClaudeSwapAccountsSection({
       mounted.current = false;
       void unlisten.then((fn) => fn()).catch(() => {});
     };
-  }, [enabled, executablePath, source, reload]);
+  }, [enabled, executablePath, source, hidePersonalInfo, reload]);
 
   useEffect(() => {
     const outcome = localClaudeReconciliationOutcome(snapshot, operation?.generation ?? null);
