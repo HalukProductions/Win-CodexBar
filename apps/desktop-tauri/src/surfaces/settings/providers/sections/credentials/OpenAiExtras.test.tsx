@@ -112,6 +112,36 @@ describe("OpenAiExtras", () => {
     expect(input).not.toHaveAttribute("aria-describedby");
   });
 
+  it("drops a save error that arrives after the field was edited", async () => {
+    vi.mocked(getProviderWorkspaceId).mockResolvedValue("team_saved");
+    let rejectSave: (reason: unknown) => void = () => {};
+    vi.mocked(setProviderWorkspaceId).mockReturnValueOnce(
+      new Promise<void>((_, reject) => {
+        rejectSave = reject;
+      }),
+    );
+    renderExtras("vercel");
+
+    const input = (await screen.findByRole("textbox")) as HTMLInputElement;
+    await vi.waitFor(() => expect(input.value).toBe("team_saved"));
+
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "bad id" } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    });
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "team_saved" } });
+    });
+    await act(async () => {
+      rejectSave("Vercel Team ID is invalid");
+    });
+
+    expect(screen.queryByText("Vercel Team ID is invalid")).not.toBeInTheDocument();
+    expect(input).not.toHaveAttribute("aria-invalid");
+  });
+
   it("renders help text for Cosmic Project ID", async () => {
     renderExtras("cosmic");
     expect(
