@@ -4,10 +4,12 @@
 //! needs `SetForegroundWindow`, which steals the user's focus. In proof mode,
 //! `CODEXBAR_PROOF_TRAY_MENU_DUMP=<absolute path>` makes the shell write the
 //! live menu as JSON after every menu rebuild. The matching activation command
-//! is `tray_bridge::proof_activate_tray_item`.
+//! is `tray_bridge::proof_activate_tray_item`; it accepts only enabled rows of
+//! the menu currently installed on the tray.
 //!
 //! Nothing here runs unless proof mode is active and the env var is set.
 
+use std::collections::BTreeSet;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
@@ -25,6 +27,10 @@ pub(crate) const DUMP_ENV_VAR: &str = "CODEXBAR_PROOF_TRAY_MENU_DUMP";
 /// file write so generation order matches file order. Never held while the
 /// menu is read, because those reads may wait on the main thread.
 static GENERATION: Mutex<u64> = Mutex::new(0);
+
+/// Enabled leaf ids of the menu last installed on the tray. Proof activation
+/// dispatches only these, so it can't act on a row the menu doesn't show.
+static INSTALLED_IDS: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
 
 /// Top-level dump document.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -152,21 +158,55 @@ fn separator_node() -> DumpNode {
     }
 }
 
-/// Write the live tray menu to the dump path. Call it right after the menu is
-/// set on the tray. Does nothing unless the env var is set and proof mode is on.
-pub(crate) fn write_if_enabled(app: &AppHandle, menu: &Menu<Wry>) {
-    let Some(raw) = std::env::var(DUMP_ENV_VAR).ok() else {
+/// Ids of the enabled leaf rows (items, checks, icons) in `nodes`, at any depth.
+/// Submenus, separators and disabled rows such as status lines are left out.
+pub(crate) fn activatable_ids(nodes: &[DumpNode]) -> BTreeSet<String> {
+    fn collect(nodes: &[DumpNode], ids: &mut BTreeSet<String>) {
+        for node in nodes {
+            if node.kind == "submenu" {
+                collect(&node.children, ids);
+            } else if node.enabled
+                && let Some(id) = &node.id
+            {
+                ids.insert(id.clone());
+            }
+        }
+    }
+    let mut ids = BTreeSet::new();
+    collect(nodes, &mut ids);
+    ids
+}
+
+/// Whether `id` is an enabled leaf of the menu last installed on the tray.
+pub(crate) fn is_installed_leaf(id: &str) -> bool {
+    INSTALLED_IDS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .contains(id)
+}
+
+/// Record the menu just installed on the tray and, when the env var is set,
+/// write it to the dump path. Call it on the main thread right after `set_menu`
+/// succeeds: the main thread runs installs one at a time, so each record
+/// matches the menu on the tray. Does nothing outside proof mode.
+pub(crate) fn record_installed(app: &AppHandle, menu: &Menu<Wry>) {
+    if !crate::proof_harness::is_proof_mode(app) {
         return;
-    };
-    let Some(path) = dump_target(crate::proof_harness::is_proof_mode(app), &raw) else {
-        return;
-    };
+    }
     let items = match menu.items().and_then(|items| nodes_from_native(&items)) {
         Ok(items) => items,
         Err(error) => {
+            *INSTALLED_IDS.lock().unwrap_or_else(PoisonError::into_inner) = BTreeSet::new();
             tracing::warn!(%error, "proof: failed to read the tray menu");
             return;
         }
+    };
+    *INSTALLED_IDS.lock().unwrap_or_else(PoisonError::into_inner) = activatable_ids(&items);
+    let Some(raw) = std::env::var(DUMP_ENV_VAR).ok() else {
+        return;
+    };
+    let Some(path) = dump_target(true, &raw) else {
+        return;
     };
     let mut generation = GENERATION.lock().unwrap_or_else(PoisonError::into_inner);
     *generation += 1;
@@ -262,6 +302,28 @@ mod tests {
                 ]
             })
         );
+    }
+
+    #[test]
+    fn activatable_ids_are_enabled_leaves_at_any_depth() {
+        let items = vec![
+            TrayMenuEntry::status_row("status_claude", "Claude 60%"),
+            TrayMenuEntry::separator(),
+            TrayMenuEntry::item("refresh", "Refresh all"),
+            TrayMenuEntry::submenu(
+                "providers",
+                "Providers",
+                vec![TrayMenuEntry::check_item(
+                    "toggle_provider:codex",
+                    "Codex",
+                    false,
+                )],
+            ),
+        ];
+        let ids: Vec<String> = activatable_ids(&nodes_from_spec(&items))
+            .into_iter()
+            .collect();
+        assert_eq!(ids, vec!["refresh", "toggle_provider:codex"]);
     }
 
     #[test]

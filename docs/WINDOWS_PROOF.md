@@ -125,10 +125,10 @@ The document holds `generation` (1 for the first write in a process, then +1 per
 await window.__TAURI_INTERNALS__.invoke('proof_activate_tray_item', { id: 'toggle_float_bar' });
 ```
 
-- It fails with an error unless proof mode is active and `id` is a menu action. Status rows (`status_*`), disabled rows and unknown ids are refused. The error doesn't echo the id.
-- The handler runs on the main thread. Nothing on screen opens or takes focus unless the action itself opens a window.
+- It fails with an error unless proof mode is active and `id` is an enabled row of the menu now on the tray that maps to a menu action. Status rows (`status_*`), disabled rows, unknown ids and rows the current menu doesn't show (such as `toggle_provider:<id>` for a provider missing from the menu) are refused. The error doesn't echo the id.
+- The check and the handler run on the main thread, after any menu install queued before the call. Nothing on screen opens or takes focus unless the action itself opens a window.
 - Some actions write to the running profile. A provider toggle saves `settings.json`, and Quit exits the app. Use an isolated `APPDATA` home for proof runs.
-- Rows that change a setting show the new state once the menu is rebuilt, and the activation call returns before that happens. Account actions run asynchronously, so the dump can still show the old state right after the call. Poll for a higher `generation` before you read the state.
+- Rows that change a setting show the new state once the menu is rebuilt. The call returns when the handler's synchronous part is done, and some rebuilds and all account actions run after that, so the dump can still show the old state right after the call. Poll for a higher `generation` before you read the state.
 
 ## Drive the app
 

@@ -249,7 +249,7 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             handle_menu_event(app, event.id().as_ref());
         })
         .build(app)?;
-    crate::proof_tray_menu::write_if_enabled(app.handle(), &menu);
+    crate::proof_tray_menu::record_installed(app.handle(), &menu);
 
     // Apply tray promotion on startup. The NotifyIconSettings entry is created
     // by Windows only after the icon is first registered, so on first run /
@@ -356,24 +356,63 @@ fn handle_menu_event(app: &AppHandle, id: &str) {
     }
 }
 
-/// Pure gate for `proof_activate_tray_item`: proof mode only, and only ids that
-/// resolve to a menu action. Status rows and unknown ids never dispatch.
-pub(crate) fn activation_allowed(proof_mode: bool, id: &str) -> bool {
-    proof_mode && resolve_menu_action(id).is_some()
+/// Pure gate for `proof_activate_tray_item`: proof mode only, only ids that
+/// resolve to a menu action, and only enabled rows of the installed menu.
+/// Status rows, unknown ids and rows the menu doesn't show never dispatch.
+pub(crate) fn activation_allowed(proof_mode: bool, id: &str, in_installed_menu: bool) -> bool {
+    proof_mode && in_installed_menu && resolve_menu_action(id).is_some()
 }
+
+const NOT_ACTIVATABLE: &str = "tray item is not a proof-activatable menu action";
 
 /// Proof-only: run the same handler a native click on `id` runs.
 ///
-/// The handler runs on the main thread through `run_on_main_thread`, not in
-/// this command, so window-building actions stay out of an IPC command.
+/// The check and the handler run on the main thread through
+/// `run_on_main_thread`, not in this command: menu installs also run there, so
+/// the check sees the menu that is on the tray, and window-building actions
+/// stay out of an IPC command.
 #[tauri::command]
 pub(crate) async fn proof_activate_tray_item(app: AppHandle, id: String) -> Result<(), String> {
-    if !activation_allowed(crate::proof_harness::is_proof_mode(&app), &id) {
-        return Err("tray item is not a proof-activatable menu action".into());
+    let proof_mode = crate::proof_harness::is_proof_mode(&app);
+    if !proof_mode {
+        return Err(NOT_ACTIVATABLE.into());
     }
+    let (sender, receiver) = tokio::sync::oneshot::channel();
     let handle = app.clone();
-    app.run_on_main_thread(move || handle_menu_event(&handle, &id))
-        .map_err(|error| error.to_string())
+    app.run_on_main_thread(move || {
+        let in_menu = crate::proof_tray_menu::is_installed_leaf(&id);
+        let allowed = activation_allowed(proof_mode, &id, in_menu);
+        if allowed {
+            handle_menu_event(&handle, &id);
+        }
+        let _ = sender.send(allowed);
+    })
+    .map_err(|error| error.to_string())?;
+    match receiver.await {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(NOT_ACTIVATABLE.into()),
+        Err(_) => Err("tray item activation did not run".into()),
+    }
+}
+
+/// Install `menu` on the tray from the main thread. The event loop runs these
+/// tasks in order and each one records its own menu, so a later install is
+/// never followed by an earlier proof snapshot. Runs inline when already on
+/// the main thread.
+fn install_tray_menu(app: &AppHandle, menu: Menu<tauri::Wry>) {
+    let handle = app.clone();
+    let posted = app.run_on_main_thread(move || {
+        let Some(tray) = handle.tray_by_id("codexbar-main") else {
+            return;
+        };
+        match tray.set_menu(Some(menu.clone())) {
+            Ok(()) => crate::proof_tray_menu::record_installed(&handle, &menu),
+            Err(error) => tracing::warn!("Failed to install tray menu: {error}"),
+        }
+    });
+    if let Err(error) = posted {
+        tracing::warn!("Failed to schedule the tray menu install: {error}");
+    }
 }
 
 /// Rebuild the native tray menu from current provider + settings state.
@@ -390,13 +429,8 @@ pub(crate) fn rebuild_tray_menu(app: &AppHandle) {
     } else {
         vec![]
     };
-    if let Ok(menu) = build_native_tray_menu(app, &catalog, &status_labels)
-        && let Some(tray) = app.tray_by_id("codexbar-main")
-    {
-        match tray.set_menu(Some(menu.clone())) {
-            Ok(()) => crate::proof_tray_menu::write_if_enabled(app, &menu),
-            Err(error) => tracing::warn!("Failed to install tray menu: {error}"),
-        }
+    if let Ok(menu) = build_native_tray_menu(app, &catalog, &status_labels) {
+        install_tray_menu(app, menu);
     }
 }
 
@@ -413,13 +447,8 @@ pub fn update_tray_status_items(
     let status_labels = TrayPresentationPlan::resolve(&settings, snapshots, rates_cache)
         .status_labels(settings.ui_language);
 
-    if let Ok(menu) = build_native_tray_menu(app, &catalog, &status_labels)
-        && let Some(tray) = app.tray_by_id("codexbar-main")
-    {
-        match tray.set_menu(Some(menu.clone())) {
-            Ok(()) => crate::proof_tray_menu::write_if_enabled(app, &menu),
-            Err(error) => tracing::warn!("Failed to install tray menu: {error}"),
-        }
+    if let Ok(menu) = build_native_tray_menu(app, &catalog, &status_labels) {
+        install_tray_menu(app, menu);
     }
 }
 
@@ -592,16 +621,22 @@ mod tests {
     use codexbar::settings::Language;
 
     #[test]
-    fn proof_activation_requires_proof_mode_and_a_menu_action() {
-        assert!(!activation_allowed(false, "refresh"));
-        assert!(activation_allowed(true, "refresh"));
-        assert!(activation_allowed(true, "settings"));
-        assert!(activation_allowed(true, "toggle_provider:codex"));
-        assert!(activation_allowed(true, "switch_claude_account:a:org"));
-        assert!(!activation_allowed(true, "status_codex"));
-        assert!(!activation_allowed(true, "stay_awake_active"));
-        assert!(!activation_allowed(true, "not_a_menu_item"));
-        assert!(!activation_allowed(true, ""));
+    fn proof_activation_requires_proof_mode_a_menu_action_and_an_installed_row() {
+        assert!(!activation_allowed(false, "refresh", true));
+        assert!(activation_allowed(true, "refresh", true));
+        assert!(activation_allowed(true, "settings", true));
+        assert!(activation_allowed(true, "toggle_provider:codex", true));
+        assert!(activation_allowed(
+            true,
+            "switch_claude_account:a:org",
+            true
+        ));
+        assert!(!activation_allowed(true, "status_codex", true));
+        assert!(!activation_allowed(true, "stay_awake_active", true));
+        assert!(!activation_allowed(true, "not_a_menu_item", true));
+        assert!(!activation_allowed(true, "", true));
+        assert!(!activation_allowed(true, "refresh", false));
+        assert!(!activation_allowed(true, "toggle_provider:unlisted", false));
     }
 
     #[test]
