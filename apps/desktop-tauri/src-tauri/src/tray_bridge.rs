@@ -313,13 +313,16 @@ fn handle_menu_event(app: &AppHandle, id: &str) {
             });
         }
         Some(MenuAction::ToggleProvider(provider_id)) => {
+            let write_guard = crate::commands::lock_settings_writes();
             let mut settings = Settings::load();
             if settings.enabled_providers.contains(&provider_id) {
                 settings.enabled_providers.remove(&provider_id);
             } else {
                 settings.enabled_providers.insert(provider_id);
             }
-            if settings.save().is_err() {
+            let saved = settings.save();
+            drop(write_guard);
+            if saved.is_err() {
                 rebuild_tray_menu(app);
                 return;
             }

@@ -778,6 +778,14 @@ fn parse_language(s: &str) -> Option<Language> {
 /// file and the later save would drop the earlier change.
 pub(super) static UPDATE_SETTINGS_LOCK: Mutex<()> = Mutex::new(());
 
+/// Hold [`UPDATE_SETTINGS_LOCK`] around a settings load -> change -> save made
+/// outside `update_settings`. Drop it before follow-up work that may save again.
+pub(crate) fn lock_settings_writes() -> std::sync::MutexGuard<'static, ()> {
+    UPDATE_SETTINGS_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 #[tauri::command]
 pub async fn update_settings(
     app: tauri::AppHandle,
