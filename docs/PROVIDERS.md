@@ -739,9 +739,10 @@ Authorization: Bearer <organization API key>
 ```
 
 - The **Spend** section shows **Monthly budget** as `$used of $budget` with a
-  progress bar when the budget is positive. The budget meter also feeds the tray
-  and float bar. Unlike upstream, it is not a hideable card row; the progress
-  row is always shown on the card.
+  progress bar when the budget is positive. The budget meter itself is hidden on
+  the card and only feeds the tray and float-bar percentages. Upstream hides it
+  from the card by default; Windows has no default-hidden usage item, so the
+  card shows the same numbers as this Spend detail row instead.
 - The **Billing** section shows **Prepaid** or **Invoice billing** (value `USD`).
   With a zero budget it also shows **Monthly budget** as `$0.00`, and no progress
   bar or percentage.
