@@ -441,6 +441,7 @@ pub fn update_tray_icon_and_tooltip(
         settings.hide_personal_info,
     );
     let tooltip = crate::status_poller::with_incident_lines(app, &settings, tooltip);
+    let tooltip = fit_tooltip(&tooltip, TRAY_TOOLTIP_MAX_UTF16);
     let _ = tray.set_tooltip(Some(tooltip));
 }
 
@@ -466,7 +467,9 @@ fn build_tooltip(
                 Some(err),
                 hide_personal_info,
             )
-            .unwrap_or_default();
+            .unwrap_or_default()
+            // A newline would split one status row into two tooltip lines.
+            .replace(['\r', '\n'], " ");
             let short = truncate_tooltip_text(&err, 36);
             format!("{}: {} ({})", s.display_name, error_label, short)
         } else {
@@ -479,14 +482,76 @@ fn build_tooltip(
     format!("CodexBar\n{}", lines.join("\n"))
 }
 
-fn truncate_tooltip_text(text: &str, max_chars: usize) -> String {
-    let mut chars = text.chars();
-    let truncated: String = chars.by_ref().take(max_chars).collect();
-    if chars.next().is_some() {
-        format!("{truncated}...")
-    } else {
-        truncated
+/// `NOTIFYICONDATAW.szTip` holds 128 UTF-16 units including the trailing NUL,
+/// and tray-icon copies at most 127 of them, cutting mid-line without a marker.
+const TRAY_TOOLTIP_MAX_UTF16: usize = 127;
+
+fn utf16_len(text: &str) -> usize {
+    text.encode_utf16().count()
+}
+
+/// Longest char-boundary prefix of `text` that fits in `budget` UTF-16 units.
+/// A surrogate pair is never split.
+fn take_utf16(text: &str, budget: usize) -> String {
+    let mut out = String::new();
+    let mut used = 0;
+    for ch in text.chars() {
+        let width = ch.len_utf16();
+        if used + width > budget {
+            break;
+        }
+        used += width;
+        out.push(ch);
     }
+    out
+}
+
+fn truncate_tooltip_text(text: &str, max_units: usize) -> String {
+    if utf16_len(text) <= max_units {
+        return text.to_string();
+    }
+    format!("{}...", take_utf16(text, max_units))
+}
+
+/// Fits a newline-separated tooltip into `max_units` UTF-16 units. Whole lines
+/// are kept in order (the title, then incident lines, then provider lines).
+/// When lines are dropped, a "+N more" line is added if it fits; otherwise the
+/// last kept line ends with "…". A single line that is too long is cut with "…".
+fn fit_tooltip(tooltip: &str, max_units: usize) -> String {
+    if utf16_len(tooltip) <= max_units {
+        return tooltip.to_string();
+    }
+    let lines: Vec<&str> = tooltip.split('\n').collect();
+
+    // Every candidate line reserves one unit for the "…" that would follow it
+    // when more lines come after it. The reserved unit is always available.
+    let mut kept = 0;
+    let mut used = 0;
+    for (index, line) in lines.iter().enumerate() {
+        let separator = usize::from(kept > 0);
+        let reserve = usize::from(index + 1 < lines.len());
+        let cost = separator + utf16_len(line);
+        if used + cost + reserve > max_units {
+            break;
+        }
+        used += cost;
+        kept += 1;
+    }
+
+    if kept == 0 {
+        let budget = max_units.saturating_sub(1);
+        return format!("{}…", take_utf16(lines[0], budget));
+    }
+
+    let more = format!("+{} more", lines.len() - kept);
+    let mut out: Vec<String> = lines[..kept].iter().map(|line| line.to_string()).collect();
+    if used + 1 + utf16_len(&more) <= max_units {
+        out.push(more);
+    } else {
+        let last = out.len() - 1;
+        out[last].push('…');
+    }
+    out.join("\n")
 }
 
 enum NativeMenuEntry {
@@ -991,5 +1056,122 @@ mod tests {
             .clone();
         assert!(english_label.contains("Resets in"), "{english_label}");
         assert!(japanese_label.contains("リセットまで"), "{japanese_label}");
+    }
+
+    #[test]
+    fn fit_tooltip_keeps_short_tooltips_unchanged() {
+        let tooltip = "CodexBar\nClaude: 87% left\nCodex: 92% left";
+        assert_eq!(fit_tooltip(tooltip, TRAY_TOOLTIP_MAX_UTF16), tooltip);
+    }
+
+    #[test]
+    fn fit_tooltip_stays_within_the_windows_limit_and_keeps_whole_lines() {
+        let mut lines = vec!["CodexBar".to_string()];
+        for index in 0..20 {
+            lines.push(format!(
+                "Provider {index}: 50% left • Resets in 3d 17h with a long suffix"
+            ));
+        }
+        let tooltip = lines.join("\n");
+
+        let fitted = fit_tooltip(&tooltip, TRAY_TOOLTIP_MAX_UTF16);
+
+        assert!(utf16_len(&fitted) <= TRAY_TOOLTIP_MAX_UTF16, "{fitted}");
+        let shown: Vec<&str> = fitted.split('\n').collect();
+        assert_eq!(shown[0], "CodexBar", "{fitted}");
+        assert!(shown.len() > 2, "{fitted}");
+        // Either a "+N more" marker or an ellipsis on the last kept line.
+        let last = shown.last().expect("last line");
+        assert!(
+            last.ends_with('…') || (last.starts_with('+') && last.ends_with(" more")),
+            "{fitted}"
+        );
+        for line in &shown[1..shown.len() - 1] {
+            assert!(lines.contains(&line.to_string()), "split line: {line}");
+        }
+    }
+
+    #[test]
+    fn fit_tooltip_ends_the_last_kept_line_with_an_ellipsis_when_more_does_not_fit() {
+        // Title plus one line that uses almost the whole budget: no room for
+        // a "+N more" line, so the kept line takes the ellipsis.
+        let long = "A".repeat(115);
+        let tooltip = format!("CodexBar\n{long}\nB line that is dropped entirely here");
+
+        let fitted = fit_tooltip(&tooltip, TRAY_TOOLTIP_MAX_UTF16);
+
+        assert!(utf16_len(&fitted) <= TRAY_TOOLTIP_MAX_UTF16, "{fitted}");
+        assert_eq!(fitted, format!("CodexBar\n{long}…"));
+    }
+
+    #[test]
+    fn fit_tooltip_keeps_incident_lines_under_the_title_before_provider_lines() {
+        let tooltip = [
+            "CodexBar".to_string(),
+            "OpenAI: Major outage".to_string(),
+            "Claude: 87% left".to_string(),
+            "A".repeat(120),
+        ]
+        .join("\n");
+
+        let fitted = fit_tooltip(&tooltip, TRAY_TOOLTIP_MAX_UTF16);
+
+        assert!(fitted.starts_with("CodexBar\nOpenAI: Major outage\nClaude: 87% left\n+1 more"));
+        assert!(utf16_len(&fitted) <= TRAY_TOOLTIP_MAX_UTF16);
+    }
+
+    #[test]
+    fn fit_tooltip_drops_an_oversized_line_for_a_marker() {
+        // The 200-unit emoji line cannot fit beside the title, so it is dropped.
+        let tooltip = format!("CodexBar\n{}", "🙂".repeat(100));
+
+        let fitted = fit_tooltip(&tooltip, TRAY_TOOLTIP_MAX_UTF16);
+
+        assert_eq!(fitted, "CodexBar\n+1 more");
+    }
+
+    #[test]
+    fn fit_tooltip_cuts_an_oversized_first_line_without_splitting_a_surrogate_pair() {
+        // Each emoji is two UTF-16 units; a char-count cut would overflow or split a pair.
+        let tooltip = format!("{}\nCodexBar", "🙂".repeat(100));
+
+        let fitted = fit_tooltip(&tooltip, TRAY_TOOLTIP_MAX_UTF16);
+
+        assert!(utf16_len(&fitted) <= TRAY_TOOLTIP_MAX_UTF16, "{fitted}");
+        assert_eq!(fitted.chars().filter(|ch| *ch == '🙂').count(), 63);
+        assert!(fitted.ends_with('…'), "{fitted}");
+        assert!(!fitted.contains('\n'), "{fitted}");
+    }
+
+    #[test]
+    fn fit_tooltip_handles_a_first_line_longer_than_the_limit() {
+        let fitted = fit_tooltip(&"중".repeat(200), TRAY_TOOLTIP_MAX_UTF16);
+
+        assert!(utf16_len(&fitted) <= TRAY_TOOLTIP_MAX_UTF16, "{fitted}");
+        assert!(fitted.ends_with('…'));
+        assert!(!fitted.contains('\n'));
+    }
+
+    #[test]
+    fn truncate_tooltip_text_counts_utf16_units_not_chars() {
+        // Four emoji are 8 UTF-16 units; a 6-unit budget keeps 3 emoji.
+        let truncated = truncate_tooltip_text(&"🙂".repeat(4), 6);
+        assert_eq!(truncated, "🙂🙂🙂...");
+        assert_eq!(truncate_tooltip_text("short", 36), "short");
+    }
+
+    #[test]
+    fn provider_error_newlines_do_not_split_the_tooltip_line() {
+        let mut codex = fake_snapshot("codex", "Codex", 13.0);
+        codex.error = Some("first line\nsecond line".to_string());
+
+        let tooltip = build_tooltip(
+            &[codex],
+            &Settings::default(),
+            codexbar::settings::Language::English,
+            false,
+        );
+
+        assert_eq!(tooltip.lines().count(), 2, "{tooltip}");
     }
 }
