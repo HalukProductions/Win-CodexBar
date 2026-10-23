@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   getApiKeyProviders,
   getApiKeys,
@@ -61,6 +62,36 @@ export function ApiKeySection({ providerId }: Props) {
     setSaved(null);
     void reload(signal);
     return () => { signal.stale = true; };
+  }, [reload]);
+
+  // Keys can change outside this section: another window saves through the
+  // bridge (`api-keys-updated`), or a CLI write lands in the keys file, which
+  // can't emit. Re-read on both events and on window focus. Unlike the mount
+  // effect above, this leaves an open edit form and its draft untouched.
+  useEffect(() => {
+    const signal = { stale: false };
+    const refresh = () => void reload(signal);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    let active = true;
+    let unlisten: UnlistenFn | undefined;
+    // `Promise.resolve` tolerates test mocks that return a bare unlisten fn.
+    Promise.resolve(listen("api-keys-updated", refresh))
+      .then((fn) => {
+        if (active) unlisten = fn;
+        else fn?.();
+      })
+      .catch(() => {});
+    return () => {
+      signal.stale = true;
+      active = false;
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      unlisten?.();
+    };
   }, [reload]);
 
   if (!loaded) return null;
