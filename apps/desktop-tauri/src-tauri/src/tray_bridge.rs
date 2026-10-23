@@ -515,8 +515,9 @@ fn truncate_tooltip_text(text: &str, max_units: usize) -> String {
 
 /// Fits a newline-separated tooltip into `max_units` UTF-16 units. Whole lines
 /// are kept in order (the title, then incident lines, then provider lines).
-/// When lines are dropped, a "+N more" line is added if it fits; otherwise the
-/// last kept line ends with "…". A single line that is too long is cut with "…".
+/// When lines are dropped, the last kept line ends with "…" (a symbol, so no
+/// new localized string is needed). A single line that is too long is cut
+/// with "…".
 fn fit_tooltip(tooltip: &str, max_units: usize) -> String {
     if utf16_len(tooltip) <= max_units {
         return tooltip.to_string();
@@ -543,14 +544,9 @@ fn fit_tooltip(tooltip: &str, max_units: usize) -> String {
         return format!("{}…", take_utf16(lines[0], budget));
     }
 
-    let more = format!("+{} more", lines.len() - kept);
     let mut out: Vec<String> = lines[..kept].iter().map(|line| line.to_string()).collect();
-    if used + 1 + utf16_len(&more) <= max_units {
-        out.push(more);
-    } else {
-        let last = out.len() - 1;
-        out[last].push('…');
-    }
+    let last = out.len() - 1;
+    out[last].push('…');
     out.join("\n")
 }
 
@@ -1080,21 +1076,17 @@ mod tests {
         let shown: Vec<&str> = fitted.split('\n').collect();
         assert_eq!(shown[0], "CodexBar", "{fitted}");
         assert!(shown.len() > 2, "{fitted}");
-        // Either a "+N more" marker or an ellipsis on the last kept line.
         let last = shown.last().expect("last line");
-        assert!(
-            last.ends_with('…') || (last.starts_with('+') && last.ends_with(" more")),
-            "{fitted}"
-        );
+        assert!(last.ends_with('…'), "{fitted}");
         for line in &shown[1..shown.len() - 1] {
             assert!(lines.contains(&line.to_string()), "split line: {line}");
         }
     }
 
     #[test]
-    fn fit_tooltip_ends_the_last_kept_line_with_an_ellipsis_when_more_does_not_fit() {
-        // Title plus one line that uses almost the whole budget: no room for
-        // a "+N more" line, so the kept line takes the ellipsis.
+    fn fit_tooltip_ends_the_last_kept_line_with_an_ellipsis_when_lines_are_dropped() {
+        // Title plus one line that uses almost the whole budget; the dropped
+        // third line leaves the kept line with the ellipsis, which still fits.
         let long = "A".repeat(115);
         let tooltip = format!("CodexBar\n{long}\nB line that is dropped entirely here");
 
@@ -1116,18 +1108,18 @@ mod tests {
 
         let fitted = fit_tooltip(&tooltip, TRAY_TOOLTIP_MAX_UTF16);
 
-        assert!(fitted.starts_with("CodexBar\nOpenAI: Major outage\nClaude: 87% left\n+1 more"));
+        assert_eq!(fitted, "CodexBar\nOpenAI: Major outage\nClaude: 87% left…");
         assert!(utf16_len(&fitted) <= TRAY_TOOLTIP_MAX_UTF16);
     }
 
     #[test]
-    fn fit_tooltip_drops_an_oversized_line_for_a_marker() {
+    fn fit_tooltip_drops_an_oversized_line_and_marks_the_title() {
         // The 200-unit emoji line cannot fit beside the title, so it is dropped.
         let tooltip = format!("CodexBar\n{}", "🙂".repeat(100));
 
         let fitted = fit_tooltip(&tooltip, TRAY_TOOLTIP_MAX_UTF16);
 
-        assert_eq!(fitted, "CodexBar\n+1 more");
+        assert_eq!(fitted, "CodexBar…");
     }
 
     #[test]
