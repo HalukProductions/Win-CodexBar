@@ -288,13 +288,10 @@ fn build_provider_chart_data_with_cancel(
                     (Vec::new(), Vec::new(), true, None)
                 } else {
                     let report = muse_local_usage::scan(30, cancel.as_deref());
-                    let tokens_history = report
-                        .daily
-                        .iter()
-                        .map(|day| DailyTokenPoint {
-                            date: day.day.clone(),
-                            tokens: day.total_tokens,
-                        })
+                    // One slot per calendar day, so idle days show as zero bars.
+                    let tokens_history = muse_local_usage::token_history_slots(&report.daily, 30)
+                        .into_iter()
+                        .map(|(date, tokens)| DailyTokenPoint { date, tokens })
                         .collect();
                     let period = current_reporting_period();
                     let period_report = muse_period_report(period, &report, cancel.as_deref());

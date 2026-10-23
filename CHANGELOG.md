@@ -9,6 +9,7 @@
 
 ## [Windows] Unreleased
 
+- Charts: the Muse token chart, the OpenAI API daily history and the Groq console history keep every day of the 30-day window, so idle days show as zero bars instead of disappearing. Unpriced or incomplete days stay unknown (upstream #4689).
 - Overview: disabling a provider, in Settings or from the tray menu, removes its card and account rows at once instead of after a relaunch. claude-swap and tcr Overview rows now fill from a background read during refresh (at most every 5 minutes), so you no longer need to open Settings first.
 - **Claude**: built-in price rows choose one long-context tier per request from input plus all cache tokens and bill the whole request at that tier, as upstream does. Opus 4.6 and Sonnet 4.6 use long-context rates only for usage dated before the upstream cutoff.
 - Tray and Settings: percentages always say "left" or "used" and follow **Show usage as used** (the tray tooltip, tray status rows, the Claude accounts menu and the claude-swap/tcr list). "1 minute ago" is singular in every language. Under **Hide personal information**, Claude and Grok accounts are numbered in list order, and the claude-swap list masks emails as soon as the setting changes.
