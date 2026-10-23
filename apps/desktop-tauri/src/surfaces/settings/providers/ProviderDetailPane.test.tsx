@@ -282,6 +282,44 @@ describe("ProviderDetailPane", () => {
     expect(tauri.getCredentialStorageStatus).toHaveBeenCalledTimes(2);
   });
 
+  it("ignores a credential reload that finishes after another provider was selected", async () => {
+    tauri.getProviderDetail.mockResolvedValue(detail("codex"));
+    const view = await renderPane("codex");
+
+    let finishOldLoad: (value: ProviderDetail) => void = () => {};
+    tauri.getProviderDetail.mockReturnValueOnce(
+      new Promise<ProviderDetail>((resolve) => {
+        finishOldLoad = resolve;
+      }),
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "stub-token-saved" })),
+    );
+
+    tauri.getProviderDetail.mockResolvedValue(detail("claude"));
+    view.rerender(
+      <ProviderDetailPane
+        providerId="claude"
+        settings={baseSettings}
+        catalog={catalog}
+        resetTimeRelative
+        providerMetrics={baseSettings.providerMetrics}
+        copilotSeatCreditEntitlement={baseSettings.copilotSeatCreditEntitlement}
+        providerAccentColors={baseSettings.providerAccentColors}
+        wayfinderGatewayUrl="http://127.0.0.1:8088"
+        hidePersonalInfo={false}
+        settingsDisabled={false}
+        onSettingsChange={view.onSettingsChange}
+      />,
+    );
+    await screen.findByText("Claude");
+
+    await act(async () => finishOldLoad(detail("codex")));
+
+    expect(screen.getByText("Claude")).toBeInTheDocument();
+    expect(screen.queryByText("Codex")).toBeNull();
+  });
+
   it("locks Avoid keychain prompts while Credential Manager access is disabled", async () => {
     tauri.getProviderDetail.mockResolvedValue(detail("claude"));
     const settings = { ...baseSettings, disableKeychainAccess: true } as SettingsSnapshot;

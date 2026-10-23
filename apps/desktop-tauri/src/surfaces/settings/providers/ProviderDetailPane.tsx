@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type {
   ProviderCatalogEntry,
   ProviderUsageSnapshot,
@@ -143,7 +143,13 @@ export function ProviderDetailPane({
   const setBusy = (value: boolean) =>
     dispatch({ type: "SET_BUSY", busy: value });
 
+  // A load started for another provider (e.g. a credential save that finished
+  // after the selection changed) must not replace the current provider.
+  const selectedProviderId = useRef(providerId);
+  selectedProviderId.current = providerId;
+
   const load = useCallback(async (id: string, signal?: { stale: boolean }) => {
+    const isStale = () => signal?.stale === true || selectedProviderId.current !== id;
     dispatch({ type: "LOAD_START" });
     try {
       const [next, cookieOpts, regionOpts, storageStatus] = await Promise.all([
@@ -152,7 +158,7 @@ export function ProviderDetailPane({
         getProviderRegionOptions(id),
         getCredentialStorageStatus(),
       ]);
-      if (signal?.stale) return;
+      if (isStale()) return;
       dispatch({
         type: "LOAD_SUCCESS",
         detail: next,
@@ -161,12 +167,12 @@ export function ProviderDetailPane({
         credentialStatus: storageStatus,
       });
     } catch (e) {
-      if (signal?.stale) return;
+      if (isStale()) return;
       dispatch({ type: "LOAD_ERROR", error: String(e) });
     } finally {
       // Keep stale guard — concurrent provider switches must not clear loading
       // for the in-flight replacement load.
-      if (!signal?.stale) dispatch({ type: "LOAD_FINISH" });
+      if (!isStale()) dispatch({ type: "LOAD_FINISH" });
     }
   }, []);
 
