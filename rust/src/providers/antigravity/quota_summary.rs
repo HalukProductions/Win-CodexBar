@@ -365,13 +365,19 @@ fn group_rank(group: &QuotaSummaryGroup) -> u8 {
 /// when its title has no digit, so a versioned group such as "Gemini 4 Argon"
 /// keeps its own name. Claude and GPT groups read "Claude/GPT"; any other group
 /// keeps its trimmed name, or "Quota" when the name is blank.
+///
+/// Unlike upstream, every Gemini-ranked group is titled in the Gemini branch,
+/// so a versioned "Gemini 4 + GPT" keeps its name instead of "Claude/GPT".
 fn group_title(group: &QuotaSummaryGroup) -> String {
-    let (title, _) = group_family(group);
+    let (title, rank) = group_family(group);
     let title = title.unwrap_or_default();
-    let lower = title.to_ascii_lowercase();
-    if lower.contains("gemini") && !title.chars().any(char::is_numeric) {
-        "Gemini".into()
-    } else if lower.contains("claude") || lower.contains("gpt") {
+    if rank == 0 {
+        if title.chars().any(char::is_numeric) {
+            title.into()
+        } else {
+            "Gemini".into()
+        }
+    } else if rank == 1 {
         "Claude/GPT".into()
     } else if title.is_empty() {
         "Quota".into()
@@ -750,6 +756,13 @@ mod tests {
                 0,
                 "Gemini 4 Argon",
                 "gemini-4-argon",
+            ),
+            (
+                Some("Gemini 4 + GPT"),
+                None,
+                0,
+                "Gemini 4 + GPT",
+                "gemini-4---gpt",
             ),
             (None, Some("claude & GPT"), 1, "Claude/GPT", "claude-gpt"),
             (
