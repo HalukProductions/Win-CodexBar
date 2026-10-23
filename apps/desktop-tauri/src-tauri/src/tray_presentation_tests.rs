@@ -1593,6 +1593,27 @@ fn named_extra_metric_without_a_reading_shows_a_labeled_dash() {
 }
 
 #[test]
+fn saved_grok_bot_shows_the_promoted_weekly_pool_in_the_tray() {
+    let mut settings = Settings {
+        show_as_used: true,
+        ..Settings::default()
+    };
+    let preference = MetricPreference::NamedExtra("cursor-grok-bot".to_string());
+    settings.set_provider_metric(ProviderId::Cursor, preference.clone());
+    let mut weekly = grok_bot_cursor(None);
+    weekly.primary.used_percent = 10.0;
+    weekly.primary.is_informational = false;
+    weekly.secondary = None;
+    weekly.primary_label = Some("Weekly".to_string());
+
+    assert_eq!(
+        named_extra_status(&weekly, &preference, true, Language::English).as_deref(),
+        Some("Grok Bot 10% used")
+    );
+    assert_eq!(selected_tray_percents(&weekly, &settings).0, 10.0);
+}
+
+#[test]
 fn named_extra_metric_without_a_reading_renders_an_unknown_icon_in_both_directions() {
     for show_as_used in [true, false] {
         let mut settings = Settings {

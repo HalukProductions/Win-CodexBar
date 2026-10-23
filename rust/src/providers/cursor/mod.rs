@@ -37,11 +37,14 @@ pub(crate) const PACE_CAPABILITY: crate::core::ProviderPaceCapability =
     );
 
 /// Grok Bot is Cursor's named extra allowance (upstream 0.73.0 #4269),
-/// published through [`ProviderId::named_extra_metrics`].
+/// published through [`ProviderId::named_extra_metrics`]. A unified weekly
+/// pool replaces the Grok Bot extra, and a saved Grok Bot choice reads that
+/// pool (upstream `CursorProviderDescriptor.menuBarExtras`).
 pub const NAMED_EXTRA_METRICS: &[crate::core::NamedExtraMetric] =
     &[crate::core::NamedExtraMetric {
         id: api::GROK_BOT_WINDOW_ID,
         label: api::GROK_BOT_TITLE,
+        promoted_primary_label: Some(api::SHARED_WEEKLY_POOL_LABEL),
     }];
 
 /// Cursor provider for fetching AI usage limits
@@ -326,6 +329,7 @@ mod tests {
         assert_eq!(metrics.len(), 1);
         assert_eq!(metrics[0].id, "cursor-grok-bot");
         assert_eq!(metrics[0].label, "Grok Bot");
+        assert_eq!(metrics[0].promoted_primary_label, Some("Weekly"));
         assert_eq!(
             ProviderId::Cursor.named_extra_metric("cursor-grok-bot"),
             Some(metrics[0])

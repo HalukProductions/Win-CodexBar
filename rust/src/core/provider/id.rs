@@ -12,6 +12,10 @@ pub struct NamedExtraMetric {
     pub id: &'static str,
     /// Label used when the snapshot carries no title for the window.
     pub label: &'static str,
+    /// Snapshot primary label under which the provider has folded this
+    /// allowance into the primary window. A saved choice then reads the
+    /// primary instead of an absent extra window.
+    pub promoted_primary_label: Option<&'static str>,
 }
 
 /// Unique identifier for a provider
