@@ -201,8 +201,8 @@
       "size": [310, 1032],
       "steps": [
         { "click": { "selector": ".provider-grid__item", "label": "Cursor" } },
-        { "expectText": ["Cursor", "Weekly", "cursor.user@example.com"] },
-        { "expectNoText": "Grok Bot" },
+        { "expectText": ["Cursor", "Weekly", "cursor.user@example.com", "10% used", "$4.47"] },
+        { "expectNoText": ["Grok Bot", "Auto", "API"] },
         { "screenshot": "tray-cursor-weekly", "clip": "panel" }
       ]
     },
@@ -211,8 +211,8 @@
       "query": "window=flyout&fixture=cursor-weekly&theme=dark",
       "size": [310, 1032],
       "steps": [
-        { "expectText": ["Cursor", "Weekly"] },
-        { "expectNoText": "Grok Bot" },
+        { "expectText": ["Cursor", "Weekly", "10% used", "$4.47"] },
+        { "expectNoText": ["Grok Bot", "Auto", "API"] },
         { "screenshot": "flyout-cursor-weekly", "clip": "panel" }
       ]
     },
