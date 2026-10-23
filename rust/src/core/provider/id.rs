@@ -130,6 +130,7 @@ pub enum ProviderId {
     FutureAgi,
     Munito,
     ClaudePlatform,
+    Soniox,
 }
 
 impl ProviderId {
@@ -304,7 +305,7 @@ mod tests {
     #[test]
     fn test_provider_id_all() {
         let all = ProviderId::all();
-        assert_eq!(all.len(), 111);
+        assert_eq!(all.len(), 112);
         assert!(all.contains(&ProviderId::Claude));
         assert!(all.contains(&ProviderId::Codex));
         assert!(all.contains(&ProviderId::Pi));

@@ -148,11 +148,11 @@ const fn spec(
     }
 }
 
-const COUNT: usize = 111;
+const COUNT: usize = 112;
 
 pub(crate) static ALL: [ProviderId; COUNT] = {
     // Indexing SPECS by discriminant relies on rows following declaration order.
-    assert!(P::ClaudePlatform as usize + 1 == COUNT);
+    assert!(P::Soniox as usize + 1 == COUNT);
     let mut ids = [P::Codex; COUNT];
     let mut i = 0;
     while i < COUNT {
@@ -778,4 +778,8 @@ pub(crate) static SPECS: [ProviderSpec; COUNT] = [
     .status("https://status.claude.com/")
     .aliases(&["claude-platform"])
     .parse_aliases(&["claude platform"]),
+    spec(P::Soniox, "soniox", "Soniox", "#253772")
+        .labels("Monthly budget", "Usage")
+        .dashboard("https://console.soniox.com")
+        .status("https://status.soniox.com"),
 ];

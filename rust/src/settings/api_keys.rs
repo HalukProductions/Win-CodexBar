@@ -766,6 +766,17 @@ pub fn get_api_key_providers() -> Vec<ProviderConfigInfo> {
             dashboard_url: Some("https://console.munito.ai/keys"),
         },
         ProviderConfigInfo {
+            id: ProviderId::Soniox,
+            name: "Soniox",
+            api_key_env_var: Some("SONIOX_ORG_API_KEY"),
+            api_key_help: Some(
+                "Organization API key with Balance and spend and Usage and limits access. Project API keys are not supported. Or set SONIOX_ORG_API_KEY.",
+            ),
+            dashboard_url: Some(
+                "https://soniox.com/docs/guides/organization-api#organization-api-keys",
+            ),
+        },
+        ProviderConfigInfo {
             id: ProviderId::Cosmic,
             name: "Cosmic AI",
             api_key_env_var: Some("COSMIC_TOKEN"),
