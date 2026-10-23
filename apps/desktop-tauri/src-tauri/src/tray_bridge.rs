@@ -677,7 +677,27 @@ mod tests {
 
         assert_eq!(
             tooltip,
-            "CodexBar\nClaude: 13% • Resets in 2h 05m\nCodex: 8% • Resets in 4h 10m"
+            "CodexBar\nClaude: 87% left • Resets in 2h 05m\nCodex: 92% left • Resets in 4h 10m"
+        );
+    }
+
+    #[test]
+    fn tooltip_names_used_or_remaining_percent_from_settings() {
+        let mut claude = fake_snapshot("claude", "Claude", 13.0);
+        claude.primary.reset_description = Some("2h 05m".to_string());
+        let lang = codexbar::settings::Language::English;
+
+        assert_eq!(
+            build_tooltip(&[claude.clone()], &Settings::default(), lang, false),
+            "CodexBar\nClaude: 87% left • Resets in 2h 05m"
+        );
+        let used = Settings {
+            show_as_used: true,
+            ..Settings::default()
+        };
+        assert_eq!(
+            build_tooltip(&[claude], &used, lang, false),
+            "CodexBar\nClaude: 13% used • Resets in 2h 05m"
         );
     }
 
@@ -690,11 +710,11 @@ mod tests {
         let lang = codexbar::settings::Language::English;
         assert_eq!(
             build_tooltip(&[estimated], &Settings::default(), lang, false),
-            "CodexBar\nOpenCode Go: ~95%"
+            "CodexBar\nOpenCode Go: ~5% left"
         );
         assert_eq!(
             build_tooltip(&[exact], &Settings::default(), lang, false),
-            "CodexBar\nOpenCode Go: 95%"
+            "CodexBar\nOpenCode Go: 5% left"
         );
     }
 
@@ -721,11 +741,11 @@ mod tests {
         let lang = codexbar::settings::Language::English;
         assert_eq!(
             build_tooltip(&[cursor.clone()], &settings, lang, false),
-            "CodexBar\nCursor: Grok Bot 42%"
+            "CodexBar\nCursor: Grok Bot 58% left"
         );
         assert_eq!(
             build_tooltip(&[cursor], &Settings::default(), lang, false),
-            "CodexBar\nCursor: 30%"
+            "CodexBar\nCursor: 70% left"
         );
     }
 
@@ -757,7 +777,7 @@ mod tests {
             false,
         );
 
-        assert_eq!(tooltip, "CodexBar\nOpenAI API: 1.5M/min\nCodex: 8%");
+        assert_eq!(tooltip, "CodexBar\nOpenAI API: 1.5M/min\nCodex: 92% left");
     }
 
     #[test]
@@ -777,7 +797,7 @@ mod tests {
             false,
         );
 
-        assert_eq!(tooltip, "CodexBar\nCodex: 16% • Resets in 3d 17h");
+        assert_eq!(tooltip, "CodexBar\nCodex: 84% left • Resets in 3d 17h");
     }
 
     fn balance_detail(id: &str, value: &str) -> crate::commands::ProviderDisplayDetailSnapshot {
@@ -845,7 +865,7 @@ mod tests {
             false,
         );
 
-        assert_eq!(tooltip, "CodexBar\nNous Portal: 25%");
+        assert_eq!(tooltip, "CodexBar\nNous Portal: 75% left");
     }
 
     #[test]
@@ -885,7 +905,7 @@ mod tests {
         );
 
         let line = tooltip.lines().nth(1).expect("provider tooltip line");
-        assert!(line.starts_with("Claude: 13% • Resets in Jun 10 at 3:00PM"));
+        assert!(line.starts_with("Claude: 87% left • Resets in Jun 10"));
         assert!(line.ends_with("..."));
         assert!(line.chars().count() <= 53);
     }

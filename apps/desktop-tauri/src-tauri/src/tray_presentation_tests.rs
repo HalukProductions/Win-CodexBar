@@ -84,7 +84,7 @@ fn single_plan_uses_highest_provider_for_icon_and_summary() {
     );
     assert_eq!(
         plan.status_labels(Language::English),
-        vec![("status_summary".to_string(), "Claude 72%".to_string())]
+        vec![("status_summary".to_string(), "Claude 72% used".to_string())]
     );
 }
 
@@ -127,8 +127,8 @@ fn per_provider_plan_preserves_configured_order_for_status_rows() {
     assert_eq!(
         labels,
         vec![
-            ("claude".to_string(), "Claude 72%".to_string()),
-            ("codex".to_string(), "Codex 30%".to_string()),
+            ("claude".to_string(), "Claude 28% left".to_string()),
+            ("codex".to_string(), "Codex 70% left".to_string()),
         ]
     );
 }
@@ -163,8 +163,8 @@ fn stacked_plan_resolves_distinct_preferences_once() {
     assert_eq!(
         plan.status_labels(Language::English),
         vec![
-            ("claude".to_string(), "Claude 72%".to_string()),
-            ("codex".to_string(), "Codex 30%".to_string()),
+            ("claude".to_string(), "Claude 72% used".to_string()),
+            ("codex".to_string(), "Codex 30% used".to_string()),
         ]
     );
 }
@@ -1345,7 +1345,10 @@ fn estimated_quota_draws_a_tilde_percent_icon_and_status_label() {
     );
     assert_eq!(
         plan.status_labels(Language::English),
-        vec![("status_summary".to_string(), "OpenCode Go ~42%".to_string())]
+        vec![(
+            "status_summary".to_string(),
+            "OpenCode Go ~42% used".to_string()
+        )]
     );
 }
 
@@ -1357,7 +1360,7 @@ fn estimated_marker_skips_an_informational_headline() {
     snapshot.primary.reset_description = Some("No usage yet".to_string());
 
     assert_eq!(
-        headline_status_label(&snapshot, Language::English),
+        headline_status_label(&snapshot, true, Language::English),
         "No usage yet"
     );
 }
@@ -1398,7 +1401,7 @@ fn tokens_per_minute_metric_labels_status_with_the_latest_rate() {
     );
     // Other providers keep their usage label; the meter keeps a usage lane.
     assert!(
-        labels.contains(&("codex".to_string(), "Codex 30%".to_string())),
+        labels.contains(&("codex".to_string(), "Codex 30% used".to_string())),
         "{labels:?}"
     );
 
@@ -1447,7 +1450,7 @@ fn balance_only_nous_status_row_reads_its_balance() {
     let plan = TrayPresentationPlan::resolve(&settings, &metered, None);
     assert_eq!(
         plan.status_labels(Language::English),
-        vec![("nous".to_string(), "Nous Portal 25%".to_string())]
+        vec![("nous".to_string(), "Nous Portal 25% used".to_string())]
     );
 }
 
@@ -1553,11 +1556,11 @@ fn named_extra_metric_labels_status_and_meter_with_the_allowance() {
     let labels =
         TrayPresentationPlan::resolve(&settings, &snapshots, None).status_labels(Language::English);
     assert!(
-        labels.contains(&("cursor".to_string(), "Cursor Grok Bot 42%".to_string())),
+        labels.contains(&("cursor".to_string(), "Cursor Grok Bot 42% used".to_string())),
         "{labels:?}"
     );
     assert!(
-        labels.contains(&("codex".to_string(), "Codex 30%".to_string())),
+        labels.contains(&("codex".to_string(), "Codex 30% used".to_string())),
         "{labels:?}"
     );
     assert_eq!(selected_tray_percents(&snapshots[0], &settings).0, 42.0);
@@ -1566,8 +1569,8 @@ fn named_extra_metric_labels_status_and_meter_with_the_allowance() {
     let zero = grok_bot_cursor(Some(0.0));
     let preference = settings.get_provider_metric(ProviderId::Cursor);
     assert_eq!(
-        named_extra_status(&zero, &preference, Language::English).as_deref(),
-        Some("Grok Bot 0%")
+        named_extra_status(&zero, &preference, true, Language::English).as_deref(),
+        Some("Grok Bot 0% used")
     );
 }
 
@@ -1582,7 +1585,7 @@ fn named_extra_metric_without_a_reading_shows_a_labeled_dash() {
     let missing = grok_bot_cursor(None);
 
     assert_eq!(
-        named_extra_status(&missing, &preference, Language::English).as_deref(),
+        named_extra_status(&missing, &preference, true, Language::English).as_deref(),
         Some("Grok Bot \u{2013}")
     );
     // The meter is unknown instead of borrowing the 30% core lane.
@@ -1645,14 +1648,14 @@ fn named_extra_metric_marks_an_estimated_reading_but_not_a_dash() {
     let mut estimated = grok_bot_cursor(Some(42.0));
     estimated.quota_estimated = true;
     assert_eq!(
-        named_extra_status(&estimated, &preference, Language::English).as_deref(),
-        Some("Grok Bot ~42%")
+        named_extra_status(&estimated, &preference, true, Language::English).as_deref(),
+        Some("Grok Bot ~42% used")
     );
 
     let mut missing = grok_bot_cursor(None);
     missing.quota_estimated = true;
     assert_eq!(
-        named_extra_status(&missing, &preference, Language::English).as_deref(),
+        named_extra_status(&missing, &preference, true, Language::English).as_deref(),
         Some("Grok Bot \u{2013}")
     );
 }
@@ -1662,17 +1665,26 @@ fn named_extra_metric_never_labels_another_provider_or_an_unknown_id() {
     let grok = MetricPreference::NamedExtra("cursor-grok-bot".to_string());
     let mut codex = grok_bot_cursor(Some(42.0));
     codex.provider_id = "codex".to_string();
-    assert_eq!(named_extra_status(&codex, &grok, Language::English), None);
+    assert_eq!(
+        named_extra_status(&codex, &grok, true, Language::English),
+        None
+    );
 
     let retired = MetricPreference::NamedExtra("cursor-retired-window".to_string());
     assert_eq!(
-        named_extra_status(&grok_bot_cursor(Some(42.0)), &retired, Language::English),
+        named_extra_status(
+            &grok_bot_cursor(Some(42.0)),
+            &retired,
+            true,
+            Language::English
+        ),
         None
     );
     assert_eq!(
         named_extra_status(
             &grok_bot_cursor(Some(42.0)),
             &MetricPreference::Automatic,
+            true,
             Language::English
         ),
         None

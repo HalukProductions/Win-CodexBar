@@ -261,6 +261,17 @@ UpdatedJustNow = 방금 업데이트됨
 UpdatedMinutesAgo = { "{}" }분 전
 UpdatedHoursAgo = { "{}" }시간 전
 UpdatedDaysAgo = { "{}" }일 전
+# BCP 47 tag that selects the CLDR plural rules for the count keys below.
+LocaleTag = ko-KR
+UpdatedMinutesAgoOne = { "{}" }분 전
+UpdatedMinutesAgoFew = { "{}" }분 전
+UpdatedMinutesAgoMany = { "{}" }분 전
+UpdatedHoursAgoOne = { "{}" }시간 전
+UpdatedHoursAgoFew = { "{}" }시간 전
+UpdatedHoursAgoMany = { "{}" }시간 전
+UpdatedDaysAgoOne = { "{}" }일 전
+UpdatedDaysAgoFew = { "{}" }일 전
+UpdatedDaysAgoMany = { "{}" }일 전
 Status = 상태
 AllSystemsOperational = 모든 시스템 정상 작동 중
 Plan = 요금제

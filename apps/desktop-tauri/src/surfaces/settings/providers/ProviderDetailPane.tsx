@@ -532,7 +532,7 @@ export function ProviderDetailPane({
 
       <SettingsGroup className="provider-detail-group provider-accounts-group">
         {detail.id === "codex" && (
-          <CodexAccountsSection t={t} hidePersonalInfo={hidePersonalInfo} />
+          <CodexAccountsSection t={t} hidePersonalInfo={hidePersonalInfo} showAsUsed={showAsUsed} />
         )}
         {detail.id === "claude" && (
           <ClaudeAccountsSection

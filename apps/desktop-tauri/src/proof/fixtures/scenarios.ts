@@ -38,6 +38,7 @@ export const PROOF_SCENARIO_NAMES = [
   "codex-tool-activity",
   "usage-spend-unknown-tokens",
   "claude-swap-tcr",
+  "claude-swap-tcr-remaining",
   "overview-claude-swap-accounts",
   "overview-claude-swap-accounts-private",
   "overview-tcr-accounts",
@@ -50,6 +51,7 @@ export const PROOF_SCENARIO_NAMES = [
   "claudeplatform",
   "cookie-no-browsers",
   "vercel",
+  "vercel-team-id-invalid",
 ] as const;
 
 export type ProofScenarioName = (typeof PROOF_SCENARIO_NAMES)[number];
@@ -84,6 +86,10 @@ export interface ProofScenario {
   codexSpendModels?: SpendModelRow[];
   /** Browsers the cookie section detects; absent means the router's default pair. */
   detectedBrowsers?: DetectedBrowserBridge[];
+  /** Saved workspace, team or base-URL values by provider id; absent means none saved. */
+  workspaceIds?: Record<string, string>;
+  /** Error a workspace-value save rejects with, by provider id; absent means saves succeed. */
+  workspaceIdSaveErrors?: Record<string, string>;
 }
 
 export interface LocalSpendFixture {
@@ -433,6 +439,8 @@ function twoCodexAccountsScenario(now: Date): ProofScenario {
  * Overview with "Show all accounts in Overview" on: Codex expands to one row per
  * cached managed account, and Claude to one row per saved token account. Only
  * the Work token account has cached usage, so Personal shows "No usage data".
+ * The private variant lists Personal first although its id sorts second, so
+ * "Account N" must follow the row order.
  */
 function overviewAllAccountsScenario(now: Date, hidePersonalInfo: boolean): ProofScenario {
   const scenario = twoCodexAccountsScenario(now);
@@ -444,7 +452,7 @@ function overviewAllAccountsScenario(now: Date, hidePersonalInfo: boolean): Proo
       mergedOverviewAllAccounts: true,
       hidePersonalInfo,
     }),
-    claudeTokenAccounts: claudeTokenAccounts(),
+    claudeTokenAccounts: hidePersonalInfo ? claudeTokenAccounts().reverse() : claudeTokenAccounts(),
     claudeTokenAccountUsage: {
       [CLAUDE_WORK_TOKEN_ID]: {
         primary: { usedPercent: 22, windowMinutes: 300, resetsAt: isoAfter(now, 61) },
@@ -839,6 +847,16 @@ function overviewClaudeSwapAccountsScenario(now: Date, hidePersonalInfo: boolean
   };
 }
 
+/** The tcr pool from `claude-swap-tcr` with usage bars set to show what is left. */
+function claudeSwapTcrRemainingScenario(now: Date): ProofScenario {
+  const base = claudeSwapTcrScenario(now);
+  return {
+    ...base,
+    name: "claude-swap-tcr-remaining",
+    settings: { ...base.settings, showAsUsed: false },
+  };
+}
+
 /** The tcr pool from `claude-swap-tcr` with Overview rows on and cached usage. */
 function overviewTcrAccountsScenario(now: Date, hidePersonalInfo: boolean): ProofScenario {
   const base = claudeSwapTcrScenario(now);
@@ -1001,6 +1019,16 @@ function vercelScenario(now: Date): ProofScenario {
   };
 }
 
+/** Vercel with a saved Team ID whose next save the shell rejects as invalid. */
+function vercelTeamIdInvalidScenario(now: Date): ProofScenario {
+  return {
+    ...vercelScenario(now),
+    name: "vercel-team-id-invalid",
+    workspaceIds: { vercel: "team_proof" },
+    workspaceIdSaveErrors: { vercel: "Vercel Team ID is invalid" },
+  };
+}
+
 /**
  * Default data on a machine with no importable browser, so the cookie section
  * shows its empty-state hint beside the paste box.
@@ -1025,6 +1053,7 @@ const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   "codex-tool-activity": codexToolActivityScenario,
   "usage-spend-unknown-tokens": usageSpendUnknownTokensScenario,
   "claude-swap-tcr": claudeSwapTcrScenario,
+  "claude-swap-tcr-remaining": claudeSwapTcrRemainingScenario,
   "overview-claude-swap-accounts": (now) => overviewClaudeSwapAccountsScenario(now, false),
   "overview-claude-swap-accounts-private": (now) => overviewClaudeSwapAccountsScenario(now, true),
   "overview-tcr-accounts": (now) => overviewTcrAccountsScenario(now, false),
@@ -1037,6 +1066,7 @@ const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   claudeplatform: claudePlatformScenario,
   "cookie-no-browsers": cookieNoBrowsersScenario,
   vercel: vercelScenario,
+  "vercel-team-id-invalid": vercelTeamIdInvalidScenario,
 };
 
 export function isProofScenarioName(value: string): value is ProofScenarioName {

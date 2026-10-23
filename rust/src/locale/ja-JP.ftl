@@ -261,6 +261,17 @@ UpdatedJustNow = たった今
 UpdatedMinutesAgo = { "{}" }分前
 UpdatedHoursAgo = { "{}" }時間前
 UpdatedDaysAgo = { "{}" }日前
+# BCP 47 tag that selects the CLDR plural rules for the count keys below.
+LocaleTag = ja-JP
+UpdatedMinutesAgoOne = { "{}" }分前
+UpdatedMinutesAgoFew = { "{}" }分前
+UpdatedMinutesAgoMany = { "{}" }分前
+UpdatedHoursAgoOne = { "{}" }時間前
+UpdatedHoursAgoFew = { "{}" }時間前
+UpdatedHoursAgoMany = { "{}" }時間前
+UpdatedDaysAgoOne = { "{}" }日前
+UpdatedDaysAgoFew = { "{}" }日前
+UpdatedDaysAgoMany = { "{}" }日前
 Status = ステータス
 AllSystemsOperational = 全システム正常
 Plan = プラン

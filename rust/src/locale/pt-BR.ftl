@@ -288,6 +288,17 @@ UpdatedJustNow = Atualizado agora
 UpdatedMinutesAgo = Atualizado há { "{}" } minutos
 UpdatedHoursAgo = Atualizado há { "{}" } horas
 UpdatedDaysAgo = Atualizado há { "{}" } dias
+# BCP 47 tag that selects the CLDR plural rules for the count keys below.
+LocaleTag = pt-BR
+UpdatedMinutesAgoOne = Atualizado há { "{}" } minuto
+UpdatedMinutesAgoFew = Atualizado há { "{}" } minutos
+UpdatedMinutesAgoMany = Atualizado há { "{}" } minutos
+UpdatedHoursAgoOne = Atualizado há { "{}" } hora
+UpdatedHoursAgoFew = Atualizado há { "{}" } horas
+UpdatedHoursAgoMany = Atualizado há { "{}" } horas
+UpdatedDaysAgoOne = Atualizado há { "{}" } dia
+UpdatedDaysAgoFew = Atualizado há { "{}" } dias
+UpdatedDaysAgoMany = Atualizado há { "{}" } dias
 Status = Status
 AllSystemsOperational = Todos os sistemas estão operacionais
 Plan = Plano
