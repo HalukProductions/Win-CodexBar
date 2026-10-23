@@ -153,7 +153,7 @@ describe("CodexAccountsSection", () => {
     );
     render(<CodexAccountsSection t={t} />);
     await waitFor(() => {
-      expect(screen.getByText("free · 1h 38%")).toBeDefined();
+      expect(screen.getByText("free · 1h 62% PanelLeftSuffix")).toBeDefined();
     });
   });
 
@@ -165,7 +165,9 @@ describe("CodexAccountsSection", () => {
       accounts: [account("1")], accountOrdinals: { "1": 1 }, snapshots: { "1": usage },
     });
     render(<CodexAccountsSection t={t} />);
-    expect(await screen.findByText("plus · 5h 14% · 7d 93%")).toBeInTheDocument();
+    expect(
+      await screen.findByText("plus · 5h 86% PanelLeftSuffix · 7d 7% PanelLeftSuffix"),
+    ).toBeInTheDocument();
   });
 
   it("shows weekly-only limits in the settings pill", async () => {
@@ -176,7 +178,29 @@ describe("CodexAccountsSection", () => {
       accounts: [account("1")], accountOrdinals: { "1": 1 }, snapshots: { "1": usage },
     });
     render(<CodexAccountsSection t={t} />);
-    expect(await screen.findByText("pro · 7d 42%")).toBeInTheDocument();
+    expect(await screen.findByText("pro · 7d 58% PanelLeftSuffix")).toBeInTheDocument();
+  });
+
+  it("labels the settings pill as used when showAsUsed is on", async () => {
+    const usage = snapshot(14, "plus");
+    usage.primaryWindow!.limitWindowSeconds = 18_000;
+    usage.secondaryWindow = { usedPercent: 93, resetAt: null, limitWindowSeconds: 604_800 };
+    tauriMocks.getCodexAccountsState.mockResolvedValue({
+      accounts: [account("1")], accountOrdinals: { "1": 1 }, snapshots: { "1": usage },
+    });
+    render(<CodexAccountsSection t={t} showAsUsed />);
+    expect(
+      await screen.findByText("plus · 5h 14% PanelUsedSuffix · 7d 93% PanelUsedSuffix"),
+    ).toBeInTheDocument();
+  });
+
+  it("clamps out-of-range usage before labelling it as left", async () => {
+    const usage = snapshot(130);
+    tauriMocks.getCodexAccountsState.mockResolvedValue({
+      accounts: [account("1")], accountOrdinals: { "1": 1 }, snapshots: { "1": usage },
+    });
+    render(<CodexAccountsSection t={t} />);
+    expect(await screen.findByText("free · 1h 0% PanelLeftSuffix")).toBeInTheDocument();
   });
 
   it.each(["ambient", "managedByApp"] as const)("offers %s reauthentication and reloads the account state", async (source) => {
@@ -196,7 +220,7 @@ describe("CodexAccountsSection", () => {
     expect(tauriMocks.codexAccountReauthenticate).toHaveBeenCalledTimes(1);
     expect(tauriMocks.codexAccountReauthenticate).toHaveBeenCalledWith("ambient");
     await waitFor(() => {
-      expect(screen.getByText("free · 1h 12%")).toBeDefined();
+      expect(screen.getByText("free · 1h 88% PanelLeftSuffix")).toBeDefined();
     });
   });
 

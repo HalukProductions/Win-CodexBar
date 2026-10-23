@@ -15,6 +15,8 @@ import { buildCodexAccountSurfaceLabels } from "../../../../../components/codexA
 interface Props {
   t: (key: LocaleKey) => string;
   hidePersonalInfo?: boolean;
+  /** Settings `showAsUsed`; usage windows read as used instead of left. */
+  showAsUsed?: boolean;
 }
 
 /**
@@ -28,7 +30,7 @@ interface Props {
  * ambient identity, and remove managed homes. For MSIX Codex Desktop installs
  * a restart action is offered when a session snapshot is available to restore.
  */
-export function CodexAccountsSection({ t, hidePersonalInfo = false }: Props) {
+export function CodexAccountsSection({ t, hidePersonalInfo = false, showAsUsed = false }: Props) {
   const {
     accounts,
     snapshots,
@@ -211,7 +213,7 @@ export function CodexAccountsSection({ t, hidePersonalInfo = false }: Props) {
                             : t("CodexAccountsSourceManaged")}
                         </span>
                         {snapshot ? (
-                          <CodexUsagePill snapshot={snapshot} t={t} />
+                          <CodexUsagePill snapshot={snapshot} t={t} showAsUsed={showAsUsed} />
                         ) : (
                           <span className="credential-card__date">
                             {t("CodexAccountsUsageUnavailable")}
@@ -277,16 +279,21 @@ export function CodexAccountsSection({ t, hidePersonalInfo = false }: Props) {
 function CodexUsagePill({
   snapshot,
   t,
+  showAsUsed,
 }: {
   snapshot: CodexAccountUsageSnapshot;
   t: (key: LocaleKey) => string;
+  showAsUsed: boolean;
 }) {
   const plan = snapshot.plan ?? "";
   const blocked = snapshot.allowed === false || snapshot.limitReached === true;
   const windows = [snapshot.primaryWindow, snapshot.secondaryWindow]
     .filter((window): window is NonNullable<typeof window> => window != null)
     .map((window) => {
-      const pct = `${Math.round(window.usedPercent)}%`;
+      const used = Math.max(0, Math.min(100, Math.round(window.usedPercent)));
+      const pct = showAsUsed
+        ? `${used}% ${t("PanelUsedSuffix")}`
+        : `${100 - used}% ${t("PanelLeftSuffix")}`;
       if (window.limitWindowSeconds % 86_400 === 0) {
         return `${window.limitWindowSeconds / 86_400}d ${pct}`;
       }
