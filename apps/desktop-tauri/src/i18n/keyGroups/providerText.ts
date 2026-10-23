@@ -130,6 +130,7 @@ export const PROVIDER_TEXT_LOCALE_KEYS = [
   "ProviderTextDailyUsage",
   "ProviderTextResetsDaily",
   "ProviderTextNoActiveSession",
+  "ProviderTextLimitsNotAvailable",
   "ProviderTextKeyQuota",
   "ProviderTextAccountBalance",
   "ProviderTextMonthlyBudget",

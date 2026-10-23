@@ -1421,6 +1421,7 @@ ProviderTextNoEditPredictions = No edit predictions included
 ProviderTextDailyUsage = Daily usage
 ProviderTextResetsDaily = resets daily
 ProviderTextNoActiveSession = No active 5h session
+ProviderTextLimitsNotAvailable = Limits not available
 ProviderTextKeyQuota = Key quota
 ProviderTextAccountBalance = Account balance
 ProviderTextMonthlyBudget = Monthly budget

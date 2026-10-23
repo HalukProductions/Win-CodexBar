@@ -1418,6 +1418,7 @@ ProviderTextNoEditPredictions = 편집 예측 미포함
 ProviderTextDailyUsage = 일일 사용량
 ProviderTextResetsDaily = 매일 초기화
 ProviderTextNoActiveSession = 활성 5시간 세션 없음
+ProviderTextLimitsNotAvailable = 한도 정보 없음
 ProviderTextKeyQuota = 키 할당량
 ProviderTextAccountBalance = 계정 잔액
 ProviderTextMonthlyBudget = 월간 예산

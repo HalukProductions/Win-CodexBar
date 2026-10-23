@@ -1417,6 +1417,7 @@ ProviderTextNoEditPredictions = Підказки правок не включе�
 ProviderTextDailyUsage = Використання за день
 ProviderTextResetsDaily = скидається щодня
 ProviderTextNoActiveSession = Немає активного 5-годинного сеансу
+ProviderTextLimitsNotAvailable = Ліміти недоступні
 ProviderTextKeyQuota = Квота ключа
 ProviderTextAccountBalance = Баланс облікового запису
 ProviderTextMonthlyBudget = Бюджет на місяць

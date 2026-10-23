@@ -16,6 +16,8 @@ use super::spend_window;
 use super::subscription_details;
 
 const CLOUDFLARE_BODY_PREFIX_BYTES: usize = 64 * 1024;
+/// Session-lane text for a successful answer with nothing measurable (upstream #4687).
+const LIMITS_NOT_AVAILABLE: &str = "Limits not available";
 
 fn is_cloudflare_challenge_response(
     status: StatusCode,
@@ -462,6 +464,8 @@ impl ClaudeWebApiFetcher {
             cost = Some(apply_prepaid_balance(balance, cost));
         }
 
+        mark_limits_unavailable_without_quota(&mut result.usage, cost.as_ref());
+
         if let Some(cost) = cost {
             result = result.with_cost(cost);
         }
@@ -907,6 +911,22 @@ fn apply_prepaid_balance(balance: PrepaidBalance, existing: Option<CostSnapshot>
         _ => CostSnapshot::new(0.0, balance.currency_code, "Extra usage")
             .with_balance(balance.amount_dollars),
     }
+}
+
+/// Upstream #4687: a successful web answer with no measured quota window and no
+/// spend (Claude Free returns null `five_hour` and `seven_day`) is limits
+/// unavailable, not an idle session. Any measured lane or any cost (including a
+/// prepaid balance) keeps the existing presentation.
+fn mark_limits_unavailable_without_quota(usage: &mut UsageSnapshot, cost: Option<&CostSnapshot>) {
+    let has_measured_quota = !usage.primary.is_informational
+        || usage.secondary.is_some()
+        || usage.model_specific.is_some()
+        || usage.tertiary.is_some()
+        || !usage.extra_rate_windows.is_empty();
+    if has_measured_quota || cost.is_some() {
+        return;
+    }
+    usage.primary = RateWindow::informational(LIMITS_NOT_AVAILABLE);
 }
 
 /// Push extras in upstream order: oauth-apps → scoped weekly → routines when present.
