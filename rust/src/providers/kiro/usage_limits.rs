@@ -259,7 +259,16 @@ async fn ensure_reachable_at(endpoint: &str) -> Result<(), ProviderError> {
         .timeout(REACHABILITY_TIMEOUT)
         .build()
         .map_err(|error| ProviderError::Other(error.to_string()))?;
-    client.head(endpoint).send().await?;
+    // The shared classifier retains only refused connections, but offline
+    // Windows hosts usually fail DNS first. Every connect failure here means the
+    // host is unreachable, so it must keep the cached snapshot like upstream.
+    client.head(endpoint).send().await.map_err(|error| {
+        if error.is_connect() {
+            ProviderError::Timeout
+        } else {
+            ProviderError::Network(error)
+        }
+    })?;
     Ok(())
 }
 
@@ -579,7 +588,7 @@ mod tests {
             .await
             .expect_err("a closed port must fail the reachability check");
 
-        assert!(matches!(error, ProviderError::Network(_)));
+        assert!(matches!(error, ProviderError::Timeout));
         assert!(error.is_transport_failure());
     }
 
