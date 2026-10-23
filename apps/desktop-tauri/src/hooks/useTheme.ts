@@ -44,10 +44,13 @@ function apply(theme: ResolvedTheme) {
  */
 function followWindowsTheme(): () => void {
   let cancelled = false;
+  // Reads can overlap (focus during a poll); only the latest one may apply.
+  let latestRequest = 0;
   const sync = () => {
+    const request = ++latestRequest;
     getSystemTheme()
       .then((theme) => {
-        if (!cancelled) apply(theme);
+        if (!cancelled && request === latestRequest) apply(theme);
       })
       .catch(() => {});
   };

@@ -138,4 +138,30 @@ describe("useTheme", () => {
 
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe("light"));
   });
+
+  it("does not let an older read that finishes last replace a newer one", async () => {
+    setTauriBridge(true);
+    let resolveFirst: (theme: "light" | "dark") => void = () => {};
+    mockedGetSystemTheme
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockResolvedValueOnce("light");
+
+    renderHook(() => useTheme("auto", { followSystem: true }));
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await waitFor(() => expect(document.documentElement.dataset.theme).toBe("light"));
+
+    await act(async () => {
+      resolveFirst("dark");
+      await Promise.resolve();
+    });
+
+    expect(document.documentElement.dataset.theme).toBe("light");
+  });
 });
