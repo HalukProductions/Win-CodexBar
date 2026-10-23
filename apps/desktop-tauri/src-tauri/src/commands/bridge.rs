@@ -387,8 +387,12 @@ pub struct ProviderUsageSnapshot {
     pub pace: Option<PaceSnapshot>,
     /// Whether the fetch allows pace (upstream `allowsPace(dataConfidence:)`).
     /// The tray scores its pace tint at presentation time, so it needs this
-    /// beside the windows. Tray-only; not sent to the frontend.
-    #[serde(default = "default_pace_authoritative", skip_serializing)]
+    /// beside the windows. Sent only when false, so the frontend can skip
+    /// the pace advice it derives from window timing (on-pace budgets).
+    #[serde(
+        default = "default_pace_authoritative",
+        skip_serializing_if = "is_pace_authoritative"
+    )]
     pub pace_authoritative: bool,
     /// The quota percentages are a local estimate (upstream
     /// `dataConfidence == .estimated`); percent surfaces prefix them with `~`.
@@ -467,6 +471,10 @@ fn default_source_label() -> String {
 
 fn default_pace_authoritative() -> bool {
     true
+}
+
+fn is_pace_authoritative(value: &bool) -> bool {
+    *value
 }
 
 fn default_error_state() -> codexbar::core::ProviderStateKind {

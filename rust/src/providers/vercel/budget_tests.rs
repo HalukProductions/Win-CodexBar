@@ -221,6 +221,10 @@ fn native_user_id_budget_is_matched_and_rendered() {
             Some("fixture@example.com")
         );
         assert_eq!(result.source_label, "api");
+        assert!(
+            !result.pace_authoritative,
+            "a spend budget must not get pace or reserve advice"
+        );
     });
 }
 
@@ -259,6 +263,7 @@ async fn no_matching_budget_is_the_unconfigured_state_not_zero_spend() {
     .await;
     assert!(result.usage.primary.is_informational);
     assert!(!result.usage.primary.usage_known);
+    assert!(!result.pace_authoritative);
     let details = result.display_details();
     assert_eq!(details.len(), 1);
     assert_eq!(details[0].title(), "No personal budget configured");

@@ -116,6 +116,25 @@ describe("UsageDetailsSection", () => {
     expect(screen.getByRole("img", { name: /PaceChartAriaLabel/i })).toBeInTheDocument();
   });
 
+  it("skips the on-pace budget when the snapshot is not pace-authoritative", () => {
+    // A Vercel spend budget: a monthly window with a reset, but no pace.
+    const resetsAt = new Date(Date.now() + 17 * 24 * 60 * 60 * 1000).toISOString();
+    const { container } = render(
+      <UsageDetailsSection
+        provider={snapshot({
+          providerId: "vercel",
+          displayName: "Vercel",
+          primary: window(50, 31 * 24 * 60, resetsAt),
+          primaryLabel: "Personal budget",
+          sourceLabel: "api",
+          paceAuthoritative: false,
+        })}
+      />,
+    );
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByText(/On-pace budget/)).not.toBeInTheDocument();
+  });
+
   it("skips budgets for windows shorter than a week", () => {
     const resetsAt = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString();
     const { container } = render(

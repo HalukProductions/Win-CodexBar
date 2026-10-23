@@ -247,6 +247,7 @@ function vercelSnapshot(now: Date): ProviderUsageSnapshot {
       secondary: null,
       accountOrganization: "Example Team",
       sourceLabel: "api",
+      paceAuthoritative: false,
       displayDetails: [
         {
           id: "vercel-budget-spend",

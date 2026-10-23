@@ -428,7 +428,7 @@
       "size": [310, 1032],
       "steps": [
         { "expectText": ["Vercel", "Personal budget", "Spend", "Limit", "Remaining", "$58.00"] },
-        { "expectNoText": "Available balance" },
+        { "expectNoText": ["Available balance", "in reserve", "Lasts until reset"] },
         { "screenshot": "flyout-vercel-budget", "clip": "panel" }
       ]
     },
@@ -439,6 +439,7 @@
       "steps": [
         { "expectText": ["Vercel personal budget", "Access token", "Vercel team", "Team ID"] },
         { "expectNoText": "Remove" },
+        { "expectNoText": ["On-pace budget", "in reserve"] },
         { "screenshot": "settings-vercel-budget" }
       ]
     },

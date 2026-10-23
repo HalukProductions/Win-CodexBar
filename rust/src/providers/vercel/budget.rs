@@ -293,7 +293,11 @@ fn build_result(
     if let Some(email) = user.email.as_deref() {
         usage = usage.with_email(email);
     }
-    Ok(ProviderFetchResult::new(usage, "api").with_display_details(rows.into_iter().flatten()))
+    // A spend budget has no expected consumption curve, so the shell's
+    // elapsed-time pace would invent "in reserve" and run-out advice.
+    Ok(ProviderFetchResult::new(usage, "api")
+        .with_non_authoritative_pace()
+        .with_display_details(rows.into_iter().flatten()))
 }
 
 impl VercelProvider {
