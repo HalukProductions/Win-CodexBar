@@ -508,3 +508,57 @@ fn zero_allowance_is_informational_and_hidden_from_the_card() {
         Some(NO_ALLOWANCE)
     );
 }
+
+#[test]
+fn base_url_override_accepts_https_and_loopback_http() {
+    assert_eq!(
+        validated_base_url("https://api.trae.cn").as_deref(),
+        Some("https://api.trae.cn")
+    );
+    assert_eq!(
+        validated_base_url("http://127.0.0.1:4011/").as_deref(),
+        Some("http://127.0.0.1:4011")
+    );
+    assert_eq!(
+        validated_base_url("http://localhost:9").as_deref(),
+        Some("http://localhost:9")
+    );
+    assert_eq!(
+        validated_base_url("http://[::1]:9").as_deref(),
+        Some("http://[::1]:9")
+    );
+}
+
+#[test]
+fn base_url_override_rejects_remote_plain_http_and_unsafe_forms() {
+    for raw in [
+        "http://api.trae.cn",
+        "http://localhost.attacker.test",
+        "ftp://127.0.0.1",
+        "https://user:pass@api.trae.cn",
+        "https://api.trae.cn?x=1",
+        "https://api.trae.cn#frag",
+        "http://127.0.0.1%2f.attacker.test",
+        "not a url",
+        "",
+    ] {
+        assert!(
+            validated_base_url(raw).is_none(),
+            "{raw} should be rejected"
+        );
+    }
+}
+
+#[test]
+fn base_url_override_falls_back_to_production_when_unset_or_invalid() {
+    assert_eq!(base_url_from_override(None), BASE_URL);
+    assert_eq!(base_url_from_override(Some("   ")), BASE_URL);
+    assert_eq!(
+        base_url_from_override(Some("http://attacker.example.com")),
+        BASE_URL
+    );
+    assert_eq!(
+        base_url_from_override(Some("'http://127.0.0.1:4011'")),
+        "http://127.0.0.1:4011"
+    );
+}

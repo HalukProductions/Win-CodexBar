@@ -796,6 +796,10 @@ POST https://api.trae.cn/trae/api/v2/pay/user_current_entitlement_list
   or no token) fail parsing instead of showing zero usage. 429 reports rate
   limiting, 408 and 5xx report the service as unavailable, and response bodies
   are never echoed in errors.
+- For proof runs and fake servers, `TRAE_CN_BASE_URL` replaces the API origin
+  (default `https://api.trae.cn`). It accepts `https://`, or `http://` only for a
+  loopback host (`127.0.0.1`, `localhost`, `[::1]`), with no credentials, query,
+  or fragment. Any other value is ignored with a warning.
 
 ### Aerostack
 
