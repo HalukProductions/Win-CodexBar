@@ -1071,7 +1071,7 @@ mod tests {
                     "feature": "FEATURE_OMNI",
                     "type": "GIFT",
                     "amountUsedRatio": 0.6,
-                    "expireTime": "2026-12-31T15:59:59Z",
+                    "expireTime": "2099-12-31T15:59:59Z",
                     "displayName": "Welcome Credit"
                 }]
             }))
