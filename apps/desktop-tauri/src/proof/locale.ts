@@ -1,4 +1,5 @@
 import englishFtl from "../../../../rust/src/locale/en-US.ftl?raw";
+import ukFtl from "../../../../rust/src/locale/uk-UA.ftl?raw";
 import { ALL_LOCALE_KEYS } from "../i18n/keys";
 import type { LanguageOption, LocaleStrings } from "../types/bridge";
 
@@ -10,6 +11,21 @@ export function parseFtlEntries(text: string): Record<string, string> {
     if (match) entries[match[1]] = match[2].replace(/\{ "\{\}" \}/g, "{}");
   }
   return entries;
+}
+
+/**
+ * The shipped uk-UA strings for `keys`, parsed the same way as the English file.
+ * A scenario passes the result as `localeOverrides` to show one localized surface
+ * while the rest of the proof stays English. Keys missing from uk-UA are omitted.
+ */
+export function ukLocaleOverrides(keys: readonly string[]): Record<string, string> {
+  const parsed = parseFtlEntries(ukFtl);
+  const overrides: Record<string, string> = {};
+  for (const key of keys) {
+    const value = parsed[key];
+    if (value !== undefined) overrides[key] = value;
+  }
+  return overrides;
 }
 
 let cached: LocaleStrings | null = null;

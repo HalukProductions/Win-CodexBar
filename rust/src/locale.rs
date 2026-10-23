@@ -1776,6 +1776,7 @@ locale_keys! {
     ResetsInHoursOnly,
     ResetsInDaysOnly,
     RegeneratesCountdown,
+    RegeneratesNow,
     CostTitleClawRouterSpend,
     CostTitleClawRouterMonthlyBudget,
     ResetsAtTime,

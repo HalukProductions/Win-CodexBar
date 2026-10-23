@@ -69,6 +69,7 @@ export const PROVIDER_TEXT_LOCALE_KEYS = [
   "ResetsInHoursOnly",
   "ResetsInDaysOnly",
   "RegeneratesCountdown",
+  "RegeneratesNow",
   "CostTitleClawRouterSpend",
   "CostTitleClawRouterMonthlyBudget",
   "ResetsAtTime",
