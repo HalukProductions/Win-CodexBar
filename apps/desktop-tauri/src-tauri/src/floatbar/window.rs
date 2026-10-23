@@ -278,10 +278,17 @@ pub fn show(app: &tauri::AppHandle, settings: &codexbar::settings::Settings) -> 
         .build()
         .map_err(|e| e.to_string())?;
 
+    let proof_origin = crate::proof_harness::window_origin()
+        .and_then(|_| win.available_monitors().ok())
+        .and_then(|monitors| crate::proof_harness::window_origin_position(&monitors, (w, h)));
+
     // Restore prior geometry if we have one. Otherwise, taskbar style opens
     // near the bottom while the original floating style keeps its top-center
-    // placement.
-    if let Some(g) = geometry_store::load_entry(FLOATBAR_LABEL)
+    // placement. A proof origin wins over both; the placement record below
+    // then keeps the bar there instead of snapping it back.
+    if let Some((x, y)) = proof_origin {
+        let _ = win.set_position(PhysicalPosition::new(x, y));
+    } else if let Some(g) = geometry_store::load_entry(FLOATBAR_LABEL)
         .filter(|g| !is_unusable_stored_logical_position(g.x, g.y))
     {
         let _ = win.set_position(LogicalPosition::new(g.x as f64, g.y as f64));
@@ -343,6 +350,10 @@ pub fn hide(app: &tauri::AppHandle) -> Result<(), String> {
 /// callbacks deliver a `&Window` while imperative call sites have a
 /// `&WebviewWindow`.
 pub fn remember_geometry<R: tauri::Runtime, M: WindowGeometry<R>>(window: &M) {
+    // A proof placement must not become the user's saved float bar position.
+    if crate::proof_harness::window_origin().is_some() {
+        return;
+    }
     let Ok(pos) = window.outer_position() else {
         return;
     };

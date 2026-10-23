@@ -144,6 +144,7 @@ fn main() {
 
     let proof_config = proof_harness::ProofConfig::from_env();
     let is_proof_mode = proof_config.is_some();
+    proof_harness::install_window_origin_from_env(is_proof_mode);
     let force_start_visible = std::env::var_os("CODEXBAR_START_VISIBLE").is_some();
     let mut settings = codexbar::settings::Settings::load();
     settings.apply_display_mode_fold_migration();

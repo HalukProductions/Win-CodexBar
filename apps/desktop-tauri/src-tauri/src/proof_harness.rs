@@ -27,9 +27,14 @@
 //! is installed before the first event/WebView read and pinned against refresh
 //! eviction. Malformed files log a warning and the shell continues without
 //! seeding — proof runs must never crash on the seed.
+//!
+//! `CODEXBAR_PROOF_WINDOW_ORIGIN=<x>,<y>` (physical pixels, proof mode only)
+//! opens the flyout, Settings and float bar windows at that point instead of
+//! their normal placement, so proof runs can keep every window on one chosen
+//! monitor.
 
 use std::collections::HashSet;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
 use codexbar::core::ProviderId;
 use serde::Serialize;
@@ -121,21 +126,31 @@ pub fn activate(app: &AppHandle) {
 
     let Some(config) = config else { return };
     let target = config.surface_mode();
+    let monitors = app
+        .get_webview_window("main")
+        .and_then(|window| window.available_monitors().ok())
+        .unwrap_or_default();
+    let origin_props = match target {
+        SurfaceMode::Settings => SurfaceMode::Settings,
+        _ => SurfaceMode::TrayPanel,
+    }
+    .window_properties();
+    let origin = window_origin_position(&monitors, (origin_props.width, origin_props.height));
     if target == SurfaceMode::PopOut {
         tracing::info!("proof-harness: opening the tray-panel flyout window");
         // Called from the async setup task, so building the window is safe.
         // Proof automation must never take focus from the user's app.
-        if let Err(err) = shell::flyout_window::open_or_focus(app, None, Activation::Never) {
+        if let Err(err) = shell::flyout_window::open_or_focus(app, origin, Activation::Never) {
             tracing::error!("proof-harness: flyout open FAILED: {err}");
         }
         return;
     }
-    let position = match target {
+    let position = origin.or_else(|| match target {
         // Detached surfaces are larger than tray panels. Let their normal
         // positioning paths center/clamp them instead of reusing tray coords.
         SurfaceMode::Settings | SurfaceMode::PopOut => None,
         _ => proof_window_position(app),
-    };
+    });
     tracing::info!(
         "proof-harness: activating surface={} tab={:?} position={:?}",
         config.target_surface,
@@ -277,6 +292,129 @@ pub fn is_proof_mode(app: &AppHandle) -> bool {
     app.try_state::<Mutex<AppState>>()
         .map(|st| st.lock().unwrap().proof_config.is_some())
         .unwrap_or(false)
+}
+
+// ── Window origin (CODEXBAR_PROOF_WINDOW_ORIGIN) ─────────────────────
+
+/// Environment variable with a `<x>,<y>` physical-pixel origin for proof
+/// windows. Honored only in proof mode.
+pub const WINDOW_ORIGIN_ENV_VAR: &str = "CODEXBAR_PROOF_WINDOW_ORIGIN";
+
+static WINDOW_ORIGIN: OnceLock<(i32, i32)> = OnceLock::new();
+
+/// Read `CODEXBAR_PROOF_WINDOW_ORIGIN` once at startup. Outside proof mode,
+/// or when the value is unset or malformed, no origin is installed and every
+/// window keeps its normal placement.
+pub fn install_window_origin_from_env(proof_mode: bool) {
+    if let Some(origin) = window_origin_from_env(proof_mode) {
+        tracing::info!("proof-harness: window origin {origin:?}");
+        let _ = WINDOW_ORIGIN.set(origin);
+    }
+}
+
+fn window_origin_from_env(proof_mode: bool) -> Option<(i32, i32)> {
+    let raw = std::env::var(WINDOW_ORIGIN_ENV_VAR).ok()?;
+    if raw.trim().is_empty() {
+        return None;
+    }
+    if !proof_mode {
+        tracing::warn!("{WINDOW_ORIGIN_ENV_VAR} is ignored outside proof mode");
+        return None;
+    }
+    match parse_window_origin(&raw) {
+        Ok(origin) => Some(origin),
+        Err(msg) => {
+            tracing::warn!("{WINDOW_ORIGIN_ENV_VAR}: {msg}, ignoring");
+            None
+        }
+    }
+}
+
+/// Parse `<x>,<y>` as signed physical pixels, e.g. `-3600,-1188`.
+fn parse_window_origin(raw: &str) -> Result<(i32, i32), String> {
+    let (x, y) = raw
+        .split_once(',')
+        .ok_or_else(|| format!("expected '<x>,<y>', got '{raw}'"))?;
+    let parse = |part: &str| {
+        part.trim()
+            .parse::<i32>()
+            .map_err(|_| format!("'{}' is not a whole pixel coordinate", part.trim()))
+    };
+    Ok((parse(x)?, parse(y)?))
+}
+
+/// The proof window origin, when one was installed at startup.
+pub fn window_origin() -> Option<(i32, i32)> {
+    WINDOW_ORIGIN.get().copied()
+}
+
+/// Top-left (physical px) for a proof window of `logical_size` at the
+/// installed origin: on the monitor whose full bounds contain the origin,
+/// clamped so the window stays inside that monitor's work area. `None` when
+/// no origin is installed or no monitor contains it.
+pub fn window_origin_position(
+    monitors: &[tauri::Monitor],
+    logical_size: (f64, f64),
+) -> Option<(i32, i32)> {
+    let origin = window_origin()?;
+    let monitors = monitors
+        .iter()
+        .map(|monitor| {
+            let work = monitor.work_area();
+            OriginMonitor {
+                bounds: crate::window_positioner::Rect::new(
+                    monitor.position().x,
+                    monitor.position().y,
+                    monitor.size().width,
+                    monitor.size().height,
+                ),
+                work_area: crate::window_positioner::Rect::new(
+                    work.position.x,
+                    work.position.y,
+                    work.size.width,
+                    work.size.height,
+                ),
+                scale_factor: monitor.scale_factor(),
+            }
+        })
+        .collect::<Vec<_>>();
+    let position = origin_on_monitor(origin, &monitors, logical_size);
+    if position.is_none() {
+        tracing::warn!(
+            "{WINDOW_ORIGIN_ENV_VAR}: no monitor contains {origin:?}; using normal placement"
+        );
+    }
+    position
+}
+
+#[derive(Debug, Clone, Copy)]
+struct OriginMonitor {
+    bounds: crate::window_positioner::Rect,
+    work_area: crate::window_positioner::Rect,
+    scale_factor: f64,
+}
+
+fn origin_on_monitor(
+    origin: (i32, i32),
+    monitors: &[OriginMonitor],
+    logical_size: (f64, f64),
+) -> Option<(i32, i32)> {
+    let (x, y) = origin;
+    let monitor = monitors.iter().find(|m| {
+        x >= m.bounds.x && x < m.bounds.right() && y >= m.bounds.y && y < m.bounds.bottom()
+    })?;
+    // Window sizes are small positive logical constants or measured sizes.
+    let size = crate::window_positioner::PanelSize {
+        width: logical_size.0.round().max(1.0) as u32,
+        height: logical_size.1.round().max(1.0) as u32,
+    };
+    Some(crate::window_positioner::clamp_position_to_work_area(
+        x,
+        y,
+        &monitor.work_area,
+        &size,
+        monitor.scale_factor,
+    ))
 }
 
 /// Synthetic account rows are available only through a proof-mode command.
@@ -895,6 +1033,91 @@ mod tests {
                 "{json}"
             );
         }
+    }
+
+    #[test]
+    fn window_origin_parses_signed_physical_coordinates() {
+        assert_eq!(parse_window_origin("100,200"), Ok((100, 200)));
+        assert_eq!(parse_window_origin("-3600,-1188"), Ok((-3600, -1188)));
+        assert_eq!(parse_window_origin(" -3600 , 25 "), Ok((-3600, 25)));
+    }
+
+    #[test]
+    fn window_origin_rejects_malformed_values() {
+        for raw in ["", "100", "100;200", "a,b", "1.5,2", "1,2,3", ",5"] {
+            assert!(parse_window_origin(raw).is_err(), "{raw}");
+        }
+    }
+
+    fn with_window_origin_env(value: Option<&str>, test: impl FnOnce()) {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev = std::env::var(WINDOW_ORIGIN_ENV_VAR).ok();
+        match value {
+            // SAFETY: `ENV_LOCK` serializes every env mutation in these tests.
+            Some(value) => unsafe { std::env::set_var(WINDOW_ORIGIN_ENV_VAR, value) },
+            // SAFETY: same `ENV_LOCK` guard.
+            None => unsafe { std::env::remove_var(WINDOW_ORIGIN_ENV_VAR) },
+        }
+        test();
+        match prev {
+            // SAFETY: `ENV_LOCK` is still held while the prior value returns.
+            Some(prev) => unsafe { std::env::set_var(WINDOW_ORIGIN_ENV_VAR, prev) },
+            // SAFETY: same `ENV_LOCK` guard.
+            None => unsafe { std::env::remove_var(WINDOW_ORIGIN_ENV_VAR) },
+        }
+    }
+
+    #[test]
+    fn window_origin_env_is_honored_only_in_proof_mode() {
+        with_window_origin_env(Some("-3600,-1188"), || {
+            assert_eq!(window_origin_from_env(true), Some((-3600, -1188)));
+            assert_eq!(window_origin_from_env(false), None);
+        });
+        with_window_origin_env(Some("left,top"), || {
+            assert_eq!(window_origin_from_env(true), None);
+        });
+        with_window_origin_env(None, || {
+            assert_eq!(window_origin_from_env(true), None);
+        });
+    }
+
+    fn display(x: i32, y: i32, width: u32, height: u32, scale: f64) -> OriginMonitor {
+        let rect = crate::window_positioner::Rect::new(x, y, width, height);
+        OriginMonitor {
+            bounds: rect,
+            work_area: rect,
+            scale_factor: scale,
+        }
+    }
+
+    #[test]
+    fn window_origin_lands_on_the_monitor_that_contains_it() {
+        let primary = OriginMonitor {
+            work_area: crate::window_positioner::Rect::new(0, 0, 1920, 1032),
+            ..display(0, 0, 1920, 1080, 1.0)
+        };
+        let secondary = display(-3600, -1188, 3600, 2400, 2.0);
+        let monitors = [primary, secondary];
+
+        // Inside the secondary display: kept 8 px inside its work area.
+        assert_eq!(
+            origin_on_monitor((-3600, -1188), &monitors, (310.0, 776.0)),
+            Some((-3592, -1180))
+        );
+        assert_eq!(
+            origin_on_monitor((-3000, -1000), &monitors, (310.0, 776.0)),
+            Some((-3000, -1000))
+        );
+        // Near the bottom-right edge: pulled back so the 2x window fits.
+        assert_eq!(
+            origin_on_monitor((-10, 1200), &monitors, (310.0, 776.0)),
+            Some((-628, 1212 - 1552 - 8))
+        );
+        // Off every monitor: no override.
+        assert_eq!(
+            origin_on_monitor((5000, 5000), &monitors, (310.0, 776.0)),
+            None
+        );
     }
 
     #[test]
