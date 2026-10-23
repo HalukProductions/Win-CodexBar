@@ -13,6 +13,10 @@ pub(super) const GROK_BOT_TITLE: &str = "Grok Bot";
 /// Optional monthly additional spend for unified personal memberships.
 const UNIFIED_USAGE_PATH: &str = "/api/dashboard/v2/usage-status";
 const UNIFIED_USAGE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+/// A 7-day shared pool; monthly billing cycles never span exactly this length.
+const WEEKLY_POOL_WINDOW_MINUTES: u32 = 7 * 24 * 60;
+/// Primary label once the shared weekly pool drives the main meter (upstream `"Weekly"`).
+pub(super) const SHARED_WEEKLY_POOL_LABEL: &str = "Weekly";
 
 #[derive(Debug)]
 pub struct CursorUsageResult {
@@ -23,6 +27,28 @@ pub struct CursorUsageResult {
     pub(super) email: Option<String>,
     pub(super) plan_type: Option<String>,
     pub(super) grok_bot: Option<NamedRateWindow>,
+    /// Overrides the primary label; `None` keeps the shared spec label.
+    pub(super) primary_label: Option<&'static str>,
+}
+
+/// Applies the sand usage feed to a built result. The Grok Bot allowance is
+/// best-effort. A usable unified weekly pool replaces the monthly primary,
+/// Auto and API lanes, and the Grok Bot extra it would duplicate. On-demand
+/// cost is untouched.
+fn apply_sand_usage(
+    result: &mut CursorUsageResult,
+    sand: Option<&SandUsageStatus>,
+    now: DateTime<Utc>,
+) {
+    result.grok_bot = sand.and_then(|status| status.to_window(now));
+    let Some(pool) = sand.and_then(|status| status.shared_weekly_pool(now)) else {
+        return;
+    };
+    result.primary = pool;
+    result.secondary = None;
+    result.model_specific = None;
+    result.grok_bot = None;
+    result.primary_label = Some(SHARED_WEEKLY_POOL_LABEL);
 }
 
 /// Cursor API client
@@ -78,7 +104,7 @@ impl CursorApi {
             .resolve_team_budget(&usage_summary, user_info.as_ref(), cookie_header)
             .await;
         let mut result = self.build_result_with_team_budget(usage_summary, user_info, team_budget);
-        result.grok_bot = sand_result.ok().flatten();
+        apply_sand_usage(&mut result, sand_result.ok().flatten().as_ref(), Utc::now());
         if unified_personal && let Some(cost) = self.fetch_unified_monthly_cost(cookie_header).await
         {
             // Upstream #4593: the monthly billing read replaces the summary's
@@ -157,7 +183,7 @@ impl CursorApi {
     async fn fetch_sand_usage(
         &self,
         cookie_header: &str,
-    ) -> Result<Option<NamedRateWindow>, ProviderError> {
+    ) -> Result<Option<SandUsageStatus>, ProviderError> {
         let url = format!("{}/api/dashboard/get-sand-usage-status", self.base_url);
         let response = self
             .client
@@ -177,7 +203,7 @@ impl CursorApi {
             .json()
             .await
             .map_err(|e| ProviderError::Parse(e.to_string()))?;
-        Ok(status.to_window(Utc::now()))
+        Ok(Some(status))
     }
 
     async fn fetch_user_info(&self, cookie_header: &str) -> Result<UserInfo, ProviderError> {
@@ -316,6 +342,7 @@ impl CursorApi {
             email,
             plan_type,
             grok_bot: None,
+            primary_label: None,
         }
     }
 
@@ -514,9 +541,25 @@ struct SandUsageStatus {
     has_non_zero_included_limit: Option<bool>,
     included_limit_zero: Option<bool>,
     sand_trial_expires_at: Option<String>,
+    /// The X Subscription shares this weekly pool across Cursor and Grok products.
+    is_unified: Option<bool>,
 }
 
 impl SandUsageStatus {
+    /// Upstream `CursorStatusSnapshot.toUsageSnapshot` (#4695): a unified pool
+    /// with a 7-day window and a reset still in the future becomes the main
+    /// meter. Trial-only, expired, non-unified and other-length pools return
+    /// `None`, so the monthly layout stays.
+    fn shared_weekly_pool(&self, now: DateTime<Utc>) -> Option<RateWindow> {
+        if self.is_unified != Some(true) {
+            return None;
+        }
+        let window = self.to_window(now)?.window;
+        (window.window_minutes == Some(WEEKLY_POOL_WINDOW_MINUTES)
+            && window.resets_at.is_some_and(|reset| reset > now))
+        .then_some(window)
+    }
+
     fn to_window(&self, now: DateTime<Utc>) -> Option<NamedRateWindow> {
         let has_limit = self
             .included_limit_zero
