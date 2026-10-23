@@ -11,6 +11,8 @@ const FRANKFURT_ENDPOINT: &str = "https://q.eu-central-1.amazonaws.com/";
 const TARGET: &str = "AmazonCodeWhispererService.GetUsageLimits";
 const TOKEN_KEY: &str = "kirocli:odic:token";
 const PROFILE_KEY: &str = "api.codewhisperer.profile";
+/// Upper bound for the unauthenticated reachability check before a background CLI run.
+const REACHABILITY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(4);
 
 #[derive(Debug, Clone)]
 pub(super) struct KiroUsageLimits {
@@ -232,6 +234,65 @@ pub(super) fn parse_usage_limits(data: &[u8]) -> Result<KiroUsageLimits, Provide
         resets_at,
         has_unseparated_bonus,
     })
+}
+
+/// Unauthenticated reachability check for the Kiro usage host, run before a
+/// background `kiro-cli` probe. Background refreshes that cannot reach the host
+/// skip the CLI, because its sign-in attempt opens browser tabs when offline.
+/// The check sends no token and no cookies. Any HTTP response proves
+/// reachability; only a transport failure returns an error.
+pub(super) async fn ensure_reachable() -> Result<(), ProviderError> {
+    ensure_reachable_at(reachability_endpoint(&state_database_path())).await
+}
+
+/// Usage host for the CLI's profile. Missing or unsupported region state
+/// falls back to US East, matching upstream.
+fn reachability_endpoint(database: &Path) -> &'static str {
+    read_profile_arn(database)
+        .as_deref()
+        .and_then(endpoint_for_profile_arn)
+        .unwrap_or(US_EAST_ENDPOINT)
+}
+
+async fn ensure_reachable_at(endpoint: &str) -> Result<(), ProviderError> {
+    let client = crate::core::apply_app_proxy(reqwest::Client::builder())
+        .timeout(REACHABILITY_TIMEOUT)
+        .build()
+        .map_err(|error| ProviderError::Other(error.to_string()))?;
+    // The shared classifier retains only refused connections, but offline
+    // Windows hosts usually fail DNS first. Every connect failure here means the
+    // host is unreachable, so it must keep the cached snapshot like upstream.
+    client.head(endpoint).send().await.map_err(|error| {
+        if error.is_connect() {
+            ProviderError::Timeout
+        } else {
+            ProviderError::Network(error)
+        }
+    })?;
+    Ok(())
+}
+
+/// The profile ARN alone, without the access token. Used only for the
+/// reachability endpoint, so a signed-out CLI still gets a host choice.
+fn read_profile_arn(path: &Path) -> Option<String> {
+    if !path.is_file() {
+        return None;
+    }
+    let connection = crate::core::open_readonly_sqlite_connection(
+        path,
+        crate::core::DEFAULT_SQLITE_BUSY_TIMEOUT,
+    )
+    .ok()?;
+    let profile_json: Option<String> = connection
+        .query_row(
+            "SELECT value FROM state WHERE key = ?1",
+            [PROFILE_KEY],
+            |row| row.get(0),
+        )
+        .optional()
+        .ok()
+        .flatten();
+    json_string(profile_json.as_deref(), "arn", false)
 }
 
 fn state_database_path() -> PathBuf {
@@ -475,5 +536,86 @@ mod tests {
                 "{profile_arn:?}"
             );
         }
+    }
+
+    fn state_db_with_profile(profile_arn: &str) -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("data.sqlite3");
+        let connection = rusqlite::Connection::open(&path).expect("open fixture database");
+        connection
+            .execute_batch("CREATE TABLE state (key TEXT PRIMARY KEY, value TEXT);")
+            .expect("create state table");
+        let profile = serde_json::json!({ "arn": profile_arn }).to_string();
+        connection
+            .execute(
+                "INSERT INTO state (key, value) VALUES (?1, ?2)",
+                [PROFILE_KEY, profile.as_str()],
+            )
+            .expect("insert profile");
+        (dir, path)
+    }
+
+    #[test]
+    fn reachability_endpoint_follows_the_cli_profile_region() {
+        let (_dir, path) =
+            state_db_with_profile("arn:aws:codewhisperer:eu-central-1:123:profile/test");
+
+        assert_eq!(reachability_endpoint(&path), FRANKFURT_ENDPOINT);
+    }
+
+    #[test]
+    fn reachability_endpoint_defaults_to_us_east_without_usable_region_state() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        assert_eq!(
+            reachability_endpoint(&dir.path().join("missing.sqlite3")),
+            US_EAST_ENDPOINT
+        );
+
+        let (_dir, path) =
+            state_db_with_profile("arn:aws:codewhisperer:ap-southeast-1:123:profile/test");
+        assert_eq!(reachability_endpoint(&path), US_EAST_ENDPOINT);
+    }
+
+    #[tokio::test]
+    async fn transport_failure_is_a_transport_error_that_keeps_last_good() {
+        // Bind and drop a listener to get a local port with nothing listening.
+        let port = {
+            let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind");
+            listener.local_addr().expect("local addr").port()
+        };
+
+        let error = ensure_reachable_at(&format!("http://127.0.0.1:{port}/"))
+            .await
+            .expect_err("a closed port must fail the reachability check");
+
+        assert!(matches!(error, ProviderError::Timeout));
+        assert!(error.is_transport_failure());
+    }
+
+    #[tokio::test]
+    async fn any_http_response_counts_as_reachable() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .expect("bind");
+        let port = listener.local_addr().expect("local addr").port();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.expect("accept");
+            let mut request = [0_u8; 1024];
+            let read = socket.read(&mut request).await.expect("read request");
+            assert!(read > 0, "the client must send a request before reading");
+            socket
+                .write_all(
+                    b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                )
+                .await
+                .expect("write response");
+        });
+
+        ensure_reachable_at(&format!("http://127.0.0.1:{port}/"))
+            .await
+            .expect("an HTTP response proves reachability");
+        server.await.expect("server task");
     }
 }

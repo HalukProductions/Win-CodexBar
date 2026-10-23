@@ -295,8 +295,10 @@ fn parse_overview(body: &[u8]) -> Result<ProviderFetchResult, ProviderError> {
         let used = amount(meter.get("current_usage"))?;
         let allowance = amount(meter.get("free_allowance"))?;
         if allowance > 0.0 {
+            // Upstream `futureagi.ts` reports the allowance with its display unit.
             let window =
-                RateWindow::with_details(percent(used, allowance), window_minutes, Some(end), None);
+                RateWindow::with_details(percent(used, allowance), window_minutes, Some(end), None)
+                    .with_quota(allowance, unit.clone());
             match key {
                 PRIMARY_KEY => primary = Some(window),
                 SECONDARY_KEY => secondary = Some(window),

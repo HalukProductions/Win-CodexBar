@@ -77,6 +77,7 @@ describe("localizeProviderText", () => {
     ["Model: gpt-5 · Cost: $1.20", "Модель: gpt-5 · Стоимость: $1.20"],
     ["5 credits expire on Jan 5", "5 кредитов сгорят 5 янв."],
     ["No OpenAI API balance available", "Нет баланса API OpenAI"],
+    ["Limits not available", "Лимиты недоступны"],
   ])("translates %j", (text, expected) => {
     expect(localizeProviderText(text, ru)).toBe(expected);
   });

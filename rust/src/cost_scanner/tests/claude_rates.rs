@@ -217,6 +217,21 @@ fn claude_fable_5_prices_five_minute_and_one_hour_cache_writes() {
 }
 
 #[test]
+fn claude_mythos_models_price_from_the_builtin_table() {
+    // (model, cache read price per million): Mythos 5.1 bills cache reads at $0.25/M,
+    // Mythos 5 at $1/M. Both bill $10 in, $12.50 cache write, $50 out per million.
+    for (model, cache_read_per_million) in [("claude-mythos-5", 1.00), ("claude-mythos-5-1", 0.25)]
+    {
+        let cost = ClaudePricing::cost_usd_with_cache_ttl(model, 100, 10, 0, 20, 5);
+        let expected = (100.0 / 1_000_000.0) * 10.00
+            + (10.0 / 1_000_000.0) * 12.50
+            + (20.0 / 1_000_000.0) * cache_read_per_million
+            + (5.0 / 1_000_000.0) * 50.00;
+        assert!((cost - expected).abs() < 1e-12, "{model}");
+    }
+}
+
+#[test]
 fn claude_scan_pricing_follows_the_canonical_table() {
     // Undated Sonnet 4.6 bills its full context at the standard $3/M: 240k = 0.72.
     // Sonnet 4.5 keeps the 200k tier for the whole request: 240k @ $6/M = 1.44. Opus 4.5-4.8

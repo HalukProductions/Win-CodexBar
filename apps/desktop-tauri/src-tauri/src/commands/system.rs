@@ -343,6 +343,7 @@ async fn run_cli_provider_login(
         )),
         LoginOutcome::LaunchFailed(e) => Err(format!("Failed to launch {display_name} login: {e}")),
         LoginOutcome::TimedOut => Err(format!("{display_name} login timed out")),
+        LoginOutcome::Cancelled => Err(format!("{display_name} login cancelled")),
         LoginOutcome::Failed { status } => Err(format!(
             "{display_name} login failed with exit code {status}"
         )),
@@ -351,57 +352,14 @@ async fn run_cli_provider_login(
 
 async fn run_copilot_device_login(app: &tauri::AppHandle) -> Result<(), String> {
     let flow = CopilotDeviceFlow::new();
-    let device = flow
-        .start_flow()
-        .await
-        .map_err(|e| format!("GitHub device login failed: {e}"))?;
+    let device = start_device_login(&flow).await.map_err(|e| e.to_string())?;
 
     open_url_in_browser(device.verification_url_to_open())?;
 
-    let token = flow
-        .wait_for_token(&device.device_code, device.interval, device.expires_in)
-        .await
-        .map_err(|e| format!("GitHub device login failed: {e}"))?;
-
     let api = CopilotApi::new();
-    let identity = api.fetch_identity_with_token(&token, None).await.ok();
-    let plan = api
-        .fetch_usage_with_token(&token, None, None)
-        .await
-        .ok()
-        .and_then(|usage| usage.login_method);
-
-    let login = identity.as_ref().map(|identity| identity.login.clone());
-    let label = match (login.as_deref(), plan.as_deref()) {
-        (Some(login), Some(plan)) => format!("{login} ({plan})"),
-        (Some(login), None) => login.to_string(),
-        (None, Some(plan)) => plan.to_string(),
-        (None, None) => "GitHub Copilot".to_string(),
-    };
-
     let store = TokenAccountStore::new();
-    let mut data = store
-        .load_provider(ProviderId::Copilot)
-        .map_err(|e| e.to_string())?;
-    let identity_id = identity.as_ref().and_then(|identity| identity.id);
-    let existing_index =
-        find_existing_copilot_account(&api, &data.accounts, identity_id, login.as_deref()).await;
-
-    if let Some(index) = existing_index {
-        data.accounts[index].token = token;
-        data.accounts[index].label = label;
-        data.accounts[index].external_identifier = identity_id.map(copilot_external_identifier);
-        data.set_active(index);
-    } else {
-        let mut account = TokenAccount::new(label, token);
-        account.external_identifier = identity_id.map(copilot_external_identifier);
-        account.mark_used();
-        data.add_account(account);
-        data.set_active(data.accounts.len().saturating_sub(1));
-    }
-
-    store
-        .save_provider(ProviderId::Copilot, &data)
+    finish_device_login(&flow, &api, &store, &device)
+        .await
         .map_err(|e| e.to_string())?;
 
     let _ = app.emit(
@@ -409,59 +367,6 @@ async fn run_copilot_device_login(app: &tauri::AppHandle) -> Result<(), String> 
         serde_json::json!({ "providerId": "copilot" }),
     );
     Ok(())
-}
-
-async fn find_existing_copilot_account(
-    api: &CopilotApi,
-    accounts: &[TokenAccount],
-    identity_id: Option<u64>,
-    login: Option<&str>,
-) -> Option<usize> {
-    if let Some(identity_id) = identity_id
-        && let Some(index) = find_copilot_account_by_identity(accounts, identity_id)
-    {
-        return Some(index);
-    }
-
-    let mut label_fallback = None;
-    for (index, account) in accounts
-        .iter()
-        .enumerate()
-        .filter(|(_, account)| account.external_identifier.is_none())
-    {
-        if let Some(identity_id) = identity_id {
-            match api.fetch_identity_with_token(&account.token, None).await {
-                Ok(resolved_identity) if resolved_identity.id == Some(identity_id) => {
-                    return Some(index);
-                }
-                Ok(resolved_identity) if resolved_identity.id.is_some() => continue,
-                _ => {}
-            }
-        }
-
-        if label_fallback.is_none() && copilot_label_matches_login(account, login) {
-            label_fallback = Some(index);
-        }
-    }
-
-    label_fallback
-}
-
-fn find_copilot_account_by_identity(accounts: &[TokenAccount], identity_id: u64) -> Option<usize> {
-    let external_identifier = copilot_external_identifier(identity_id);
-    accounts.iter().position(|account| {
-        account.external_identifier.as_deref() == Some(external_identifier.as_str())
-    })
-}
-
-fn copilot_external_identifier(identity_id: u64) -> String {
-    format!("github:user:{identity_id}")
-}
-
-fn copilot_label_matches_login(account: &TokenAccount, login: Option<&str>) -> bool {
-    login.is_some_and(|login| {
-        account.label == login || account.label.starts_with(&format!("{login} ("))
-    })
 }
 
 #[cfg(test)]
@@ -488,16 +393,5 @@ mod tests {
             dashboard_url_for_provider("openrouter", None).as_deref(),
             Some("https://openrouter.ai/activity")
         );
-    }
-
-    #[test]
-    fn copilot_stored_identity_precedes_legacy_label_match() {
-        let legacy = TokenAccount::new("octocat (Pro)", "old-token");
-        let mut identified = TokenAccount::new("Renamed account", "known-token");
-        identified.external_identifier = Some(copilot_external_identifier(123));
-
-        let accounts = vec![legacy.clone(), identified];
-        assert_eq!(find_copilot_account_by_identity(&accounts, 123), Some(1));
-        assert!(copilot_label_matches_login(&legacy, Some("octocat")));
     }
 }

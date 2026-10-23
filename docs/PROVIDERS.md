@@ -47,6 +47,8 @@ These three fields cross to the frontend only when a provider sets them. The CLI
 
 Claude reads `limits[]` entry by entry for both OAuth and Web (upstream #4614). A malformed entry or a field of the wrong type does not hide its valid model-scoped siblings, a non-object entry is skipped, and a JSON Boolean is never a percentage.
 
+A successful Claude Web answer with no quota window and no spend (Claude Free returns null `five_hour` and `seven_day`) shows the informational session row `Limits not available` instead of `No active 5h session` (upstream #4687). A prepaid balance or any measured lane keeps the existing presentation.
+
 Automatic ranks its candidate windows by depletion risk (`usage_metric.rs`, upstream #4491): an exhausted window first, then a window whose current pace runs out before its reset (the soonest first), then the highest used percentage. Equal ranks keep the earlier lane. The forecast needs authoritative pace (estimates never forecast), a window with its own length and reset, and at least 3% expected use, so a fresh window doesn't win on a noisy rate. The highest-usage tray icon ranks each provider's selected metric the same way; the forecast counts only when that provider's metric is Automatic. `Provider::automatic_metric_follows_lane_order()` opts out of the ranking for ordered tiers: the first exhausted core lane wins, otherwise the first reported lane. Gemini (Pro before Flash) and Kiro (plan credits before bonus credits) return `true`.
 
 `ProviderFetchResult::with_estimated_quota()` marks quota percentages that a provider computed locally instead of reading from the provider (upstream #4423). The bridge sends `quotaEstimated: true` only for such snapshots, and the tray then puts a `~` before the percentage in the percent icon, the tooltip and the provider status label. OpenCode Go sets it when its local SQLite estimate is shown; a console usage overlay clears it.
@@ -444,7 +446,9 @@ Configure the API key in Settings → Providers → Tavily (or `TAVILY_API_KEY`)
   usage percentage. Remaining credits are the nonnegative difference between
   reported cap and usage.
 - Pay-as-you-go totals, when present (`account.paygo_usage` and
-  `account.paygo_limit`), appear in a separate detail section.
+  `account.paygo_limit`), appear in a separate detail section. A null
+  pay-as-you-go limit leaves the cap unspecified: the section shows only the
+  reported usage, with no Limit or Remaining row.
 - The plan name (`account.current_plan`) identifies the account plan. No email
   or account ID is inferred; unknown plans do not create a phantom identity.
 - Non-200 responses report "Tavily returned HTTP <status>."; response bodies
@@ -715,6 +719,48 @@ and name are missing.
   an ISO 8601 timestamp; anything else fails parsing. Response bodies are never
   echoed in errors.
 
+### Soniox
+
+Soniox is disabled by default. In Settings → Providers → Soniox, enter an
+**organization API key** with the "Balance and spend" and "Usage and limits"
+permissions, or set `SONIOX_ORG_API_KEY`. Project API keys cannot read
+organization billing. Create keys in the
+[organization API guide](https://soniox.com/docs/guides/organization-api#organization-api-keys).
+The key is stored with the other API keys and is never written to logs.
+
+For proof runs and fake servers, `SONIOX_BASE_URL` replaces the organization API
+base (default `https://api.soniox.com/v1/organization`). It accepts `https://`,
+or `http://` only for a loopback host (`127.0.0.1`, `localhost`, `[::1]`), with
+no credentials, query, or fragment. The path must end in `/v1/organization`.
+Any other value, including a blank one, is ignored with a warning.
+
+The provider makes two read-only requests in order. Refresh never submits
+transcription or synthesis work:
+
+```text
+GET https://api.soniox.com/v1/organization/balance
+GET https://api.soniox.com/v1/organization/usage/monthly
+Authorization: Bearer <organization API key>
+```
+
+- The **Spend** section shows **Monthly budget** as `$used of $budget` with a
+  progress bar when the budget is positive. The budget meter itself is hidden on
+  the card and only feeds the tray and float-bar percentages. Upstream hides it
+  from the card by default; Windows has no default-hidden usage item, so the
+  card shows the same numbers as this Spend detail row instead.
+- The **Billing** section shows **Prepaid** or **Invoice billing** (value `USD`).
+  With a zero budget it also shows **Monthly budget** as `$0.00`, and no progress
+  bar or percentage.
+- Cost is this month's spend against the budget, reset at the start of the next
+  UTC month. Prepaid accounts also report the remaining balance. Invoice billing
+  accounts omit the balance so a zero prepaid amount is not shown as exhausted
+  credits. A negative prepaid balance is accepted but not shown.
+- 401 reports that authentication is required. 403 reports that the key needs
+  organization permissions. 429 reports rate limiting. Other HTTP errors report
+  the status. Amounts must be plain decimal strings, `month` must be `YYYY-MM`,
+  and `invoice_billing_enabled` must be a boolean; anything else fails parsing.
+  Response bodies are never echoed in errors.
+
 ### Claude Platform
 
 Claude Platform is disabled by default and shows the prepaid API credits of a
@@ -763,6 +809,43 @@ GET https://platform.claude.com/api/organizations/<uuid>/current_spend
 - A missing, non-integer, or out-of-range balance fails parsing instead of
   showing $0. 429 reports rate limiting and 5xx reports the Console as
   unavailable. Response bodies are never echoed in errors.
+
+### Trae CN
+
+Trae CN is disabled by default and shows the credit allowance of a Trae CN
+(trae.cn) account. Sign in to trae.cn in your browser, and CodexBar uses the
+`api.trae.cn` session cookies.
+
+- **Automatic:** CodexBar tries each detected browser holding an api.trae.cn
+  session. If Trae rejects a session (401, 403 or a redirect), it moves to the
+  next browser. No session means sign in to trae.cn.
+- **Manual:** Paste the Cookie header from an api.trae.cn request. Manual mode
+  does not fall back to browser sessions.
+- **Off:** Cookies are disabled.
+
+The provider makes two read-only POST requests per session and never makes a
+billable call:
+
+```text
+POST https://api.trae.cn/cloudide/api/v3/common/GetUserToken
+POST https://api.trae.cn/trae/api/v2/pay/user_current_entitlement_list
+```
+
+- The token from `GetUserToken` lives only for one refresh and is sent only to
+  api.trae.cn as a `Cloud-IDE-JWT` authorization header.
+- The gauge is consumed over total credits. A zero allowance shows the details
+  without a gauge. Used, Total and Remaining appear in the **Credits** section.
+- The plan name comes from the active plan entitlement and is shown as the
+  login method. Pack expiry dates do not set a reset: the provider infers no
+  renewal or reset date.
+- Malformed responses (no `is_credits_billing`, non-numeric or negative amounts,
+  or no token) fail parsing instead of showing zero usage. 429 reports rate
+  limiting, 408 and 5xx report the service as unavailable, and response bodies
+  are never echoed in errors.
+- For proof runs and fake servers, `TRAE_CN_BASE_URL` replaces the API origin
+  (default `https://api.trae.cn`). It accepts `https://`, or `http://` only for a
+  loopback host (`127.0.0.1`, `localhost`, `[::1]`), with no credentials, query,
+  or fragment. Any other value is ignored with a warning.
 
 ### Aerostack
 
@@ -917,6 +1000,11 @@ or an OAuth principal, so it can never read a different account's usage:
   `monthlyLimit` and `usage.totalUsed` is still read.
 - A prepaid balance counts as an answer without a quota percent. A result with
   neither a percent nor a balance is unavailable.
+- When the ACP answer from a bearer login has no quota percent, grok.com gets
+  the same bounded 6-second retry as the credits proxy (upstream #4679). Only a
+  wire-published percent or a validated zero is adopted, and the ACP period,
+  plan and balance stay. Expired or slow enrichment keeps usage unknown. A
+  missing or expired login has no bearer to send, so this retry does not run.
 - A JSON-RPC `-32601` error means this CLI does not provide billing over ACP.
   An error that says authentication is required, or mentions `grok login`, is
   an auth failure. In both cases the bearer path's original error is shown, so
@@ -932,6 +1020,7 @@ The Antigravity quota summary picks one Gemini row for the primary and secondary
 - The ordinary Gemini buckets win: `gemini-5h` (or a session alias such as `gemini-session`) and `gemini-weekly`. Their IDs are matched after lowercasing, with `_` read as `-` and a trailing ` limit` ignored. Display labels never decide this.
 - A model-specific Gemini allowance, such as `gemini-2.5-pro-5h`, represents Gemini only when the ordinary bucket of that cadence is absent, unknown or disabled.
 - Every bucket stays visible as an extra window with its own usage and reset.
+- A group named like "Gemini" with no digit is shown as **Gemini** (for example **Gemini weekly**). A versioned Gemini group keeps its own name from the usage response, so a separate Gemini 4 Argon group is shown as **Gemini 4 Argon weekly**, alongside the ordinary **Gemini weekly** quota (upstream #4585).
 
 ## Window lengths that match the Mac
 
@@ -1037,7 +1126,7 @@ OpenCode reads usage from `opencode.ai` cookies. Which API it uses depends on th
 - OpenCode reuses the OpenCode Go Console client (`providers/opencodego/console.rs`). The monthly Go meter appears only on OpenCode Go.
 - For OpenCode Go, a manual cookie keeps the configured usage source (Auto, Web or Local) instead of forcing Web (upstream #4616). The cookie scopes only the web session. The source label shows the source that actually supplied the result, such as `web` or `local estimate`.
 
-OpenCode Go's local SQLite reader reads only its own `opencode-go` assistant records. OpenAI API-platform usage is a separate provider.
+OpenCode Go's local SQLite reader reads only records attributed to `opencode-go`: legacy assistant messages and v2 `session_message` assistant and compaction requests. A v2 request is skipped only when a legacy copy with the same id has a usable timestamp and a non-negative finite cost, so migrated requests count once and an invalid legacy copy never hides a valid v2 request. V2-only databases (no `message` table, no `auth.json`) still read. OpenAI API-platform usage is a separate provider.
 
 For `codexbar cost --provider opencodego` (upstream #4629), token counts follow the same rule per row. A row with missing, malformed, negative or overflowing tokens is unknown, not zero, and any window or model containing one has no exact token total. A row that records a total but omits input or output keeps that exact total, while its input and output are unknown. The text report says `unknown` for the affected totals while still reporting cost. The JSON payload uses `null` for them and adds `unknownTokenRowCount` and `byModelTokens`. Per-model token counts sum only what rows recorded. The `spendContract` per-model rows still carry those usable partial counts; the desktop Usage & Spend view is unchanged.
 

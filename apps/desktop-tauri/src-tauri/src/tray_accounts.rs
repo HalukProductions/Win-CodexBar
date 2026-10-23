@@ -485,6 +485,97 @@ mod tests {
     }
 
     #[test]
+    fn account_submenu_actionable_ids_resolve_and_empty_rows_do_not() {
+        use codexbar::codex_accounts::{CodexAccountSource, utc_now};
+        use codexbar::providers::claude::accounts::ClaudeAccount;
+        use codexbar::providers::grok::accounts::GrokAccount;
+        let codex = CodexAccount::new(
+            uuid::Uuid::new_v4(),
+            Some("Work".into()),
+            None,
+            None,
+            Some("Work".into()),
+            std::path::PathBuf::from("work"),
+            CodexAccountSource::ManagedByApp,
+            utc_now(),
+            utc_now(),
+            None,
+        );
+        let claude = ClaudeAccount {
+            id: "a:org".into(),
+            email: "a@example.com".into(),
+            organization: None,
+            plan: None,
+            is_active: false,
+            is_saved: true,
+        };
+        let grok = GrokAccount {
+            id: "user-a".into(),
+            email: "a@example.com".into(),
+            organization: None,
+            plan: None,
+            is_active: false,
+            is_saved: true,
+        };
+        let menus = [
+            codex_accounts_menu(
+                std::slice::from_ref(&codex),
+                Some(&codex),
+                Language::English,
+                false,
+            ),
+            codex_accounts_menu(&[], None, Language::English, false),
+            claude_accounts_menu(
+                std::slice::from_ref(&claude),
+                Language::English,
+                false,
+                true,
+                &HashMap::new(),
+            ),
+            claude_accounts_menu(&[], Language::English, false, true, &HashMap::new()),
+            grok_accounts_menu(std::slice::from_ref(&grok), Language::English, false),
+            grok_accounts_menu(&[], Language::English, false),
+        ];
+
+        let mut resolved = Vec::new();
+        for menu in &menus {
+            for id in crate::tray_menu::tests::actionable_ids(std::slice::from_ref(menu)) {
+                assert!(
+                    crate::tray_bridge::resolve_menu_action(&id).is_some(),
+                    "account id {id} does not resolve to a menu action"
+                );
+                resolved.push(id);
+            }
+        }
+        for expected in [
+            "add_codex_account",
+            "switch_claude_account:a:org",
+            "add_claude_account",
+            "save_claude_account",
+            "cancel_claude_login",
+            "switch_grok_account:user-a",
+            "add_grok_account",
+            "save_grok_account",
+            "cancel_grok_login",
+        ] {
+            assert!(
+                resolved.iter().any(|id| id == expected),
+                "{expected} should be actionable"
+            );
+        }
+        for empty_row in [
+            "codex_accounts_empty",
+            "claude_accounts_empty",
+            "grok_accounts_empty",
+        ] {
+            assert!(
+                crate::tray_bridge::resolve_menu_action(empty_row).is_none(),
+                "{empty_row} is a disabled status row and must not dispatch"
+            );
+        }
+    }
+
+    #[test]
     fn codex_accounts_can_be_switched_or_added_from_tray() {
         use codexbar::codex_accounts::{CodexAccountSource, utc_now};
         let make = |name: &str| {

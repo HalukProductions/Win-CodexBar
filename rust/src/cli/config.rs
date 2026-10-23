@@ -5,11 +5,24 @@
 use clap::{Parser, Subcommand};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+use std::future::Future;
+use std::io::Write;
 use std::path::Path;
 
 use super::usage::OutputFormat;
 use crate::core::{ProviderId, SourceMode, TokenAccountStore, instantiate_provider};
+use crate::providers::copilot::CopilotApi;
+use crate::providers::copilot::device_flow::CopilotDeviceFlow;
+use crate::providers::copilot::login::{
+    SavedCopilotAccount, finish_device_login, start_device_login,
+};
 use crate::settings::{ApiKeys, ManualCookies, PreferencesDocument, Settings};
+
+mod cli_login;
+mod login;
+
+pub use login::ConfigLoginError;
+use login::{ConfigLoginEvent, LoginFailure, report_outcome, write_event};
 
 /// Arguments for the config command
 #[derive(Parser, Debug)]
@@ -73,6 +86,13 @@ pub enum ConfigCommand {
         /// Store the key without enabling the provider
         #[arg(long = "no-enable")]
         no_enable: bool,
+    },
+    /// Log in to a provider through its own sign-in (GitHub Copilot, Grok, Kiro)
+    Login {
+        #[command(flatten)]
+        target: ConfigProviderArg,
+        #[command(flatten)]
+        output: ConfigOutputArgs,
     },
     /// Show configuration file paths
     Path,
@@ -202,6 +222,9 @@ pub async fn run(args: ConfigArgs) -> anyhow::Result<()> {
             stdin,
             no_enable,
         } => set_api_key(target.name(), api_key.as_deref(), stdin, !no_enable).await,
+        ConfigCommand::Login { target, output } => login(target.name(), output)
+            .await
+            .map_err(anyhow::Error::from),
         ConfigCommand::Path => show_paths().await,
         ConfigCommand::Preferences { action } => transfer_preferences(action),
         ConfigCommand::ClaudeCodeCredentials { action, output } => {
@@ -769,6 +792,109 @@ fn resolve_api_key_input(api_key: Option<&str>, read_from_stdin: bool) -> anyhow
         anyhow::bail!("Missing API key. Pass --api-key <key> or use --stdin.");
     }
     Ok(value)
+}
+
+/// Run `config login`. GitHub Copilot uses a device code; Grok and Kiro run
+/// their own CLI sign-in.
+///
+/// Output goes through `std::io::stdout()` rather than a held lock, because
+/// the Kiro sign-in link is written from the login thread.
+async fn login(provider: &str, output: ConfigOutputArgs) -> Result<(), ConfigLoginError> {
+    let id = parse_provider(provider).map_err(ConfigLoginError::usage)?;
+    let json = output.is_json();
+    let out = &mut std::io::stdout();
+    match id {
+        ProviderId::Copilot => {
+            let flow = CopilotDeviceFlow::new();
+            let api = CopilotApi::new();
+            let store = TokenAccountStore::new();
+            run_copilot_login(&flow, &api, &store, json, out, login::ctrl_c(), || {
+                enable_provider(ProviderId::Copilot)
+            })
+            .await
+            .map(|_| ())
+        }
+        ProviderId::Grok => cli_login::login_grok(json, out).await,
+        ProviderId::Kiro => cli_login::login_kiro(json, out).await,
+        _ => Err(ConfigLoginError::usage(
+            "Login is supported for copilot, grok and kiro. Use --provider copilot, grok or kiro.",
+        )),
+    }
+}
+
+/// Turns `id` on after a saved login. Only `config login` does this; the
+/// desktop sign-in keeps its current behavior.
+fn enable_provider(id: ProviderId) -> anyhow::Result<()> {
+    let mut settings = Settings::load();
+    settings.enable_provider(id);
+    settings.save()
+}
+
+/// The error for a sign-in that finished but whose settings write failed.
+/// `saved_account` is true when CodexBar itself stored the credential, so the
+/// message tells the user the account is already there.
+fn enable_failed(
+    id: ProviderId,
+    saved_account: bool,
+    error: impl std::fmt::Display,
+) -> ConfigLoginError {
+    let done = if saved_account {
+        "Signed in and saved the account"
+    } else {
+        "Signed in"
+    };
+    ConfigLoginError::other(format!(
+        "{done}, but could not enable {}: {error}",
+        id.display_name()
+    ))
+}
+
+/// Runs the Copilot device login and writes progress to `out`. In JSON mode
+/// each event is one line; in text mode the URL and code are two lines.
+///
+/// The account is saved before `enable` runs, and `enable` runs before the
+/// `authorized` event. `cancel` (Ctrl-C in the CLI) is checked first, so once
+/// it fires the flow stops before it can save anything else.
+async fn run_copilot_login(
+    flow: &CopilotDeviceFlow,
+    api: &CopilotApi,
+    store: &TokenAccountStore,
+    json: bool,
+    out: &mut impl Write,
+    cancel: impl Future<Output = ()>,
+    enable: impl FnOnce() -> anyhow::Result<()>,
+) -> Result<SavedCopilotAccount, ConfigLoginError> {
+    let result = tokio::select! {
+        biased;
+        () = cancel => Err(ConfigLoginError::new(LoginFailure::Cancelled, "Login cancelled.")),
+        saved = copilot_steps(flow, api, store, json, out) => saved,
+    };
+    let result = result.and_then(|mut saved| {
+        enable().map_err(|error| enable_failed(ProviderId::Copilot, true, error))?;
+        saved.enabled = true;
+        Ok(saved)
+    });
+    report_outcome(json, out, result)
+}
+
+async fn copilot_steps(
+    flow: &CopilotDeviceFlow,
+    api: &CopilotApi,
+    store: &TokenAccountStore,
+    json: bool,
+    out: &mut impl Write,
+) -> Result<SavedCopilotAccount, ConfigLoginError> {
+    let device = start_device_login(flow).await?;
+    write_event(
+        out,
+        json,
+        &ConfigLoginEvent::pending(
+            &device.verification_uri,
+            &device.user_code,
+            device.expires_in,
+        ),
+    )?;
+    Ok(finish_device_login(flow, api, store, &device).await?)
 }
 
 /// Show configuration file paths

@@ -22,7 +22,19 @@ pub fn begin_login() {
     CANCEL.store(false, Ordering::SeqCst);
 }
 
+/// Explicit path to the Grok CLI. Like `CODEXBAR_KIRO_CLI_PATH`, it is used only
+/// when it names an existing file.
+const GROK_CLI_PATH_ENV: &str = "CODEXBAR_GROK_CLI_PATH";
+
+/// Finds the Grok CLI. A missing binary is `io::ErrorKind::NotFound`, so callers
+/// can tell it apart from other failures.
 pub fn executable() -> io::Result<PathBuf> {
+    if let Ok(raw) = std::env::var(GROK_CLI_PATH_ENV) {
+        let path = PathBuf::from(raw.trim());
+        if !raw.trim().is_empty() && path.is_file() {
+            return Ok(path);
+        }
+    }
     if let Some(home) = dirs::home_dir() {
         let native = home.join(if cfg!(windows) {
             ".grok/bin/grok.exe"
@@ -34,7 +46,10 @@ pub fn executable() -> io::Result<PathBuf> {
         }
     }
     which::which("grok").map_err(|_| {
-        io::Error::other("Grok CLI was not found. Install Grok Build, then try again.")
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            "Grok CLI was not found. Install Grok Build, then try again.",
+        )
     })
 }
 
@@ -155,11 +170,14 @@ fn wait_for_login(child: &mut Child, home: &Path, timeout: Duration) -> io::Resu
         if cancelled || start.elapsed() > timeout {
             let _kill = child.kill();
             let _reap = child.wait();
-            return Err(io::Error::other(if cancelled {
-                "Grok sign-in cancelled."
+            return Err(if cancelled {
+                io::Error::other("Grok sign-in cancelled.")
             } else {
-                "Grok sign-in timed out. Please try again."
-            }));
+                io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "Grok sign-in timed out. Please try again.",
+                )
+            });
         }
         std::thread::sleep(Duration::from_millis(150));
     }

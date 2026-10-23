@@ -207,25 +207,28 @@ fn credits(value: u64) -> String {
     format!("{} credits", format::number(value as f64, 0))
 }
 
-/// One titled section: Used, Limit ("Unlimited" when `cap` is None), and
-/// Remaining only for a finite cap.
-fn section(
-    details: &mut Vec<ProviderDisplayDetail>,
-    id: &str,
-    title: &str,
-    usage: u64,
-    cap: Option<u64>,
-) {
-    let mut rows = vec![
-        ("used", "Used", credits(usage)),
-        (
-            "limit",
-            "Limit",
-            cap.map_or_else(|| "Unlimited".to_string(), credits),
-        ),
-    ];
-    if let Some(cap) = cap {
-        rows.push(("remaining", "Remaining", credits(cap.saturating_sub(usage))));
+/// The cap a section reports against.
+#[derive(Clone, Copy)]
+enum Cap {
+    /// A finite cap: Limit and Remaining rows.
+    Finite(u64),
+    /// A null API-key limit: Limit reads "Unlimited", no Remaining row.
+    Unlimited,
+    /// A null pay-as-you-go limit: no Limit or Remaining row, only Used.
+    Unspecified,
+}
+
+/// One titled section: Used, then Limit and Remaining only for a finite cap
+/// (or Limit "Unlimited" for an unlimited cap).
+fn section(details: &mut Vec<ProviderDisplayDetail>, id: &str, title: &str, usage: u64, cap: Cap) {
+    let mut rows = vec![("used", "Used", credits(usage))];
+    match cap {
+        Cap::Finite(cap) => {
+            rows.push(("limit", "Limit", credits(cap)));
+            rows.push(("remaining", "Remaining", credits(cap.saturating_sub(usage))));
+        }
+        Cap::Unlimited => rows.push(("limit", "Limit", "Unlimited".to_string())),
+        Cap::Unspecified => {}
     }
     for (suffix, label, value) in rows {
         if let Some(detail) = ProviderDisplayDetail::new(format!("{id}-{suffix}"), label, value)
@@ -261,18 +264,27 @@ fn parse_usage(payload: &Value) -> Result<ParsedUsage, ProviderError> {
         "account-plan",
         "Account plan",
         used,
-        Some(limit),
+        Cap::Finite(limit),
     );
-    section(&mut details, "api-key", "API key", key_used, key_limit);
+    section(
+        &mut details,
+        "api-key",
+        "API key",
+        key_used,
+        key_limit.map_or(Cap::Unlimited, Cap::Finite),
+    );
     if account.contains_key("paygo_usage") || account.contains_key("paygo_limit") {
         let paygo_used = count(account.get("paygo_usage"))?;
-        let paygo_limit = count(account.get("paygo_limit"))?;
+        let paygo_limit = match account.get("paygo_limit") {
+            Some(Value::Null) => None,
+            other => Some(count(other)?),
+        };
         section(
             &mut details,
             "paygo",
             "Pay as you go",
             paygo_used,
-            Some(paygo_limit),
+            paygo_limit.map_or(Cap::Unspecified, Cap::Finite),
         );
     }
 
@@ -451,10 +463,54 @@ mod tests {
             json!({ "plan_usage": 1, "plan_limit": 2, "paygo_usage": "1", "paygo_limit": 5 }),
             ok_key.clone(),
         )));
-        assert_unrecognized(parse_usage(&payload(
-            json!({ "plan_usage": 1, "plan_limit": 2, "paygo_usage": 1, "paygo_limit": null }),
-            ok_key.clone(),
-        )));
+    }
+
+    #[test]
+    fn null_paygo_limit_shows_only_the_reported_usage() {
+        let result = parse_usage(&payload(
+            json!({ "current_plan": "Researcher", "plan_usage": 10, "plan_limit": 1000, "paygo_usage": 0, "paygo_limit": null }),
+            json!({ "usage": 3, "limit": null }),
+        ))
+        .unwrap();
+
+        assert_eq!(result.usage.login_method.as_deref(), Some("Researcher"));
+        assert!(result.usage.secondary.is_none());
+        assert_eq!(
+            rows(&result),
+            [
+                row("Account plan", "Used", "10 credits"),
+                row("Account plan", "Limit", "1,000 credits"),
+                row("Account plan", "Remaining", "990 credits"),
+                row("API key", "Used", "3 credits"),
+                row("API key", "Limit", "Unlimited"),
+                row("Pay as you go", "Used", "0 credits"),
+            ]
+        );
+    }
+
+    #[test]
+    fn null_paygo_limit_with_nonzero_usage_has_no_remaining_row() {
+        let result = parse_usage(&payload(
+            json!({ "plan_usage": 1, "plan_limit": 2, "paygo_usage": 25, "paygo_limit": null }),
+            json!({ "usage": 1, "limit": 2 }),
+        ))
+        .unwrap();
+
+        assert_eq!(
+            rows(&result)[6..],
+            [row("Pay as you go", "Used", "25 credits")]
+        );
+    }
+
+    #[test]
+    fn malformed_paygo_limit_still_fails_when_not_null() {
+        let ok_key = json!({ "usage": 1, "limit": 2 });
+        for bad in [json!("100"), json!(-1), json!(true), json!(1.5)] {
+            assert_unrecognized(parse_usage(&payload(
+                json!({ "plan_usage": 1, "plan_limit": 2, "paygo_usage": 1, "paygo_limit": bad }),
+                ok_key.clone(),
+            )));
+        }
     }
 
     #[test]

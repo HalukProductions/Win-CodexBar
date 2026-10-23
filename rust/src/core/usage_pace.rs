@@ -3,7 +3,7 @@
 //! Calculates whether the user is On Track, Ahead, or Behind their usage quota
 //! based on elapsed time and consumption rate.
 
-use chrono::{DateTime, Datelike, Duration, Local, LocalResult, TimeZone, Utc};
+use chrono::{DateTime, Datelike, Duration, Local, LocalResult, NaiveDate, TimeZone, Utc};
 
 use super::RateWindow;
 
@@ -104,6 +104,41 @@ impl UsagePace {
         work_days: Option<u8>,
     ) -> Option<Self> {
         Self::weekly_in(window, now, default_window_minutes, work_days, &Local)
+    }
+
+    /// Per-day share of `remaining` until `resets_at` in the machine's local
+    /// time zone. See [`UsagePace::daily_target_in`].
+    pub fn daily_target(
+        remaining: f64,
+        resets_at: Option<DateTime<Utc>>,
+        now: DateTime<Utc>,
+    ) -> Option<f64> {
+        Self::daily_target_in(remaining, resets_at, now, &Local)
+    }
+
+    /// Upstream `UsagePace.dailyTarget`: the remaining allowance divided by the
+    /// local calendar days that are left, counting today and any partial reset
+    /// day. A reset exactly at local midnight adds no partial day, and today
+    /// always counts, so the target is at least `remaining`. It never estimates
+    /// today's consumption. Returns `None` for a negative or non-finite
+    /// remainder, or a reset that is missing or not after `now`.
+    pub fn daily_target_in<Tz: TimeZone>(
+        remaining: f64,
+        resets_at: Option<DateTime<Utc>>,
+        now: DateTime<Utc>,
+        tz: &Tz,
+    ) -> Option<f64> {
+        if !remaining.is_finite() || remaining < 0.0 {
+            return None;
+        }
+        let resets_at = resets_at.filter(|at| *at > now)?;
+        let reset_date = resets_at.with_timezone(tz).date_naive();
+        let reset_day_start = local_midnight_on(reset_date, tz)?;
+        let today = now.with_timezone(tz).date_naive();
+        let whole_days = (reset_date - today).num_days();
+        let partial_day = i64::from(resets_at > reset_day_start);
+        let day_count = u32::try_from((whole_days + partial_day).max(1)).ok()?;
+        Some(remaining / f64::from(day_count))
     }
 
     /// [`UsagePace::weekly`] with an explicit time zone for local day
@@ -363,7 +398,13 @@ fn seconds_to_millis(seconds: f64) -> Option<i64> {
 /// quarter hour after it is used, as Foundation's `startOfDay` does.
 fn next_day_boundary<Tz: TimeZone>(instant: DateTime<Utc>, tz: &Tz) -> Option<DateTime<Utc>> {
     let next_date = instant.with_timezone(tz).date_naive().succ_opt()?;
-    let midnight = next_date.and_hms_opt(0, 0, 0)?;
+    local_midnight_on(next_date, tz)
+}
+
+/// Start of local calendar day `date`, using the first existing local quarter
+/// hour when midnight is skipped (see [`next_day_boundary`]).
+fn local_midnight_on<Tz: TimeZone>(date: NaiveDate, tz: &Tz) -> Option<DateTime<Utc>> {
+    let midnight = date.and_hms_opt(0, 0, 0)?;
     (0..=180).step_by(15).find_map(|offset_minutes| {
         let candidate = midnight + Duration::minutes(offset_minutes);
         match tz.from_local_datetime(&candidate) {
@@ -429,6 +470,98 @@ mod tests {
             PaceStage::SlightlyAhead | PaceStage::Ahead | PaceStage::FarAhead
         ));
         assert!(pace.delta_percent > 0.0);
+    }
+
+    /// Upstream `MonthlyPacingTargetTests` daily-target cases, with the local
+    /// calendar injected so the results do not depend on the machine.
+    mod daily_target {
+        use super::super::*;
+        use chrono::{FixedOffset, TimeZone, Utc};
+
+        fn utc() -> FixedOffset {
+            FixedOffset::east_opt(0).unwrap()
+        }
+
+        fn at(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> DateTime<Utc> {
+            Utc.with_ymd_and_hms(year, month, day, hour, minute, 0)
+                .unwrap()
+        }
+
+        /// 2026-02-15 12:00 UTC: 14 whole days remain until the Mar 1 reset.
+        fn now() -> DateTime<Utc> {
+            at(2026, 2, 15, 12, 0)
+        }
+
+        #[test]
+        fn midnight_reset_counts_only_the_whole_days_before_it() {
+            let target =
+                UsagePace::daily_target_in(60.0, Some(at(2026, 3, 1, 0, 0)), now(), &utc());
+            assert!(target.is_some_and(|value| (value - 60.0 / 14.0).abs() < 1e-9));
+        }
+
+        #[test]
+        fn partial_reset_day_counts_toward_the_target() {
+            let target =
+                UsagePace::daily_target_in(60.0, Some(at(2026, 3, 1, 12, 0)), now(), &utc());
+            assert!(target.is_some_and(|value| (value - 4.0).abs() < 1e-9));
+        }
+
+        #[test]
+        fn today_counts_when_the_reset_is_later_today_or_tomorrow_midnight() {
+            let later_today =
+                UsagePace::daily_target_in(42.0, Some(at(2026, 2, 15, 18, 0)), now(), &utc());
+            assert_eq!(later_today, Some(42.0));
+            let tomorrow_midnight =
+                UsagePace::daily_target_in(42.0, Some(at(2026, 2, 16, 0, 0)), now(), &utc());
+            assert_eq!(tomorrow_midnight, Some(42.0));
+        }
+
+        #[test]
+        fn missing_expired_or_invalid_inputs_have_no_target() {
+            assert_eq!(UsagePace::daily_target_in(10.0, None, now(), &utc()), None);
+            assert_eq!(
+                UsagePace::daily_target_in(10.0, Some(now()), now(), &utc()),
+                None
+            );
+            let past = now() - chrono::Duration::hours(1);
+            assert_eq!(
+                UsagePace::daily_target_in(10.0, Some(past), now(), &utc()),
+                None
+            );
+            let future = Some(at(2026, 3, 1, 0, 0));
+            assert_eq!(
+                UsagePace::daily_target_in(-1.0, future, now(), &utc()),
+                None
+            );
+            assert_eq!(
+                UsagePace::daily_target_in(f64::NAN, future, now(), &utc()),
+                None
+            );
+            assert_eq!(
+                UsagePace::daily_target_in(f64::INFINITY, future, now(), &utc()),
+                None
+            );
+        }
+
+        #[test]
+        fn exhausted_allowance_has_a_zero_target() {
+            let target = UsagePace::daily_target_in(0.0, Some(at(2026, 3, 1, 0, 0)), now(), &utc());
+            assert_eq!(target, Some(0.0));
+        }
+
+        #[test]
+        fn local_calendar_days_span_a_daylight_saving_change() {
+            let los_angeles = chrono_tz::America::Los_Angeles;
+            // Mar 7 23:30 PST to Mar 9 00:30 PDT: three local dates, one day of hours.
+            let now = at(2026, 3, 8, 7, 30);
+            let reset = at(2026, 3, 9, 7, 30);
+            let target = UsagePace::daily_target_in(30.0, Some(reset), now, &los_angeles);
+            assert!(target.is_some_and(|value| (value - 10.0).abs() < 1e-9));
+            // Local midnight on Mar 9 is 07:00 UTC: Mar 7 and Mar 8 remain, no partial day.
+            let midnight = at(2026, 3, 9, 7, 0);
+            let target = UsagePace::daily_target_in(30.0, Some(midnight), now, &los_angeles);
+            assert!(target.is_some_and(|value| (value - 15.0).abs() < 1e-9));
+        }
     }
 
     // Ported from upstream v0.70.0 Tests/CodexBarTests/UsagePaceTests.swift.

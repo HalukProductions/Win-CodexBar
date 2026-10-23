@@ -59,6 +59,12 @@ pub struct RateWindowSnapshot {
     pub reserve_eta_seconds: Option<f64>,
     #[serde(default)]
     pub pace: Option<pace::WindowPaceSnapshot>,
+    /// Per-day share of a monthly allowance (upstream `monthlyTargetMetrics`).
+    /// Set under the same pace gate as `pace`, but also when the lane has no
+    /// pace (an exhausted allowance). Absent outside monthly windows and when
+    /// usage or the reset is unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub daily_target: Option<pace::DailyTargetSnapshot>,
     /// Set while a longer exhausted pool (Kimi's monthly membership) blocks
     /// this window; presentation only, the raw percentages above stay as is.
     #[serde(default)]
@@ -112,6 +118,7 @@ impl RateWindowSnapshot {
             reserve_will_last_to_reset: false,
             reserve_eta_seconds: None,
             pace: None,
+            daily_target: None,
             monthly_limit_block: None,
             description_is_detail: rw.description_is_detail,
             reset_regenerates: rw.reset_regenerates,
@@ -605,6 +612,9 @@ impl ProviderUsageSnapshot {
                         pace_work_days,
                     )
                 })
+                .flatten(),
+            daily_target: allows_pace
+                .then(|| pace::daily_target(Some(id), window, now))
                 .flatten(),
             ..RateWindowSnapshot::from_rate_window(window).with_quota_block(is_blocked, &blocked)
         };

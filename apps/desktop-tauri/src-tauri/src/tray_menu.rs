@@ -189,7 +189,23 @@ pub(crate) mod tests {
         })
     }
 
-    fn sample_provider_catalog() -> Vec<ProviderCatalogEntry> {
+    /// Every entry in the tree, parents before children.
+    pub(crate) fn flatten(menu: &[TrayMenuEntry]) -> Vec<&TrayMenuEntry> {
+        menu.iter()
+            .flat_map(|entry| std::iter::once(entry).chain(flatten(&entry.children)))
+            .collect()
+    }
+
+    /// Ids of the rows a user can click: not a separator, not disabled, and not a submenu.
+    pub(crate) fn actionable_ids(menu: &[TrayMenuEntry]) -> Vec<String> {
+        flatten(menu)
+            .into_iter()
+            .filter(|entry| !entry.is_separator && !entry.disabled && entry.children.is_empty())
+            .filter_map(|entry| entry.id.clone())
+            .collect()
+    }
+
+    pub(crate) fn sample_provider_catalog() -> Vec<ProviderCatalogEntry> {
         vec![
             ProviderCatalogEntry {
                 id: "codex".into(),
@@ -206,7 +222,7 @@ pub(crate) mod tests {
         ]
     }
 
-    fn both_enabled() -> HashSet<String> {
+    pub(crate) fn both_enabled() -> HashSet<String> {
         ["codex".to_string(), "claude".to_string()]
             .into_iter()
             .collect()

@@ -279,3 +279,19 @@ fn cli_presence_maps_to_local_runtime_offline_but_state_db_stays_default() {
         crate::core::ProviderStateKind::NeedsAuthentication
     );
 }
+
+#[test]
+fn transport_failures_keep_last_good_while_sign_in_failures_replace_it() {
+    use crate::core::{LastGoodFailurePolicy, Provider};
+
+    let provider = KiroProvider::new();
+    assert!(provider.retains_last_good_on_transport_failure());
+    assert_eq!(
+        provider.last_good_failure_policy_for_error(&ProviderError::Timeout),
+        LastGoodFailurePolicy::Preserve
+    );
+    assert_eq!(
+        provider.last_good_failure_policy_for_error(&ProviderError::AuthRequired),
+        LastGoodFailurePolicy::Replace
+    );
+}

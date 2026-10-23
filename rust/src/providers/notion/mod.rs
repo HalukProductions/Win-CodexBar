@@ -289,7 +289,10 @@ fn build_usage_snapshot(
     account: Option<&NotionAccount>,
     now: DateTime<Utc>,
 ) -> Result<UsageSnapshot, ProviderError> {
+    // Upstream `NotionProvider` reports each allowance in credits (`quotaUnit`),
+    // so a monthly billing window can show its per-day target.
     let rolling = rate_limit.window.as_ref().and_then(|window| {
+        let limit = window.limit?;
         percent(window.used, window.limit).map(|used_percent| {
             RateWindow::with_details(
                 used_percent,
@@ -297,6 +300,7 @@ fn build_usage_snapshot(
                 rolling_reset(rate_limit.resets_in_seconds, now),
                 None,
             )
+            .with_quota(limit, "credits")
         })
     });
 
@@ -304,6 +308,7 @@ fn build_usage_snapshot(
         .billing_period_window
         .as_ref()
         .and_then(|billing| {
+            let limit = billing.limit?;
             percent(billing.used, billing.limit).map(|used_percent| {
                 RateWindow::with_details(
                     used_percent,
@@ -311,6 +316,7 @@ fn build_usage_snapshot(
                     date_from_milliseconds(billing.period_end_ms),
                     None,
                 )
+                .with_quota(limit, "credits")
             })
         });
 
@@ -744,6 +750,11 @@ mod tests {
             secondary.resets_at,
             date_from_milliseconds(Some(1_735_689_600_000.0))
         );
+        // Upstream `NotionAllowanceTests`: both allowances are credits.
+        assert_eq!(snap.primary.quota_limit, Some(100.0));
+        assert_eq!(snap.primary.quota_unit.as_deref(), Some("credits"));
+        assert_eq!(secondary.quota_limit, Some(1000.0));
+        assert_eq!(secondary.quota_unit.as_deref(), Some("credits"));
         // Upstream `NotionProviderDescriptor.swift:32`: "Monthly".
         assert_eq!(
             snap.secondary_label_key,

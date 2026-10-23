@@ -113,6 +113,11 @@ async fn documented_usage_preserves_allowances_overages_and_billing_dates() {
     let secondary = result.usage.secondary.as_ref().expect("gateway window");
     assert_eq!(secondary.used_percent, 100.0);
     assert_eq!(secondary.window_minutes, Some(44_640));
+    // Upstream `futureagi.ts`: the allowance and its display unit ride along.
+    assert_eq!(primary.quota_limit, Some(2000.0));
+    assert_eq!(primary.quota_unit.as_deref(), Some("credits"));
+    assert_eq!(secondary.quota_limit, Some(100_000.0));
+    assert_eq!(secondary.quota_unit.as_deref(), Some("requests"));
 
     assert_eq!(
         rows_in(&result, USAGE_SECTION),
