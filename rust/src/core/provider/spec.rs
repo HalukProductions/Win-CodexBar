@@ -148,11 +148,11 @@ const fn spec(
     }
 }
 
-const COUNT: usize = 113;
+const COUNT: usize = 114;
 
 pub(crate) static ALL: [ProviderId; COUNT] = {
     // Indexing SPECS by discriminant relies on rows following declaration order.
-    assert!(P::TraeCn as usize + 1 == COUNT);
+    assert!(P::Chatbox as usize + 1 == COUNT);
     let mut ids = [P::Codex; COUNT];
     let mut i = 0;
     while i < COUNT {
@@ -788,4 +788,8 @@ pub(crate) static SPECS: [ProviderSpec; COUNT] = [
         .dashboard("https://www.trae.cn/dashboard#usage")
         .aliases(&["trae-cn"])
         .parse_aliases(&["trae cn"]),
+    spec(P::Chatbox, "chatbox", "Chatbox AI", "#228BE6")
+        .labels("Plan", "Top-up credits")
+        .dashboard("https://chatboxai.app")
+        .parse_aliases(&["chatbox ai"]),
 ];

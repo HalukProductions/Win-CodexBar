@@ -847,6 +847,53 @@ POST https://api.trae.cn/trae/api/v2/pay/user_current_entitlement_list
   loopback host (`127.0.0.1`, `localhost`, `[::1]`), with no credentials, query,
   or fragment. Any other value is ignored with a warning.
 
+### Chatbox AI
+
+Chatbox AI is disabled by default. In Settings → Providers → Chatbox AI, paste
+your Chatbox **license key** into the API key field, or set
+`CHATBOX_LICENSE_KEY`; the saved key wins. Signing in to the Chatbox app does
+not configure this provider, and CodexBar never reads the Chatbox desktop
+profile or activates a license. Keep the key private: it can authorize AI
+requests as well as quota reads. It is never written to logs or errors.
+
+The provider makes one read-only request per refresh and never makes a
+billable call:
+
+```text
+GET https://api.chatboxai.app/api/license/detail/realtime
+Authorization: <license key>
+Cache-Control: no-store
+```
+
+The key is sent as is, without a `Bearer` prefix, as Chatbox's public client
+does. A key longer than 4096 characters or with spaces or control characters is
+rejected before any request.
+
+- The **Remaining** section shows `remaining / total` counts: **Plan** (the
+  `plan` item of `unified_token_usage_details`), **Quota** (the combined
+  `unified_token_usage` / `unified_token_limit`, only when there is no plan
+  pool), **Credits** (`aggregated_reward_details`, or the unexpired non-plan
+  detail items), **Top-up credits** (`expansion_pack_*`) and **Image
+  Generation** (`image_*`). These are compute points and image counts, not
+  money. Empty pools are hidden; exhausted pools stay. If every allowance is
+  zero, the section shows `Quota 0 / 0`.
+- The **Plan** meter is the primary window, only for a positive plan whose
+  status is absent or `active` and that has not expired. Its reset is
+  `token_next_refresh_time` when that is in the future and before the plan
+  expiry. Other pools never inherit it. **Top-up credits** with a positive
+  limit is the secondary window, with no reset.
+- The license `name` is the plan label. `token_expire_time` (or `expires_at`)
+  is the subscription expiry.
+- 401 reports an invalid key and asks for a new one. 403 reports denied access,
+  429 rate limiting, and other statuses a failed request, each with its HTTP
+  status. A body that is not the expected JSON envelope, an `error` member,
+  negative, fractional or non-numeric counters, or a duplicate plan item fail
+  parsing. Response bodies are never echoed in errors.
+- For proof runs and fake servers, `CHATBOX_BASE_URL` replaces the API origin
+  (default `https://api.chatboxai.app`). It accepts `https://`, or `http://`
+  only for a loopback host (`127.0.0.1`, `localhost`, `[::1]`), with no
+  credentials, query, or fragment. Any other value is ignored with a warning.
+
 ### Aerostack
 
 Aerostack is disabled by default. In Settings → Providers → Aerostack, enter an

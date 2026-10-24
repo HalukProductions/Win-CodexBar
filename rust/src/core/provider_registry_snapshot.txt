@@ -450,3 +450,7 @@ TraeCn cli=traecn display="Trae CN" cookie=Some("api.trae.cn") color=#4D7CFE dep
   map=["trae-cn", "traecn"]
   metadata=ProviderMetadata { id: TraeCn, display_name: "Trae CN", session_label: "Credits", weekly_label: "Window", supports_opus: false, supports_credits: false, default_enabled: false, is_primary: false, dashboard_url: Some("https://www.trae.cn/dashboard#usage"), status_page_url: None, tertiary_label_key: None }
   sources=[Auto, Web] oauth=false web=true cli=false
+Chatbox cli=chatbox display="Chatbox AI" cookie=None color=#228BE6 deprecated=false blocking=None
+  map=["chatbox"]
+  metadata=ProviderMetadata { id: Chatbox, display_name: "Chatbox AI", session_label: "Plan", weekly_label: "Top-up credits", supports_opus: false, supports_credits: false, default_enabled: false, is_primary: false, dashboard_url: Some("https://chatboxai.app"), status_page_url: None, tertiary_label_key: None }
+  sources=[Auto, OAuth] oauth=false web=false cli=false
