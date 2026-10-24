@@ -107,7 +107,7 @@ impl CodexWorkspacesIndex {
         self.history_days
     }
 
-    fn scope(&self) -> Result<CodexLocalDataScope, IndexError> {
+    pub(super) fn scope(&self) -> Result<CodexLocalDataScope, IndexError> {
         if let Some(home) = &self.codex_home_override {
             return Ok(CodexLocalDataScope::from_home(home.clone()));
         }
@@ -289,7 +289,7 @@ impl CodexWorkspacesIndex {
         Ok(snapshot)
     }
 
-    fn history_range(&self, today: NaiveDate) -> CostUsageDayRange {
+    pub(super) fn history_range(&self, today: NaiveDate) -> CostUsageDayRange {
         CostUsageDayRange::new(codex_period_start(today, self.history_days), today)
     }
 
@@ -338,7 +338,10 @@ impl CodexWorkspacesIndex {
 }
 
 /// Every rollout in the history window, from dated and flat folders alike.
-fn list_rollout_files(scope: &CodexLocalDataScope, range: &CostUsageDayRange) -> Vec<PathBuf> {
+pub(super) fn list_rollout_files(
+    scope: &CodexLocalDataScope,
+    range: &CostUsageDayRange,
+) -> Vec<PathBuf> {
     let mut files = list_session_files(&scope.sessions_root, range);
     files.extend(list_session_files(&scope.archived_sessions_root, range));
     // Codex archives a thread by moving its rollout into the flat
@@ -370,7 +373,7 @@ fn list_rollout_files(scope: &CodexLocalDataScope, range: &CostUsageDayRange) ->
 }
 
 /// `(session id, cwd)` from the rollout's first line, else the file name.
-fn rollout_session_id(path: &Path) -> Option<(String, Option<String>)> {
+pub(super) fn rollout_session_id(path: &Path) -> Option<(String, Option<String>)> {
     let first_line = CodexRolloutFirstLineParser::read_first_line(path)?;
     if let Some(meta) = CodexRolloutFirstLineParser::parse(&first_line) {
         return Some((meta.session_id, meta.cwd));
@@ -653,7 +656,13 @@ fn merge_daily(
 
 /// Prices at the usage day's rates, like the cost scanners, so usage from
 /// before a model's repricing keeps the rates it was billed at.
-fn codex_cost_on_day(day: &str, model: &str, input: u64, cached: u64, output: u64) -> Option<f64> {
+pub(super) fn codex_cost_on_day(
+    day: &str,
+    model: &str,
+    input: u64,
+    cached: u64,
+    output: u64,
+) -> Option<f64> {
     match CostUsageDayRange::parse_day_key(day) {
         Some(day) => CostUsagePricing::codex_cost_usd_at_date(model, input, cached, output, day),
         None => CostUsagePricing::codex_cost_usd(model, input, cached, output),
