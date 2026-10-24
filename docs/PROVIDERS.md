@@ -813,10 +813,12 @@ GET https://platform.claude.com/api/organizations/<uuid>/current_spend
 ### Trae CN
 
 Trae CN is disabled by default and shows the credit allowance of a Trae CN
-(trae.cn) account. Sign in to trae.cn in your browser, and CodexBar uses the
-`api.trae.cn` session cookies.
+(trae.cn) account. Sign in to trae.cn in your browser, and CodexBar uses that
+session.
 
-- **Automatic:** CodexBar tries each detected browser holding an api.trae.cn
+- **Automatic:** Trae keeps its session cookies on the parent `trae.cn` domain,
+  so CodexBar reads the `trae.cn` cookies and sends only the ones a browser
+  would send to `api.trae.cn`. It tries each detected browser holding such a
   session. If Trae rejects a session (401, 403 or a redirect), it moves to the
   next browser. No session means sign in to trae.cn.
 - **Manual:** Paste the Cookie header from an api.trae.cn request. Manual mode
