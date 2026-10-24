@@ -79,11 +79,25 @@ pub fn get_api_key_providers() -> Vec<ApiKeyProviderInfoBridge> {
 
 #[tauri::command]
 pub fn set_api_key(
+    app: tauri::AppHandle,
     provider_id: String,
     api_key: String,
     label: Option<String>,
 ) -> Result<Vec<ApiKeyInfoBridge>, String> {
-    let canonical_provider = canonical_provider_arg(&provider_id)?;
+    let canonical_provider = write_api_key(&provider_id, &api_key, label)?;
+    events::emit_api_keys_updated(&app, &canonical_provider);
+    Ok(get_api_keys())
+}
+
+/// Validates and persists one provider's API key, returning the canonical
+/// provider id. Emission is left to the command so this stays testable without
+/// an `AppHandle`.
+pub(super) fn write_api_key(
+    provider_id: &str,
+    api_key: &str,
+    label: Option<String>,
+) -> Result<String, String> {
+    let canonical_provider = canonical_provider_arg(provider_id)?;
     if !codexbar::settings::get_api_key_providers()
         .iter()
         .any(|p| p.id.cli_name() == canonical_provider)
@@ -92,22 +106,32 @@ pub fn set_api_key(
             "Provider '{canonical_provider}' does not support API-key storage"
         ));
     }
-    validate_single_line_secret(&api_key, "API key", MAX_API_KEY_LEN)?;
+    validate_single_line_secret(api_key, "API key", MAX_API_KEY_LEN)?;
     let label = sanitize_optional_label(label)?;
 
     let mut keys = ApiKeys::load();
     keys.set(&canonical_provider, api_key.trim(), label.as_deref());
     keys.save().map_err(|e| e.to_string())?;
-    Ok(get_api_keys())
+    Ok(canonical_provider)
 }
 
 #[tauri::command]
-pub fn remove_api_key(provider_id: String) -> Result<Vec<ApiKeyInfoBridge>, String> {
-    let canonical_provider = canonical_provider_arg(&provider_id)?;
+pub fn remove_api_key(
+    app: tauri::AppHandle,
+    provider_id: String,
+) -> Result<Vec<ApiKeyInfoBridge>, String> {
+    let canonical_provider = remove_stored_api_key(&provider_id)?;
+    events::emit_api_keys_updated(&app, &canonical_provider);
+    Ok(get_api_keys())
+}
+
+/// Removes one provider's stored API key, returning the canonical provider id.
+pub(super) fn remove_stored_api_key(provider_id: &str) -> Result<String, String> {
+    let canonical_provider = canonical_provider_arg(provider_id)?;
     let mut keys = ApiKeys::load();
     keys.remove(&canonical_provider);
     keys.save().map_err(|e| e.to_string())?;
-    Ok(get_api_keys())
+    Ok(canonical_provider)
 }
 
 #[tauri::command]

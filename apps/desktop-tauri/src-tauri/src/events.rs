@@ -22,6 +22,7 @@ pub const LOCALE_CHANGED: &str = "locale-changed";
 pub const SETTINGS_CHANGED: &str = "settings-changed";
 pub const STAY_AWAKE_CHANGED: &str = "stay-awake-changed";
 pub const CODEX_ACCOUNTS_UPDATED: &str = "codex-accounts-updated";
+pub const API_KEYS_UPDATED: &str = "api-keys-updated";
 pub const LOGIN_PHASE: &str = "login-phase";
 pub const PROVIDER_STATUSES_UPDATED: &str = "provider-statuses-updated";
 
@@ -46,6 +47,13 @@ pub struct RefreshCompletePayload {
 #[serde(rename_all = "camelCase")]
 pub struct RefreshStartedPayload {
     pub provider_ids: Vec<String>,
+}
+
+/// Names only the provider whose stored API key changed. Never carries the key.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiKeysUpdatedPayload {
+    pub provider_id: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -102,6 +110,17 @@ pub fn emit_codex_accounts_updated(app: &AppHandle) {
     let _emit_codex_accounts = app.emit(CODEX_ACCOUNTS_UPDATED, ());
 }
 
+/// Broadcast that a provider's stored API key was written or removed, so the
+/// Settings API key section re-reads the key list in every window.
+pub fn emit_api_keys_updated(app: &AppHandle, provider_id: &str) {
+    let _emit_api_keys = app.emit(
+        API_KEYS_UPDATED,
+        ApiKeysUpdatedPayload {
+            provider_id: provider_id.to_string(),
+        },
+    );
+}
+
 pub fn emit_update_state_changed(app: &AppHandle, payload: &UpdateStatePayload) {
     let _emit_update_state = app.emit(UPDATE_STATE_CHANGED, payload);
 }
@@ -127,4 +146,19 @@ pub fn emit_login_phase(app: &AppHandle, provider_id: &str, phase: &str, auth_li
             auth_link: auth_link.map(|s| s.to_string()),
         },
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn api_keys_updated_payload_names_the_provider_and_never_a_key() {
+        let json = serde_json::to_value(ApiKeysUpdatedPayload {
+            provider_id: "openrouter".into(),
+        })
+        .expect("serialize");
+        assert_eq!(json, serde_json::json!({ "providerId": "openrouter" }));
+        assert_eq!(API_KEYS_UPDATED, "api-keys-updated");
+    }
 }

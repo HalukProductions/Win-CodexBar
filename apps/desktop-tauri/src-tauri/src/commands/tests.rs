@@ -152,15 +152,15 @@ fn credential_storage_status_serializes_access_tokens() {
 
 #[test]
 fn command_inputs_reject_invalid_provider_ids_before_storage_writes() {
-    assert!(super::set_api_key("not-a-provider".into(), "sk-test".into(), None).is_err());
+    assert!(super::credentials::write_api_key("not-a-provider", "sk-test", None).is_err());
     assert!(super::set_manual_cookie("not-a-provider".into(), "a=b".into()).is_err());
-    assert!(super::remove_api_key("bad\nprovider".into()).is_err());
+    assert!(super::credentials::remove_stored_api_key("bad\nprovider").is_err());
     assert!(super::remove_manual_cookie("".into()).is_err());
 }
 
 #[test]
 fn command_inputs_reject_multiline_secrets() {
-    assert!(super::set_api_key("openrouter".into(), "sk-test\nnext".into(), None).is_err());
+    assert!(super::credentials::write_api_key("openrouter", "sk-test\nnext", None).is_err());
     assert!(super::set_manual_cookie("codex".into(), "a=b\nc=d".into()).is_err());
 }
 

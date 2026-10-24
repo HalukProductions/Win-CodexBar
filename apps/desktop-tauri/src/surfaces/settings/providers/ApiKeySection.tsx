@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   getApiKeyProviders,
   getApiKeys,
@@ -33,20 +34,27 @@ export function ApiKeySection({ providerId }: Props) {
   const [editValue, setEditValue] = useState("");
   const [editLabel, setEditLabel] = useState("");
 
+  // Shared by the mount and refresh effects: reloads can overlap and finish
+  // out of order, and only the newest one may write state.
+  const reloadGeneration = useRef(0);
+
   const reload = useCallback(async (signal: { stale: boolean }) => {
+    const generation = ++reloadGeneration.current;
+    const isCurrent = () =>
+      !signal.stale && generation === reloadGeneration.current;
     try {
       const [providers, keys] = await Promise.all([
         getApiKeyProviders(),
         getApiKeys(),
       ]);
-      if (signal.stale) return;
+      if (!isCurrent()) return;
       setInfo(providers.find((p) => p.id === providerId) ?? null);
       setSaved(keys.find((k) => k.providerId === providerId) ?? null);
     } catch (err: unknown) {
-      if (signal.stale) return;
+      if (!isCurrent()) return;
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      if (!signal.stale) setLoaded(true);
+      if (isCurrent()) setLoaded(true);
     }
   }, [providerId]);
 
@@ -61,6 +69,36 @@ export function ApiKeySection({ providerId }: Props) {
     setSaved(null);
     void reload(signal);
     return () => { signal.stale = true; };
+  }, [reload]);
+
+  // Keys can change outside this section: another window saves through the
+  // bridge (`api-keys-updated`), or a CLI write lands in the keys file, which
+  // can't emit. Re-read on both events and on window focus. Unlike the mount
+  // effect above, this leaves an open edit form and its draft untouched.
+  useEffect(() => {
+    const signal = { stale: false };
+    const refresh = () => void reload(signal);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    let active = true;
+    let unlisten: UnlistenFn | undefined;
+    // `Promise.resolve` tolerates test mocks that return a bare unlisten fn.
+    Promise.resolve(listen("api-keys-updated", refresh))
+      .then((fn) => {
+        if (active) unlisten = fn;
+        else fn?.();
+      })
+      .catch(() => {});
+    return () => {
+      signal.stale = true;
+      active = false;
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      unlisten?.();
+    };
   }, [reload]);
 
   if (!loaded) return null;
