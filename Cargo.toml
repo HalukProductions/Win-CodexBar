@@ -4,6 +4,7 @@ members = [
     "apps/desktop-tauri/src-tauri",
 ]
 default-members = ["apps/desktop-tauri/src-tauri"]
+exclude = ["vendor/tray-icon"]
 resolver = "3"
 
 [workspace.lints.clippy]
@@ -12,3 +13,8 @@ let_underscore_must_use = "deny"
 undocumented_unsafe_blocks = "deny"
 cast_possible_truncation = "deny"
 cast_possible_wrap = "deny"
+
+# tray-icon 0.21.3 leaves NOTIFYICONDATAW.cbSize zeroed, so Explorer reads the
+# legacy layout and cuts tray tooltips at 64 UTF-16 units. See vendor/tray-icon/PATCHED.md.
+[patch.crates-io]
+tray-icon = { path = "vendor/tray-icon" }
