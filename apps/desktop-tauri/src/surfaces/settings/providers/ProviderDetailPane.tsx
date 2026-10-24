@@ -9,6 +9,7 @@ import { SettingsGroup } from "../../../components/FormControls";
 import { formatRelativeUpdated } from "../../../lib/relativeTime";
 import { nextEnabledProviders } from "../settingsTabs";
 import { useLocale } from "../../../hooks/useLocale";
+import { useNow } from "../../../hooks/useNow";
 import { providerAllowsPace } from "../../../lib/providerPace";
 import { providerBarAccent } from "../../../components/providers/providerIcons";
 import {
@@ -147,6 +148,8 @@ export function ProviderDetailPane({
   // after the selection changed) must not replace the current provider.
   const selectedProviderId = useRef(providerId);
   selectedProviderId.current = providerId;
+  // Keeps "Updated N ago" advancing while the pane stays open.
+  const nowMs = useNow();
 
   const load = useCallback(async (id: string, signal?: { stale: boolean }) => {
     const isStale = () => signal?.stale === true || selectedProviderId.current !== id;
@@ -352,7 +355,7 @@ export function ProviderDetailPane({
   const hasFetchError = Boolean(detail.lastError?.trim());
   const updatedMs = detail.lastUpdated ? Date.parse(detail.lastUpdated) : Number.NaN;
   const updatedText = Number.isFinite(updatedMs)
-    ? formatRelativeUpdated(updatedMs, t)
+    ? formatRelativeUpdated(updatedMs, t, nowMs)
     : busy
       ? t("SectionRefreshing")
       : hasFetchError

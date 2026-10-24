@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { LocaleKey } from "../../i18n/keys";
 import { useLocale } from "../../hooks/useLocale";
 import { formatRelativeUpdated } from "../../lib/relativeTime";
+import { useNow } from "../../hooks/useNow";
 
 type Translate = (key: LocaleKey) => string;
 
@@ -105,6 +106,7 @@ export default function CardHeader({
   isRefreshing: boolean;
 }) {
   const { t } = useLocale();
+  const nowMs = useNow();
   return (
     <header className="card-header">
       <div className="card-header__line">
@@ -130,7 +132,7 @@ export default function CardHeader({
           </>
         ) : (
           <span className="card-header__subtitle">
-            {headerSubtitle(updatedAt, isRefreshing, t)}
+            {headerSubtitle(updatedAt, isRefreshing, t, nowMs)}
           </span>
         )}
         {plan && <span className="card-header__plan">{plan}</span>}
