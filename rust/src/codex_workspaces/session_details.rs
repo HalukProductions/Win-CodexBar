@@ -180,7 +180,8 @@ impl CodexWorkspacesIndex {
         let mut rows: Vec<PricedRow> = Vec::new();
         for (path, len) in sized {
             let target = i64::try_from(len).map_err(|_| SessionDetailError::LimitExceeded)?;
-            let parsed = JsonlScanner::parse_codex(
+            let remaining = limits.max_requests.saturating_sub(rows.len());
+            let parsed = JsonlScanner::parse_codex_bounded(
                 &path,
                 &range,
                 CodexParseMode::Standard {
@@ -193,9 +194,12 @@ impl CodexWorkspacesIndex {
                 None,
                 Some(target),
                 None,
+                Some(remaining),
             )
             .map_err(|_| SessionDetailError::Unavailable)?;
-            if rows.len().saturating_add(parsed.records.len()) > limits.max_requests {
+            // A capped parse holds one record past the budget and is never
+            // checkpoint-validated: it returns here.
+            if parsed.records.len() > remaining {
                 return Err(SessionDetailError::LimitExceeded);
             }
             // Summed per file, then per session, in the indexer's order.
