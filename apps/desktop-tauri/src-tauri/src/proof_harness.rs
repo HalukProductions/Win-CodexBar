@@ -32,6 +32,11 @@
 //! opens the flyout, Settings and float bar windows at that point instead of
 //! their normal placement, so proof runs can keep every window on one chosen
 //! monitor.
+//!
+//! `CODEXBAR_PROOF_SYSTEM_THEME=light|dark` (proof mode only) makes
+//! `get_system_theme` report that Windows app theme, so the `auto` theme can be
+//! proven in both directions without changing the real OS setting. Any other
+//! value is ignored.
 
 use std::collections::HashSet;
 use std::sync::{Mutex, OnceLock};
@@ -314,6 +319,48 @@ pub fn is_proof_mode(app: &AppHandle) -> bool {
 }
 
 // ── Window origin (CODEXBAR_PROOF_WINDOW_ORIGIN) ─────────────────────
+
+// ── System theme (CODEXBAR_PROOF_SYSTEM_THEME) ───────────────────────
+
+/// Environment variable naming the app theme (`light` or `dark`) that
+/// `get_system_theme` reports. Honored only in proof mode.
+pub const SYSTEM_THEME_ENV_VAR: &str = "CODEXBAR_PROOF_SYSTEM_THEME";
+
+static SYSTEM_THEME: OnceLock<&'static str> = OnceLock::new();
+
+/// Read `CODEXBAR_PROOF_SYSTEM_THEME` once at startup. Outside proof mode,
+/// or when the value is unset or invalid, nothing is installed and
+/// `get_system_theme` reads the OS setting.
+pub fn install_system_theme_from_env(proof_mode: bool) {
+    let raw = std::env::var(SYSTEM_THEME_ENV_VAR).ok();
+    if let Some(theme) = proof_system_theme(proof_mode, raw.as_deref()) {
+        tracing::info!("proof-harness: system theme {theme}");
+        let _ = SYSTEM_THEME.set(theme);
+    }
+}
+
+/// The proof theme override, when one was installed at startup.
+pub fn system_theme_override() -> Option<&'static str> {
+    SYSTEM_THEME.get().copied()
+}
+
+/// Gate for `CODEXBAR_PROOF_SYSTEM_THEME`. Returns `None` outside proof mode,
+/// when the value is unset or blank, and when it is not `light` or `dark`.
+fn proof_system_theme(proof_mode: bool, raw: Option<&str>) -> Option<&'static str> {
+    let raw = raw.map(str::trim).filter(|raw| !raw.is_empty())?;
+    if !proof_mode {
+        tracing::warn!("{SYSTEM_THEME_ENV_VAR} is ignored outside proof mode");
+        return None;
+    }
+    match raw.to_ascii_lowercase().as_str() {
+        "light" => Some("light"),
+        "dark" => Some("dark"),
+        _ => {
+            tracing::warn!("{SYSTEM_THEME_ENV_VAR}: expected 'light' or 'dark', ignoring");
+            None
+        }
+    }
+}
 
 /// Environment variable with a `<x>,<y>` physical-pixel origin for proof
 /// windows. Honored only in proof mode.
@@ -1109,6 +1156,24 @@ mod tests {
             Some(prev) => unsafe { std::env::set_var(WINDOW_ORIGIN_ENV_VAR, prev) },
             // SAFETY: same `ENV_LOCK` guard.
             None => unsafe { std::env::remove_var(WINDOW_ORIGIN_ENV_VAR) },
+        }
+    }
+
+    #[test]
+    fn system_theme_is_honored_only_in_proof_mode() {
+        assert_eq!(proof_system_theme(true, Some("light")), Some("light"));
+        assert_eq!(proof_system_theme(true, Some(" Dark ")), Some("dark"));
+        assert_eq!(proof_system_theme(false, Some("light")), None);
+        assert_eq!(proof_system_theme(false, Some("dark")), None);
+    }
+
+    #[test]
+    fn system_theme_ignores_unset_blank_and_invalid_values() {
+        assert_eq!(proof_system_theme(true, None), None);
+        assert_eq!(proof_system_theme(true, Some("")), None);
+        assert_eq!(proof_system_theme(true, Some("   ")), None);
+        for raw in ["auto", "system", "lightish", "1"] {
+            assert_eq!(proof_system_theme(true, Some(raw)), None, "{raw}");
         }
     }
 

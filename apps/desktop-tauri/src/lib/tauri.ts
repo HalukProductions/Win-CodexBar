@@ -661,6 +661,11 @@ export function getSystemAccentColor(): Promise<string | null> {
   return invoke<string | null>("get_system_accent_color");
 }
 
+/** The Windows app-theme setting; the native windows are pinned Dark, so the webview cannot read it. */
+export function getSystemTheme(): Promise<"light" | "dark"> {
+  return invoke<"light" | "dark">("get_system_theme");
+}
+
 export function quitApp(): Promise<void> {
   return invoke<void>("quit_app");
 }

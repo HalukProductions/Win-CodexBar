@@ -130,6 +130,16 @@ await window.__TAURI_INTERNALS__.invoke('proof_activate_tray_item', { id: 'toggl
 - Some actions write to the running profile. A provider toggle saves `settings.json`, and Quit exits the app. Use an isolated `APPDATA` home for proof runs.
 - Rows that change a setting show the new state once the menu is rebuilt. The call returns when the handler's synchronous part is done, and some rebuilds and all account actions run after that, so the dump can still show the old state right after the call. Poll for a higher `generation` before you read the state.
 
+### Report a fixed system theme
+
+`CODEXBAR_PROOF_SYSTEM_THEME` makes the app report a fixed Windows app theme to `get_system_theme`. The `auto` theme in Settings then follows that value, so both directions can be proven without changing the real OS setting.
+
+```powershell
+$env:CODEXBAR_PROOF_SYSTEM_THEME = 'light'   # or 'dark'
+```
+
+It takes effect only in proof mode and accepts `light` or `dark`, case-insensitive. Outside proof mode the app logs a warning and reads the OS setting. An unset or blank value, or any other value, is ignored, and the app reads the OS setting. The override changes only what the app reports. It does not change the Windows setting, so the DWM caption, scrollbars and `<select>` popups keep their pinned dark theme.
+
 ## Drive the app
 
 Drive the app without taking the user's focus or keyboard. Don't use cua-driver's `bring_to_front`, foreground mode, `hotkey` or `type_text`.
@@ -263,6 +273,7 @@ URL parameters:
 | `tab` | any settings tab id, or `providers:<id>` | `general` |
 | `fixture` | `default`, `two-codex-accounts`, `errors`, `empty`, `claude-plan-hidden`, `kpi-long-titles`, `codex-conversations`, `codex-conversations-private` | `default` |
 | `theme` | `dark`, `light`, `auto` (overrides the fixture) | fixture value |
+| `system` | `dark`, `light`: the Windows app theme that `get_system_theme` reports, which Settings follows under `auto` | `dark` |
 
 Example: `proof.html?window=settings&tab=providers:codex&fixture=two-codex-accounts`.
 

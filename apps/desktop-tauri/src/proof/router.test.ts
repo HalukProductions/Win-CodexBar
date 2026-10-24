@@ -163,22 +163,41 @@ describe("proof router", () => {
   });
 });
 
+describe("proof system theme", () => {
+  it("reports the Windows app theme the scenario asks for, dark by default", () => {
+    const light = createProofRouter(buildProofScenario("default", NOW), {
+      window: "settings",
+      tab: "general",
+      now: NOW,
+      systemTheme: "light",
+    });
+    expect(light.handle("get_system_theme")).toBe("light");
+
+    const fallback = routerFor("default", "settings");
+    expect(fallback.handle("get_system_theme")).toBe("dark");
+  });
+});
+
 describe("proof URL params", () => {
   it("falls back to safe defaults", () => {
-    expect(parseProofParams("?window=nope&fixture=nope&theme=nope")).toEqual({
+    expect(parseProofParams("?window=nope&fixture=nope&theme=nope&system=nope")).toEqual({
       window: "main",
       tab: "general",
       fixture: "default",
       theme: null,
+      systemTheme: "dark",
     });
   });
 
-  it("reads window, tab, fixture and theme", () => {
-    expect(parseProofParams("?window=settings&tab=menu&fixture=errors&theme=light")).toEqual({
+  it("reads window, tab, fixture, theme and the system theme", () => {
+    expect(
+      parseProofParams("?window=settings&tab=menu&fixture=errors&theme=auto&system=light"),
+    ).toEqual({
       window: "settings",
       tab: "menu",
       fixture: "errors",
-      theme: "light",
+      theme: "auto",
+      systemTheme: "light",
     });
   });
 });

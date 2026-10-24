@@ -108,6 +108,8 @@ export interface ProofRouterOptions {
   window: ProofWindow;
   tab: string;
   now?: Date;
+  /** What `get_system_theme` reports (the Windows app theme). Dark when omitted. */
+  systemTheme?: "light" | "dark";
 }
 
 export interface ProofRouter {
@@ -277,6 +279,7 @@ export function createProofRouter(
     apply_http_server_config: (args) =>
       applyHttpServer(argsRecord(args.config) as unknown as HttpServerConfig),
     get_system_accent_color: () => "#4c8bf5",
+    get_system_theme: () => options.systemTheme ?? "dark",
     // A fixed 1080p desktop minus the taskbar: headless browsers report a
     // small `screen`, which would cap the tray panel's auto-fit height.
     get_work_area_rect: () => ({ x: 0, y: 0, width: 1920, height: 1032 }),

@@ -24,7 +24,12 @@ export function installProofMocks(params: ProofParams, now: Date = new Date()): 
   if (params.theme) {
     scenario.settings = { ...scenario.settings, theme: params.theme };
   }
-  const router = createProofRouter(scenario, { window: params.window, tab: params.tab, now });
+  const router = createProofRouter(scenario, {
+    window: params.window,
+    tab: params.tab,
+    now,
+    systemTheme: params.systemTheme,
+  });
   const current = windowLabel(params.window);
   const others = PROOF_WINDOWS.map(windowLabel).filter((label) => label !== current);
   mockWindows(current, ...others);

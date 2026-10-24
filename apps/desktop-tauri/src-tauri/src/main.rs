@@ -146,6 +146,7 @@ fn main() {
     let proof_config = proof_harness::ProofConfig::from_env();
     let is_proof_mode = proof_config.is_some();
     proof_harness::install_window_origin_from_env(is_proof_mode);
+    proof_harness::install_system_theme_from_env(is_proof_mode);
     let force_start_visible = std::env::var_os("CODEXBAR_START_VISIBLE").is_some();
     let mut settings = codexbar::settings::Settings::load();
     settings.apply_display_mode_fold_migration();
@@ -340,6 +341,7 @@ fn main() {
             commands::unregister_global_shortcut,
             commands::get_work_area_rect,
             commands::get_system_accent_color,
+            commands::get_system_theme,
             commands::play_notification_sound,
             commands::open_external_url,
             commands::reanchor_tray_panel,
