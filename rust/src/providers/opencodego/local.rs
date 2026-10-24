@@ -603,6 +603,35 @@ pub fn daily_cost_series(now: DateTime<Utc>, history_days: u32) -> Vec<(String, 
     by_day.into_iter().collect()
 }
 
+/// Per-day token totals for the shared Tokens chart, with the same rule as
+/// the window total (input + output + cache read/write). `None` when any row
+/// lacked exact input/output counts, because a partial day sum would be
+/// reported as exact.
+pub fn daily_token_totals(buckets: &[DailyModelCost]) -> Option<Vec<(String, u64)>> {
+    let mut by_day: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
+    for b in buckets {
+        if b.tokens.unknown_token_rows() > 0 {
+            return None;
+        }
+        let total = b
+            .tokens
+            .to_model_token_counts()?
+            .total_for_provider("opencodego");
+        let slot = by_day.entry(b.day_key.clone()).or_insert(0);
+        *slot = slot.saturating_add(total);
+    }
+    Some(by_day.into_iter().collect())
+}
+
+/// [`daily_token_totals`] over the first available local OpenCode install.
+/// An install that isn't detected is a known empty series.
+pub fn daily_token_series(now: DateTime<Utc>, history_days: u32) -> Option<Vec<(String, u64)>> {
+    let Some(rows) = read_available_rows() else {
+        return Some(Vec::new());
+    };
+    daily_token_totals(&daily_model_costs(&rows, now, history_days))
+}
+
 /// Provider-local cost summary for the chart's local-usage panel. `None` when no
 /// local OpenCode install is detected.
 pub fn model_cost_summary_scan(now: DateTime<Utc>, days: u32) -> Option<ModelCostSummary> {
