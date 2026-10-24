@@ -528,3 +528,48 @@ fn terminal_mapping_leaves_other_errors_unchanged() {
     let other = sign_in_hint_for_terminal_error(ProviderError::Other("kept".to_string()));
     assert_eq!(other.to_string(), "kept");
 }
+
+fn hint_context(
+    source_mode: SourceMode,
+    api_key: Option<&str>,
+    manual_cookie_header: Option<&str>,
+    token_account_isolated: bool,
+) -> FetchContext {
+    FetchContext {
+        source_mode,
+        api_key: api_key.map(str::to_string),
+        manual_cookie_header: manual_cookie_header.map(str::to_string),
+        token_account_isolated,
+        ..FetchContext::default()
+    }
+}
+
+#[test]
+fn sign_in_hint_applies_to_ambient_login_routes() {
+    for ctx in [
+        hint_context(SourceMode::Cli, None, None, false),
+        hint_context(SourceMode::Cli, Some("key"), Some("sso=x"), false),
+        hint_context(SourceMode::OAuth, None, Some("sso=x"), false),
+        hint_context(SourceMode::Web, Some("key"), None, false),
+        hint_context(SourceMode::Auto, None, None, false),
+        hint_context(SourceMode::Auto, Some("  "), Some(" "), false),
+    ] {
+        assert!(sign_in_hint_applies(&ctx), "{:?}", ctx.source_mode);
+    }
+}
+
+#[test]
+fn sign_in_hint_skips_supplied_and_isolated_credentials() {
+    for ctx in [
+        hint_context(SourceMode::Web, None, Some("sso=x"), false),
+        hint_context(SourceMode::OAuth, Some("key"), None, false),
+        hint_context(SourceMode::Auto, Some("key"), None, false),
+        hint_context(SourceMode::Auto, None, Some("sso=x"), false),
+        hint_context(SourceMode::Auto, Some("key"), None, true),
+        hint_context(SourceMode::Web, None, Some("sso=x"), true),
+        hint_context(SourceMode::Cli, Some("key"), None, true),
+        hint_context(SourceMode::OAuth, None, Some("sso=x"), true),
+    ] {
+        assert!(!sign_in_hint_applies(&ctx), "{:?}", ctx.source_mode);
+    }
+}

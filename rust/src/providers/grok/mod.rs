@@ -787,7 +787,11 @@ impl Provider for GrokProvider {
             }
         }
         .await;
-        result.map_err(sign_in_hint_for_terminal_error)
+        if sign_in_hint_applies(ctx) {
+            result.map_err(sign_in_hint_for_terminal_error)
+        } else {
+            result
+        }
     }
 
     fn available_sources(&self) -> Vec<SourceMode> {
@@ -1162,6 +1166,29 @@ fn sign_in_hint_for_terminal_error(error: ProviderError) -> ProviderError {
     match error {
         ProviderError::AuthRequired => ProviderError::OAuth(GROK_SIGN_IN_HINT.to_string()),
         other => other,
+    }
+}
+
+/// Whether a terminal `AuthRequired` came from the ambient Grok login, so
+/// `grok login` is the fix. A supplied API key or manual cookie answers last on
+/// its route (auto steps return its result; OAuth falls back to the key), and
+/// an isolated account never reads the ambient login, so those keep the
+/// original error. The presence checks mirror each route's own checks.
+fn sign_in_hint_applies(ctx: &FetchContext) -> bool {
+    if ctx.token_account_isolated {
+        return false;
+    }
+    let has_api_key = || ctx.api_key.as_deref().is_some();
+    let has_trimmed = |value: &Option<String>| {
+        value
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+    };
+    match ctx.source_mode {
+        SourceMode::Cli => true,
+        SourceMode::OAuth => !has_api_key(),
+        SourceMode::Web => ctx.manual_cookie_header.is_none(),
+        SourceMode::Auto => !has_trimmed(&ctx.api_key) && !has_trimmed(&ctx.manual_cookie_header),
     }
 }
 
