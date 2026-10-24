@@ -1364,6 +1364,7 @@ ResetsAtLabel = Sıfırlanma: { "{}" }
 ResetsInHoursOnly = Sıfırlanmaya { "{}" } sa
 ResetsInDaysOnly = Sıfırlanmaya { "{}" } g
 RegeneratesCountdown = Yenilenme: { "{}" }
+RegeneratesNow = Yenilenme: şimdi
 CostTitleClawRouterSpend = ClawRouter spend
 CostTitleClawRouterMonthlyBudget = Monthly budget
 ResetsAtTime = { "{}" } saatinde sıfırlanır

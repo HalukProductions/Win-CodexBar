@@ -183,20 +183,14 @@ function absoluteResetDescription(target: Date, now: Date, t: Translate): string
 }
 
 /**
- * Upstream `UsageFormatter.resetCountdownDescription`: the unlocalized "in 2d 3h"
- * countdown that `syntheticRegenDetail` puts inside "Regenerates %@", always relative.
+ * Upstream `syntheticRegenDetail`: "Regenerates %@" around the countdown, always
+ * relative. The bare localized duration fills `RegeneratesCountdown`, which owns
+ * its own preposition per locale; zero remaining uses the whole-sentence
+ * `RegeneratesNow`.
  */
-function regenCountdown(seconds: number): string {
-  const parts = countdownParts(seconds);
-  if (!parts) return "now";
-  const { days, hours, minutes } = parts;
-  if (days > 0) {
-    if (hours > 0) return `in ${days}d ${hours}h`;
-    if (minutes > 0) return `in ${days}d ${minutes}m`;
-    return `in ${days}d`;
-  }
-  if (hours > 0) return minutes > 0 ? `in ${hours}h ${minutes}m` : `in ${hours}h`;
-  return `in ${minutes}m`;
+function regenText(seconds: number, t: Translate): string {
+  const duration = formatCountdown(seconds, DURATION_KEYS, t);
+  return duration === null ? t("RegeneratesNow") : fill(t("RegeneratesCountdown"), duration);
 }
 
 export function metricResetText(
@@ -210,7 +204,7 @@ export function metricResetText(
     return normalizeResetDescription(resetDescriptionFallback(snap), t);
   }
   if (snap.resetRegenerates) {
-    return fill(t("RegeneratesCountdown"), regenCountdown((target - now) / 1000));
+    return regenText((target - now) / 1000, t);
   }
   if (!relative) {
     return fill(t("ResetsAtLabel"), absoluteResetDescription(new Date(target), new Date(now), t));

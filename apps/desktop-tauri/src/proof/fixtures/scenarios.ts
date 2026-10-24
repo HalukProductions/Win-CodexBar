@@ -19,6 +19,7 @@ import type {
   SpendModelRow,
   TokenAccountBridge,
 } from "../../types/bridge";
+import { ukLocaleOverrides } from "../locale";
 import {
   PROOF_PROVIDER_CATALOG,
   baseSettings,
@@ -51,6 +52,7 @@ export const PROOF_SCENARIO_NAMES = [
   "claude-reset-credits",
   "claude-reset-credits-hidden",
   "kpi-long-titles",
+  "uk-regen-countdown",
   "claudeplatform",
   "cookie-no-browsers",
   "vercel",
@@ -1093,6 +1095,36 @@ function kpiLongTitlesScenario(now: Date): ProofScenario {
   };
 }
 
+/**
+ * Default data with Claude's session window marked as regenerating, shown under
+ * the shipped uk-UA strings. The reset is 2 days 3 hours 30 minutes away; the
+ * countdown rounds up to whole minutes, so it reads "2 дн. 3 год" (uk-UA) and
+ * "Regenerates in 2d 3h" (en-US) for the first few minutes after load.
+ */
+function ukRegenCountdownScenario(now: Date): ProofScenario {
+  const base = defaultScenario(now);
+  const resetsAt = isoAfter(now, 2 * DAY_MINUTES + 3 * 60 + 30);
+  return {
+    ...base,
+    name: "uk-regen-countdown",
+    localeOverrides: ukLocaleOverrides([
+      "RegeneratesCountdown",
+      "RegeneratesNow",
+      "DurationDaysHours",
+      "DurationDaysMinutes",
+      "DurationDays",
+      "DurationHoursMinutes",
+      "DurationHours",
+      "DurationMinutes",
+    ]),
+    providers: base.providers.map((snap) => {
+      if (snap.providerId !== "claude") return snap;
+      const primary = { ...snap.primary, resetsAt, resetRegenerates: true };
+      return { ...snap, primary, selectedMetric: primary };
+    }),
+  };
+}
+
 function claudePlatformScenario(now: Date): ProofScenario {
   return {
     name: "claudeplatform",
@@ -1241,6 +1273,7 @@ const BUILDERS: Record<ProofScenarioName, (now: Date) => ProofScenario> = {
   "claude-reset-credits": (now) => claudeResetCreditsScenario(now, false),
   "claude-reset-credits-hidden": (now) => claudeResetCreditsScenario(now, true),
   "kpi-long-titles": kpiLongTitlesScenario,
+  "uk-regen-countdown": ukRegenCountdownScenario,
   claudeplatform: claudePlatformScenario,
   "cookie-no-browsers": cookieNoBrowsersScenario,
   vercel: vercelScenario,

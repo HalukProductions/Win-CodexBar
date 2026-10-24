@@ -116,6 +116,7 @@ describe("metricResetText", () => {
     [45 * MINUTE, false, "Regenerates in 45m"],
     [2 * HOUR + 5 * MINUTE, true, "Regenerates in 2h 5m"],
     [DAY + 3 * HOUR, true, "Regenerates in 1d 3h"],
+    [2 * DAY + 3 * HOUR, true, "Regenerates in 2d 3h"],
     [2 * DAY, true, "Regenerates in 2d"],
     [500, true, "Regenerates now"],
   ])("counts a regen lane %d ms down to %j (relative %s)", (ms, relative, expected) => {
@@ -128,12 +129,19 @@ describe("metricResetText", () => {
     expect(metricResetText(snap, relative, NOW, en)).toBe(expected);
   });
 
-  it("uses the Mac translation of Regenerates around the English countdown", () => {
+  // The countdown is a bare localized duration; each template supplies its own
+  // preposition, so no locale inherits the English "in " prefix.
+  it.each([
+    ["uk-UA.ftl", 45 * MINUTE, "Регенерує через 45 хв"],
+    ["uk-UA.ftl", 2 * DAY + 3 * HOUR, "Регенерує через 2 дн. 3 год"],
+    ["uk-UA.ftl", 500, "Регенерує зараз"],
+    ["ja-JP.ftl", 45 * MINUTE, "45 分後に再生成"],
+  ])("localizes the regen countdown in %s for %d ms", (file, ms, expected) => {
     const snap = rateWindow({
-      resetsAt: new Date(NOW + 45 * MINUTE).toISOString(),
+      resetsAt: new Date(NOW + ms).toISOString(),
       resetRegenerates: true,
     });
-    expect(metricResetText(snap, true, NOW, fromFtl("ja-JP.ftl"))).toBe("in 45m に再生成");
+    expect(metricResetText(snap, true, NOW, fromFtl(file))?.replace(/\u202f/g, " ")).toBe(expected);
   });
 });
 

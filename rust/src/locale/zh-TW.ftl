@@ -1364,6 +1364,7 @@ ResetsAtLabel = 重置 { "{}" }
 ResetsInHoursOnly = { "{}" } 小時後重置
 ResetsInDaysOnly = { "{}" } 天後重置
 RegeneratesCountdown = { "{}" }後恢復
+RegeneratesNow = 現在恢復
 CostTitleClawRouterSpend = ClawRouter spend
 CostTitleClawRouterMonthlyBudget = Monthly budget
 ResetsAtTime = { "{}" } 重置

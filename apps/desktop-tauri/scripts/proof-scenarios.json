@@ -108,6 +108,17 @@
       ]
     },
     {
+      "name": "tray-uk-regen-countdown",
+      "query": "window=main&fixture=uk-regen-countdown",
+      "size": [310, 1032],
+      "steps": [
+        { "click": { "selector": ".provider-grid__item", "label": "Claude" } },
+        { "expectText": ["Регенерує через 2 дн. 3 год"] },
+        { "expectNoText": ["Regenerates in", "Regenerates now"] },
+        { "screenshot": "tray-uk-regen-countdown", "clip": "panel" }
+      ]
+    },
+    {
       "name": "tray-errors",
       "query": "window=main&fixture=errors",
       "size": [310, 1032],
