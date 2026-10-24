@@ -820,6 +820,51 @@ export interface CodexSessionToolActivity {
   redacted: boolean;
 }
 
+/** The session summary the request-level read must reproduce. */
+export interface CodexSessionDetailCheckpoint {
+  totals: CodexWorkspacesUsageTotals;
+  costEstimate: CodexWorkspacesCostEstimate;
+}
+
+/** Stable rejection codes of get_codex_session_details. */
+export type CodexSessionDetailError = "unavailable" | "sourceChanged" | "limitExceeded";
+
+/** One recorded model request. Input includes cached input; output includes reasoning. */
+export interface CodexSessionRequest {
+  id: string;
+  modelName: string;
+  timestamp: string | null;
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number | null;
+  totalTokens: number;
+  /** `null` when the request could not be priced. */
+  costUsd: number | null;
+}
+
+/** Requests grouped by turn; `turnId: null` is usage no turn owns, always last. */
+export interface CodexSessionTurn {
+  turnId: string | null;
+  firstActivity: string | null;
+  lastActivity: string | null;
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number | null;
+  totalTokens: number;
+  requestCount: number;
+  costUsd: number | null;
+  requests: CodexSessionRequest[];
+}
+
+/** Request-level usage of one conversation (get_codex_session_details). */
+export interface CodexSessionDetails {
+  sessionId: string;
+  requestCount: number;
+  turns: CodexSessionTurn[];
+}
+
 export interface CodexWorkspacesProjectUsage {
   id: string;
   displayName: string;
