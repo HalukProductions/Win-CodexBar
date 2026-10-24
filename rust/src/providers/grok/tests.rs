@@ -507,3 +507,69 @@ fn account_usage_marks_informational_windows_unavailable() {
     assert!(!usage.usage_available);
     assert_eq!(usage.used_percent, None);
 }
+
+#[test]
+fn terminal_sign_in_failure_names_the_grok_login_fix() {
+    let error = sign_in_hint_for_terminal_error(ProviderError::AuthRequired);
+
+    assert!(error.to_string().contains("grok login"), "{error}");
+    assert_eq!(
+        error.state_kind(),
+        crate::core::ProviderStateKind::NeedsAuthentication
+    );
+    assert!(!matches!(error, ProviderError::AuthRequired));
+}
+
+#[test]
+fn terminal_mapping_leaves_other_errors_unchanged() {
+    let error = sign_in_hint_for_terminal_error(ProviderError::Timeout);
+
+    assert!(matches!(error, ProviderError::Timeout), "{error}");
+    let other = sign_in_hint_for_terminal_error(ProviderError::Other("kept".to_string()));
+    assert_eq!(other.to_string(), "kept");
+}
+
+fn hint_context(
+    source_mode: SourceMode,
+    api_key: Option<&str>,
+    manual_cookie_header: Option<&str>,
+    token_account_isolated: bool,
+) -> FetchContext {
+    FetchContext {
+        source_mode,
+        api_key: api_key.map(str::to_string),
+        manual_cookie_header: manual_cookie_header.map(str::to_string),
+        token_account_isolated,
+        ..FetchContext::default()
+    }
+}
+
+#[test]
+fn sign_in_hint_applies_to_ambient_login_routes() {
+    for ctx in [
+        hint_context(SourceMode::Cli, None, None, false),
+        hint_context(SourceMode::Cli, Some("key"), Some("sso=x"), false),
+        hint_context(SourceMode::OAuth, None, Some("sso=x"), false),
+        hint_context(SourceMode::Web, Some("key"), None, false),
+        hint_context(SourceMode::Auto, None, None, false),
+        hint_context(SourceMode::Auto, Some("  "), Some(" "), false),
+    ] {
+        assert!(sign_in_hint_applies(&ctx), "{:?}", ctx.source_mode);
+    }
+}
+
+#[test]
+fn sign_in_hint_skips_supplied_and_isolated_credentials() {
+    for ctx in [
+        hint_context(SourceMode::Web, None, Some("sso=x"), false),
+        hint_context(SourceMode::OAuth, Some("key"), None, false),
+        hint_context(SourceMode::Auto, Some("key"), None, false),
+        hint_context(SourceMode::Auto, None, Some("sso=x"), false),
+        hint_context(SourceMode::Auto, Some("key"), None, true),
+        hint_context(SourceMode::Web, None, Some("sso=x"), true),
+        hint_context(SourceMode::Cli, Some("key"), None, true),
+        hint_context(SourceMode::OAuth, None, Some("sso=x"), true),
+    ] {
+        assert!(!sign_in_hint_applies(&ctx), "{:?}", ctx.source_mode);
+    }
+}
