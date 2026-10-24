@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   getApiKeyProviders,
@@ -34,20 +34,27 @@ export function ApiKeySection({ providerId }: Props) {
   const [editValue, setEditValue] = useState("");
   const [editLabel, setEditLabel] = useState("");
 
+  // Shared by the mount and refresh effects: reloads can overlap and finish
+  // out of order, and only the newest one may write state.
+  const reloadGeneration = useRef(0);
+
   const reload = useCallback(async (signal: { stale: boolean }) => {
+    const generation = ++reloadGeneration.current;
+    const isCurrent = () =>
+      !signal.stale && generation === reloadGeneration.current;
     try {
       const [providers, keys] = await Promise.all([
         getApiKeyProviders(),
         getApiKeys(),
       ]);
-      if (signal.stale) return;
+      if (!isCurrent()) return;
       setInfo(providers.find((p) => p.id === providerId) ?? null);
       setSaved(keys.find((k) => k.providerId === providerId) ?? null);
     } catch (err: unknown) {
-      if (signal.stale) return;
+      if (!isCurrent()) return;
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      if (!signal.stale) setLoaded(true);
+      if (isCurrent()) setLoaded(true);
     }
   }, [providerId]);
 

@@ -94,6 +94,32 @@ describe("ApiKeySection external changes", () => {
     expect(screen.getByPlaceholderText("PasteApiKeyHere")).toHaveValue("sk-or-draft");
   });
 
+  it("keeps the newest reload when overlapping reloads finish out of order", async () => {
+    render(<ApiKeySection providerId="openrouter" />);
+    await screen.findByText("ApiKeyNotSet");
+
+    let resolveOlder: (keys: ApiKeyInfoBridge[]) => void = () => {};
+    let resolveNewer: (keys: ApiKeyInfoBridge[]) => void = () => {};
+    mocks.getApiKeys
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOlder = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveNewer = resolve; }));
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+      listenerFor("api-keys-updated")({ payload: { providerId: "openrouter" } });
+    });
+    await act(async () => {
+      resolveNewer([savedKey]);
+    });
+    expect(await screen.findByText("KeySet")).toBeInTheDocument();
+
+    await act(async () => {
+      resolveOlder([]);
+    });
+    expect(screen.getByText("KeySet")).toBeInTheDocument();
+    expect(screen.queryByText("ApiKeyNotSet")).not.toBeInTheDocument();
+  });
+
   it("stops listening and ignores focus after unmount", async () => {
     const unlisten = vi.fn();
     events.listen.mockResolvedValue(unlisten);
