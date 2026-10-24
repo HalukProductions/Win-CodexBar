@@ -474,6 +474,8 @@ When `ANTIGRAVITY_CLI_PATH` is set, the app uses only that path.
 - A running desktop app still answers first, and offline conversation history still shows when it exists.
 - Unset the variable to go back to automatic discovery.
 
+Each `agy` process that Win-CodexBar starts (the version check, the usage report and the short-lived managed session) gets `AGY_CLI_DISABLE_AUTO_UPDATE=true`, even if your environment sets it to `false`. Passive refreshes then don't start agy's background updater. Your own `agy` sessions and agy's saved settings are not changed. agy ignores `1`, so the value must be lowercase `true`.
+
 Other providers keep their own override rules.
 
 ## Source mode
