@@ -216,6 +216,11 @@ pub(super) fn save(scope: &str, state: &AccountState) {
 }
 
 fn state_path() -> Option<PathBuf> {
+    // Tests that run a full Codex fetch reach `save`; keep them out of the user's real state file.
+    if cfg!(test) {
+        let root = std::env::temp_dir().join(format!("codexbar-test-{}", std::process::id()));
+        return Some(root.join("codex-weekly-reset-v1.json"));
+    }
     dirs::data_local_dir().map(|root| root.join("CodexBar").join("codex-weekly-reset-v1.json"))
 }
 
