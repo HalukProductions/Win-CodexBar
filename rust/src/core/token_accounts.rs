@@ -388,7 +388,8 @@ impl TokenAccountSupport {
             | ProviderId::Munito
             | ProviderId::Soniox
             | ProviderId::ClaudePlatform
-            | ProviderId::TraeCn => None,
+            | ProviderId::TraeCn
+            | ProviderId::Chatbox => None,
         }
     }
 
