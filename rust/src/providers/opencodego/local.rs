@@ -624,12 +624,14 @@ pub fn daily_token_totals(buckets: &[DailyModelCost]) -> Option<Vec<(String, u64
 }
 
 /// [`daily_token_totals`] over the first available local OpenCode install.
-/// An install that isn't detected is a known empty series.
+/// An install that isn't detected is a known empty series; an unreadable
+/// database is unknown (`None`).
 pub fn daily_token_series(now: DateTime<Utc>, history_days: u32) -> Option<Vec<(String, u64)>> {
-    let Some(rows) = read_available_rows() else {
-        return Some(Vec::new());
-    };
-    daily_token_totals(&daily_model_costs(&rows, now, history_days))
+    match scan_available_rows() {
+        Ok(Some(rows)) => daily_token_totals(&daily_model_costs(&rows, now, history_days)),
+        Ok(None) => Some(Vec::new()),
+        Err(()) => None,
+    }
 }
 
 /// Provider-local cost summary for the chart's local-usage panel. `None` when no
@@ -643,17 +645,32 @@ pub fn model_cost_summary_scan(now: DateTime<Utc>, days: u32) -> Option<ModelCos
 /// `None` when no install is reachable (auth+db both absent) rather than
 /// propagating `NotInstalled`, since the cost surfaces treat "no data" as empty.
 fn read_available_rows() -> Option<Arc<Vec<UsageRow>>> {
-    for (auth, db) in candidate_paths() {
+    scan_available_rows().ok().flatten()
+}
+
+/// [`read_available_rows`] that keeps a failed read apart from an absent
+/// install: `Err(())` when a database exists but every read of it failed and
+/// no other candidate yielded rows.
+fn scan_available_rows() -> Result<Option<Arc<Vec<UsageRow>>>, ()> {
+    scan_rows_from(candidate_paths(), ScanCache::shared())
+}
+
+fn scan_rows_from(
+    candidates: Vec<(PathBuf, PathBuf)>,
+    cache: &ScanCache,
+) -> Result<Option<Arc<Vec<UsageRow>>>, ()> {
+    let mut read_failed = false;
+    for (auth, db) in candidates {
         if !db.exists() {
             continue;
         }
-        match ScanCache::shared().read(&db, || read_rows(&db)) {
-            Ok(rows) if !rows.is_empty() || has_auth_key(&auth) => return Some(rows),
+        match cache.read(&db, || read_rows(&db)) {
+            Ok(rows) if !rows.is_empty() || has_auth_key(&auth) => return Ok(Some(rows)),
             Ok(_) => continue,
-            Err(_) => continue,
+            Err(_) => read_failed = true,
         }
     }
-    None
+    if read_failed { Err(()) } else { Ok(None) }
 }
 
 /// ISO week start (Monday 00:00 UTC), matching upstream calendar settings.

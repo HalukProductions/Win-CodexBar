@@ -167,6 +167,25 @@ fn daily_token_totals_are_unknown_when_a_row_lacks_tokens() {
 }
 
 #[test]
+fn row_scan_keeps_an_unreadable_database_apart_from_no_install() {
+    let dir = tempfile::tempdir().unwrap();
+    let auth = dir.path().join("auth.json");
+    let db = dir.path().join("opencode.db");
+    let candidates = || vec![(auth.clone(), db.clone())];
+
+    assert!(matches!(
+        scan_rows_from(candidates(), &ScanCache::new()),
+        Ok(None)
+    ));
+
+    std::fs::write(&db, b"not a sqlite database").unwrap();
+    assert!(matches!(
+        scan_rows_from(candidates(), &ScanCache::new()),
+        Err(())
+    ));
+}
+
+#[test]
 fn step_finish_tokens_replace_the_parent_message_tokens() {
     let dir = tempfile::tempdir().unwrap();
     let db = dir.path().join("opencode.db");
