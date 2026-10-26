@@ -792,6 +792,7 @@ DetailPaceRunsOutIn = Закінчиться через
 DetailPaceWillLastToReset = Вистачить до скидання
 DetailCostTitle = Вартість
 ApiSpendTitle = Витрати на API
+PayAsYouGoTitle = Оплата за фактичне використання
 DetailCostUsed = Використано
 DetailCostLimit = Ліміт
 DetailCostRemaining = Залишилося
