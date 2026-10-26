@@ -47,12 +47,6 @@ fn importable_cookie_stores(
     stores
 }
 
-/// Import cookies for `provider_id` from the named browser and persist them as
-/// a manual-cookie override, replacing any existing entry for that provider.
-///
-/// `browser_type` must be one of the keys returned by `list_detected_browsers`
-/// (e.g. `"chrome"`, `"edge"`, `"brave"`).
-///
 /// Where a Settings import reads a provider's browser cookies. A provider
 /// with a request scope is read on its scan domain (which may be a parent
 /// of the API host) and filtered to the cookies sent to the API host.
@@ -72,13 +66,7 @@ impl ImportTarget {
                 scope: Some(scope),
             });
         }
-        let host = if pid == codexbar::core::ProviderId::MiniMax {
-            codexbar::providers::MiniMaxProvider::cookie_domain_for_region(Some(
-                settings.api_region(pid),
-            ))
-        } else {
-            pid.cookie_domain()?
-        };
+        let host = codexbar::core::provider_cookie_domain(pid, settings)?;
         Some(Self {
             host,
             scan_domain: host,
@@ -93,6 +81,12 @@ impl ImportTarget {
     }
 }
 
+/// Import cookies for `provider_id` from the named browser and persist them as
+/// a manual-cookie override, replacing any existing entry for that provider.
+///
+/// `browser_type` must be one of the keys returned by `list_detected_browsers`
+/// (e.g. `"chrome"`, `"edge"`, `"brave"`).
+///
 /// Returns the updated manual-cookies list on success.
 #[tauri::command]
 pub fn import_browser_cookies(
@@ -173,19 +167,22 @@ mod tests {
 
     #[test]
     fn unscoped_import_reads_and_keeps_the_provider_cookie_domain() {
+        let settings = Settings::default();
         let pid = ProviderId::all()
             .iter()
             .copied()
             .find(|pid| {
-                *pid != ProviderId::MiniMax
-                    && pid.cookie_domain().is_some()
+                pid.cookie_domain().is_some()
                     && codexbar::core::instantiate_provider(*pid)
                         .cookie_request_scope()
                         .is_none()
             })
             .expect("an unscoped cookie provider");
-        let target = ImportTarget::resolve(pid, &Settings::default()).unwrap();
-        assert_eq!(Some(target.host), pid.cookie_domain());
+        let target = ImportTarget::resolve(pid, &settings).unwrap();
+        assert_eq!(
+            Some(target.host),
+            codexbar::core::provider_cookie_domain(pid, &settings)
+        );
         assert_eq!(target.scan_domain, target.host);
 
         let mut cookies = vec![cookie("a", "unrelated.example")];
