@@ -70,6 +70,7 @@ Some providers refill on a billing date instead of on a fixed session or week. T
 | Copilot | any window with a reset date | when the window has no length |
 | Cursor | any window with a length | no |
 | Kimi | exactly 10080 minutes | no |
+| Codex | a window reported as exactly 43200 minutes (`limit_window_seconds: 2592000`, seen on Free plan responses) | no, the reported 30 days are kept |
 | Grok | a window labelled weekly whose reset falls inside it | no |
 | Z.ai | the 43200-minute MCP window | yes |
 | Amp | a window with a length whose reset text starts with "renews in " | no |
