@@ -143,6 +143,7 @@ pub struct SettingsSnapshot {
     codex_historical_tracking: bool,
     codex_external_oauth_sources_allowed: bool,
     codex_local_session_cost_ledger_enabled: bool,
+    codex_opencode_local_history_enabled: bool,
     codex_openai_web_battery_saver_enabled: bool,
     /// OpenAI API Live Usage (upstream #4495): fetch Tokens/min on each refresh.
     #[serde(rename = "openAiLiveUsageEnabled")]
@@ -223,6 +224,8 @@ impl From<Settings> for SettingsSnapshot {
         let codex_historical_tracking = settings.codex_historical_tracking();
         let codex_local_session_cost_ledger_enabled =
             settings.local_session_cost_ledger_enabled(ProviderId::Codex);
+        let codex_opencode_local_history_enabled =
+            settings.opencode_local_history_enabled(ProviderId::Codex);
         let codex_openai_web_battery_saver_enabled =
             settings.openai_web_battery_saver_enabled(ProviderId::Codex);
         let provider_quota_warnings = settings
@@ -340,6 +343,7 @@ impl From<Settings> for SettingsSnapshot {
             codex_historical_tracking,
             codex_external_oauth_sources_allowed: settings.codex_external_oauth_sources_allowed,
             codex_local_session_cost_ledger_enabled,
+            codex_opencode_local_history_enabled,
             codex_openai_web_battery_saver_enabled,
             disable_keychain_access: settings.disable_keychain_access,
             wayfinder_gateway_url,

@@ -331,6 +331,8 @@ export interface SettingsSnapshot {
   codexHistoricalTracking?: boolean;
   codexExternalOauthSourcesAllowed?: boolean;
   codexLocalSessionCostLedgerEnabled?: boolean;
+  /** Add this PC's OpenAI-backed OpenCode history to Codex cost history (off by default). */
+  codexOpencodeLocalHistoryEnabled?: boolean;
   codexOpenaiWebBatterySaverEnabled?: boolean;
   /** OpenAI API Live Usage (on by default); absent on older shells. */
   openAiLiveUsageEnabled?: boolean;
@@ -491,6 +493,7 @@ export interface SettingsUpdate {
   codexHistoricalTracking?: boolean;
   codexExternalOauthSourcesAllowed?: boolean;
   codexLocalSessionCostLedgerEnabled?: boolean;
+  codexOpencodeLocalHistoryEnabled?: boolean;
   codexOpenaiWebBatterySaverEnabled?: boolean;
   /** Fetch the last hour of OpenAI API Tokens/min on each refresh. */
   openAiLiveUsageEnabled?: boolean;
