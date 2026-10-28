@@ -114,6 +114,12 @@ describe("provider icon registry", () => {
     expect(entry.brandColor.toLowerCase()).toBe("#317cff");
   });
 
+  it("uses the official WorkBuddy mascot with the existing teal accent", () => {
+    expect(PROVIDER_ICON_REGISTRY.workbuddy.svgPath).toContain("M18.777 1.647");
+    expect(PROVIDER_ICON_REGISTRY.workbuddy.svgPath).toContain('fill="currentColor"');
+    expect(PROVIDER_ICON_REGISTRY.workbuddy.brandColor.toLowerCase()).toBe("#0dc8a6");
+  });
+
   it("does not expose the retired Crof provider", () => {
     expect(PROVIDER_ICON_REGISTRY).not.toHaveProperty("crof");
   });
