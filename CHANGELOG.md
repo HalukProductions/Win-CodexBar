@@ -10,7 +10,7 @@
 ## [Windows] Unreleased
 
 - Tray: the percent icon style draws its digits larger, with no grey filled square behind them. A thin dark outline keeps them readable on light and dark taskbars. Bar icon styles are unchanged. (#1026)
-- Usage & Spend: a Codex session's latest activity comes from its first and last token events, so it no longer shows a time later today. Without token times, the window still comes from the usage days and never ends after the session file was last written.
+- Usage & Spend: a Codex session's activity window uses its first and last token events, so its latest activity no longer shows a time later today. Without token times, the window still comes from the usage days and never ends after the session file was last written.
 - OpenCode Go: the Tokens chart shows each day's local token totals instead of zero. A day with rows that lack exact counts marks the history incomplete rather than showing a partial sum.
 - Claude: the plan label maps rate-limit tier ids to plan names, for example "Claude Max 20x" or "Claude Pro", instead of a raw id such as `default_claude_pro`. A tier that names no plan keeps the existing fallback label.
 - Soniox and TypeSafe: the card is a "Pay-as-you-go" card showing this period's spend and the remaining balance, with no progress bar, under every cost summary style. TypeSafe's separate "Spent (cycle)" row is gone because the card already shows it.
