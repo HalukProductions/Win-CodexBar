@@ -25,9 +25,10 @@ fn generous() -> AcpTimeouts {
     }
 }
 
-/// Budgets for tests that expect a timeout. The initialize budget also covers
-/// process start-up: at 300 ms a loaded CI runner could kill the child before it
-/// wrote its record, leaving nothing to check the kill against.
+/// Budgets for tests that expect a timeout. The initialize budget starts after
+/// spawn, so it also covers the child's own start-up before it writes its
+/// record: at 300 ms a loaded CI runner could kill the child before that write,
+/// leaving nothing to check the kill against.
 fn short() -> AcpTimeouts {
     AcpTimeouts {
         initialize: Duration::from_secs(3),
