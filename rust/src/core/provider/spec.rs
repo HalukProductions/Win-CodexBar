@@ -783,7 +783,7 @@ pub(crate) static SPECS: [ProviderSpec; COUNT] = [
         .dashboard("https://console.soniox.com")
         .status("https://status.soniox.com"),
     spec(P::TraeCn, "traecn", "Trae CN", "#4D7CFE")
-        .labels("Credits", "Window")
+        .labels("Usage", "Window")
         .cookie("api.trae.cn")
         .dashboard("https://www.trae.cn/dashboard#usage")
         .aliases(&["trae-cn"])

@@ -93,7 +93,8 @@ fn metadata_and_source_contract_match_upstream_descriptor() {
     assert_eq!(provider.id(), ProviderId::TraeCn);
     let metadata = provider.metadata();
     assert_eq!(metadata.display_name, "Trae CN");
-    assert_eq!(metadata.session_label, "Credits");
+    assert_eq!(metadata.session_label, "Usage");
+    assert_ne!(metadata.session_label, CREDITS_SECTION);
     assert_eq!(metadata.weekly_label, "Window");
     assert_eq!(
         metadata.dashboard_url,

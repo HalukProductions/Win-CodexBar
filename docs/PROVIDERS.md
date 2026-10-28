@@ -837,6 +837,9 @@ POST https://api.trae.cn/trae/api/v2/pay/user_current_entitlement_list
   api.trae.cn as a `Cloud-IDE-JWT` authorization header.
 - The gauge is consumed over total credits. A zero allowance shows the details
   without a gauge. Used, Total and Remaining appear in the **Credits** section.
+- The gauge is labeled **Usage** and the Used / Total / Remaining block
+  **Credits**, so the two never share a name. The visibility IDs are
+  unchanged, so saved hidden choices keep working.
 - The plan name comes from the active plan entitlement and is shown as the
   login method. Pack expiry dates do not set a reset: the provider infers no
   renewal or reset date.
