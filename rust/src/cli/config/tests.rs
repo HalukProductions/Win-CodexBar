@@ -2,7 +2,7 @@ use super::{
     ClaudeCodeCredentialsConsent, ConfigCommand, ConfigFileError, ConfigOutputArgs,
     ConfigSetSourceResult, ConsentAction, CredentialField, apply_consent_action, apply_set_cookie,
     clean_cookie_header, clear_stored_credentials, config_cookie_provider, config_source_selection,
-    consent_text, credential_fields, provider_statuses, read_json_config,
+    consent_text, credential_fields, load_credential_store, provider_statuses, read_json_config,
     sanitize_settings_for_dump, source_mode_name,
 };
 use crate::cli::{Cli, Commands};
@@ -861,6 +861,34 @@ fn set_cookie_trims_and_rejects_empty_or_multiline_headers() {
         .unwrap_err()
         .to_string();
     assert_eq!(error, "Cookie header must be a single line.");
+}
+
+#[test]
+fn credential_store_load_stops_on_an_unreadable_file_without_quoting_it() {
+    let dir = tempfile::tempdir().expect("create temporary directory");
+    let path = dir.path().join("manual_cookies.json");
+
+    let missing: ManualCookies =
+        load_credential_store(Some(path.clone()), "manual_cookies.json").unwrap();
+    assert!(missing.cookies.is_empty());
+
+    std::fs::write(&path, r#"{"cookies":{"cursor":"session=secret-value"}}"#).unwrap();
+    let error = load_credential_store::<ManualCookies>(Some(path.clone()), "manual_cookies.json")
+        .unwrap_err()
+        .to_string();
+    assert_eq!(
+        error,
+        "manual_cookies.json could not be parsed; nothing was changed."
+    );
+    assert!(!error.contains("secret-value"));
+
+    crate::secure_file::write_string(
+        &path,
+        r#"{"cookies":{"cursor":{"cookie_header":"a=1","saved_at":"2026-01-01 00:00"}}}"#,
+    )
+    .unwrap();
+    let loaded: ManualCookies = load_credential_store(Some(path), "manual_cookies.json").unwrap();
+    assert_eq!(loaded.get("cursor"), Some("a=1"));
 }
 
 #[test]

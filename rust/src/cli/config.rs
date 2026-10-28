@@ -845,6 +845,26 @@ struct ConfigSetCookieResult {
     config_path: Option<String>,
 }
 
+/// Loads a credential store that the command may save again. A missing file
+/// is an empty store. A file that exists but cannot be read or parsed stops the
+/// command, so the save cannot replace it with a store that lost its entries.
+/// The parse error is not shown because serde can quote stored values.
+fn load_credential_store<T: DeserializeOwned + Default>(
+    path: Option<std::path::PathBuf>,
+    name: &str,
+) -> anyhow::Result<T> {
+    let Some(path) = path else {
+        return Ok(T::default());
+    };
+    let content = match crate::secure_file::read_string(&path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(T::default()),
+        Err(error) => anyhow::bail!("{name} could not be read ({error}); nothing was changed."),
+    };
+    serde_json::from_str(&content)
+        .map_err(|_| anyhow::anyhow!("{name} could not be parsed; nothing was changed."))
+}
+
 /// Same ceiling the desktop manual-cookie field enforces.
 const MAX_COOKIE_HEADER_LEN: usize = 64 * 1024;
 
@@ -871,8 +891,12 @@ fn set_cookie(
     };
     let cookie_header = clean_cookie_header(raw.as_deref())?;
 
-    let mut cookies = ManualCookies::load();
+    let mut cookies: ManualCookies =
+        load_credential_store(ManualCookies::cookies_path(), "manual_cookies.json")?;
     let mut settings = Settings::load();
+    if settings.load_state.is_unreadable_file() {
+        anyhow::bail!("settings.json could not be read; nothing was changed.");
+    }
     apply_set_cookie(
         &mut settings,
         &mut cookies,
@@ -1019,8 +1043,16 @@ fn clear_credential(
 ) -> anyhow::Result<()> {
     let id = parse_provider(provider)?;
     let fields = credential_fields(api_key, cookie);
-    let mut keys = ApiKeys::load();
-    let mut cookies = ManualCookies::load();
+    let mut keys: ApiKeys = if fields.contains(&CredentialField::ApiKey) {
+        load_credential_store(ApiKeys::keys_path(), "api_keys.json")?
+    } else {
+        ApiKeys::default()
+    };
+    let mut cookies: ManualCookies = if fields.contains(&CredentialField::CookieHeader) {
+        load_credential_store(ManualCookies::cookies_path(), "manual_cookies.json")?
+    } else {
+        ManualCookies::default()
+    };
     let cleared = clear_stored_credentials(&mut keys, &mut cookies, id, &fields);
     // Nothing stored means nothing to write; a missing file stays missing.
     if cleared.contains(&CredentialField::ApiKey) {
