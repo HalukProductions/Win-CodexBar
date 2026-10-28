@@ -284,9 +284,19 @@ Plans & usage page (`https://www.workbuddy.cn/profile/plans-usage`) uses:
   major. Without a Chrome version no User-Agent is sent, which WorkBuddy
   usually rejects as an expired session, so cookies should come from Chrome.
 - The card shows the credits meter with "X / Y credits left", the plan name,
-  reserved (frozen) credits, and the cycle reset from the paid and free
-  package listings (cycle ends are China Standard Time; the listings share a
-  5-second budget and a failed listing only drops the reset).
+  reserved (frozen) credits, and the cycle reset (cycle ends are China
+  Standard Time; the listings share a 5-second budget and a failed listing
+  only drops the reset).
+- The reset follows the paid subscription cycle: the earliest future cycle
+  end in the paid package listing. The free listing is queried only when the
+  paid listing has no future end, so a trial grant that closes with the
+  calendar month cannot shorten a paid cycle. Reward and purchased credits
+  that end earlier are not reflected, so the balance can drop before the
+  reset.
+- The icon is a monochrome version of the mascot from WorkBuddy's
+  [official logo](https://assets.workbuddy.cn/web/workbuddy/a5b2fb510f0e7b156f19d072fae0cd12ae1f2f19/assets/logo.svg),
+  in the app and in the `codexbar serve` dashboard. The `#0DC8A6` accent is
+  unchanged.
 - HTTP 401 on every User-Agent moves on to the next browser session and is
   reported as an expired session at the end, unless Automatic could not read
   a browser (for example Chrome behind App-Bound Encryption): then that read
