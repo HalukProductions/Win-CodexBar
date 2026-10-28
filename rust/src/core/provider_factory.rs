@@ -8,6 +8,7 @@
 use super::{
     CostCliExtension, Provider, ProviderId, ProviderLimitResetPolicy, ProviderPaceCapability,
 };
+use crate::providers::AbliterationProvider;
 use crate::providers::AerostackProvider;
 use crate::providers::AtlasCloudProvider;
 use crate::providers::ChatboxProvider;
@@ -170,6 +171,7 @@ pub fn instantiate(id: ProviderId) -> Box<dyn Provider> {
         ProviderId::ClaudePlatform => Box::new(ClaudePlatformProvider::new()),
         ProviderId::TraeCn => Box::new(TraeCnProvider::new()),
         ProviderId::Chatbox => Box::new(ChatboxProvider::new()),
+        ProviderId::Abliteration => Box::new(AbliterationProvider::new()),
     }
 }
 
@@ -293,7 +295,8 @@ pub fn pace_capability(id: ProviderId) -> ProviderPaceCapability {
         | ProviderId::Soniox
         | ProviderId::ClaudePlatform
         | ProviderId::TraeCn
-        | ProviderId::Chatbox => ProviderPaceCapability::UNSUPPORTED,
+        | ProviderId::Chatbox
+        | ProviderId::Abliteration => ProviderPaceCapability::UNSUPPORTED,
     }
 }
 
@@ -417,7 +420,8 @@ pub fn limit_reset_policy(id: ProviderId) -> ProviderLimitResetPolicy {
         | ProviderId::Soniox
         | ProviderId::ClaudePlatform
         | ProviderId::TraeCn
-        | ProviderId::Chatbox => ProviderLimitResetPolicy::DEFAULT,
+        | ProviderId::Chatbox
+        | ProviderId::Abliteration => ProviderLimitResetPolicy::DEFAULT,
     }
 }
 
@@ -541,7 +545,8 @@ pub(crate) fn cost_cli_extension_for(id: ProviderId) -> Option<&'static dyn Cost
         | ProviderId::Soniox
         | ProviderId::ClaudePlatform
         | ProviderId::TraeCn
-        | ProviderId::Chatbox => None,
+        | ProviderId::Chatbox
+        | ProviderId::Abliteration => None,
     }
 }
 

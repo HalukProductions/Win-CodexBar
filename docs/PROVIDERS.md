@@ -896,6 +896,36 @@ rejected before any request.
   only for a loopback host (`127.0.0.1`, `localhost`, `[::1]`), with no
   credentials, query, or fragment. Any other value is ignored with a warning.
 
+### abliteration.ai
+
+abliteration.ai is disabled by default. In Settings → Providers →
+abliteration.ai, enter your **API key**, or set `ABLITERATION_API_KEY`; the
+saved key wins. The key is stored with the other API keys and is never written
+to logs or errors.
+
+The provider makes one non-billable request per refresh. It never sends
+inference requests, imports browser cookies, or starts a login flow:
+
+```text
+GET https://api.abliteration.ai/v1/credits
+Authorization: Bearer <API key>
+```
+
+The response contract is `{"data":{"total_credits":50.0,"total_usage":0.010637}}`;
+both counters are USD.
+
+- The **Credits** meter is the primary window: used / total dollars (for
+  example `$0.01 / $50.00`), capped at 100% when overspent. It has no reset
+  date and no pace, because the counters are cumulative.
+- The **Credits** section shows **Balance** (total minus usage, floored at
+  zero), **Credits used** and **Credits**. Overspent accounts keep the reported
+  spend. With zero total credits the dollar rows stay and the meter is hidden,
+  so no percentage is invented.
+- Card bars use the label color, as on the Mac (`progressColorStyle: .label`).
+- Missing, negative, non-numeric or non-finite counters fail parsing. 401 and
+  403 ask you to check the API key in Settings, 429 reports rate limiting, and
+  any other status reports a failed request. Response bodies are never echoed
+  in errors.
 ### Aerostack
 
 Aerostack is disabled by default. In Settings → Providers → Aerostack, enter an

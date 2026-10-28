@@ -111,4 +111,5 @@ export const TEST_PROVIDER_CATALOG: Array<[string, string]> = [
   ["claudeplatform", "Claude Platform"],
   ["traecn", "Trae CN"],
   ["chatbox", "Chatbox AI"],
+  ["abliteration", "abliteration.ai"],
 ];

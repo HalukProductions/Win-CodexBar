@@ -454,3 +454,7 @@ Chatbox cli=chatbox display="Chatbox AI" cookie=None color=#228BE6 deprecated=fa
   map=["chatbox"]
   metadata=ProviderMetadata { id: Chatbox, display_name: "Chatbox AI", session_label: "Plan", weekly_label: "Top-up credits", supports_opus: false, supports_credits: false, default_enabled: false, is_primary: false, dashboard_url: Some("https://chatboxai.app"), status_page_url: None, tertiary_label_key: None }
   sources=[Auto, OAuth] oauth=false web=false cli=false
+Abliteration cli=abliteration display="abliteration.ai" cookie=None color=#1B1B1B deprecated=false blocking=None
+  map=["abliteration"]
+  metadata=ProviderMetadata { id: Abliteration, display_name: "abliteration.ai", session_label: "Credits", weekly_label: "Usage", supports_opus: false, supports_credits: false, default_enabled: false, is_primary: false, dashboard_url: Some("https://abliteration.ai"), status_page_url: None, tertiary_label_key: None }
+  sources=[Auto, OAuth] oauth=false web=false cli=false

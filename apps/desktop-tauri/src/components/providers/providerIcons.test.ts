@@ -142,6 +142,13 @@ describe("provider icon registry", () => {
     expect(PROVIDER_ICON_REGISTRY.elevenlabs.brandColor.toLowerCase()).toBe("#111827");
   });
 
+  it("paints abliteration.ai bars in the label color and resolves its display name", () => {
+    expect(providerBarAccent("abliteration")).toBe("var(--mac-text, rgba(0, 0, 0, 0.85))");
+    expect(providerBarAccent("abliteration.ai")).toBe("var(--mac-text, rgba(0, 0, 0, 0.85))");
+    expect(PROVIDER_ICON_REGISTRY.abliteration.brandColor.toLowerCase()).toBe("#1b1b1b");
+    expect(PROVIDER_ICON_REGISTRY.abliteration.svgPath).toContain('fill="currentColor"');
+  });
+
   it("uses the user's override, else the brand color, for card bars", () => {
     expect(providerBarAccent("claude")).toBe("#cc7c5e");
     expect(providerBarAccent("claude", "#123456")).toBe("#123456");
@@ -166,6 +173,7 @@ describe("provider icon registry", () => {
       .map(([id]) => id)
       .sort();
     expect(lifted).toEqual([
+      "abliteration",
       "aixy",
       "deepinfra",
       "elevenlabs",

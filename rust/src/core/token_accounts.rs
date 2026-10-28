@@ -389,7 +389,8 @@ impl TokenAccountSupport {
             | ProviderId::Soniox
             | ProviderId::ClaudePlatform
             | ProviderId::TraeCn
-            | ProviderId::Chatbox => None,
+            | ProviderId::Chatbox
+            | ProviderId::Abliteration => None,
         }
     }
 
