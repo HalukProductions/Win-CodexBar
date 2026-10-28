@@ -9,6 +9,7 @@
 
 ## [Windows] Unreleased
 
+- Pace warnings: Settings > Notifications gets **Warn when the run-out is within** (Any time, 6, 12, 24 or 48 hours; `predictive_pace_warning_lead_hours`). With a lead set, a Codex or Claude pace warning waits until the estimated run-out is that close instead of firing the moment a straight-line estimate predicts running out, which early in a weekly window could be five days ahead and then stayed silent for the rest of the week. The default, Any time, keeps the previous behavior.
 - Tray: the percent icon style draws its digits larger, with no grey filled square behind them. A thin dark outline keeps them readable on light and dark taskbars. Bar icon styles are unchanged. (#1026)
 - Usage & Spend: a Codex session's activity window uses its first and last token events, so its latest activity no longer shows a time later today. Without token times, the window still comes from the usage days and never ends after the session file was last written.
 - OpenCode Go: the Tokens chart shows each day's local token totals instead of zero. A day with rows that lack exact counts marks the history incomplete rather than showing a partial sum.
