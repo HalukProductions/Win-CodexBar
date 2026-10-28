@@ -99,16 +99,27 @@ pub fn build_fetch_context(
             // Code) keep Auto and API for every cookie source, so a configured
             // key is used without touching a browser. `off` marks the cookie
             // lane unavailable; `manual`/`auto` pass a stored header through.
+            // A saved session is active only under `manual` (upstream #4774):
+            // in Auto it routes to Web ahead of a configured key, while the
+            // API source keeps it passive.
             _ if provider.owns_credential_lane_routing()
                 && matches!(usage_source, SourceMode::Auto | SourceMode::OAuth) =>
             {
                 let cookie_off = cookie_source == "off";
+                let saved_session = (cookie_source == "manual")
+                    .then(|| active_token_cookie.clone())
+                    .flatten();
+                let source_mode = if saved_session.is_some() && usage_source == SourceMode::Auto {
+                    SourceMode::Web
+                } else {
+                    usage_source
+                };
                 let cookie_header = if cookie_off {
                     None
                 } else {
-                    active_token_cookie.clone().or(stored_cookie)
+                    saved_session.or(stored_cookie)
                 };
-                (usage_source, cookie_header, cookie_off)
+                (source_mode, cookie_header, cookie_off)
             }
             // Opt-in web providers keep their default credential lane
             // unless the usage source is explicitly Web; a stored or
