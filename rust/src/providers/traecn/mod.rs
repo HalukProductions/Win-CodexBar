@@ -75,7 +75,9 @@ const NO_ALLOWANCE: &str = "No Trae CN credit allowance";
 static TRAE_CN_METADATA: ProviderMetadata = ProviderMetadata {
     id: ProviderId::TraeCn,
     display_name: "Trae CN",
-    session_label: "Credits",
+    // Distinct from the "Credits" detail section so the gauge and the
+    // breakdown get separate names in the usage-item pickers.
+    session_label: "Usage",
     weekly_label: "Window",
     supports_opus: false,
     supports_credits: false,
