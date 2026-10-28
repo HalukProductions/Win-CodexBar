@@ -8,6 +8,7 @@
 use futures::{Stream, StreamExt};
 
 pub mod abacus;
+pub mod abliteration;
 pub mod aerostack;
 pub mod aiand;
 pub mod aixy;
@@ -131,6 +132,7 @@ pub mod zoommate;
 
 // Re-export provider implementations
 pub use abacus::AbacusProvider;
+pub use abliteration::AbliterationProvider;
 pub use aerostack::AerostackProvider;
 pub use aiand::AiAndProvider;
 pub use aixy::AixyProvider;
