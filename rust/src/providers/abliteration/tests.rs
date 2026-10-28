@@ -81,6 +81,7 @@ async fn contract_response_yields_usd_balance_and_a_cumulative_meter_without_res
     let primary = &result.usage.primary;
     assert!((primary.used_percent - 0.021274).abs() < 0.000001);
     assert_eq!(primary.reset_description.as_deref(), Some("$0.01 / $50.00"));
+    assert!(primary.description_is_detail);
     assert_eq!(primary.resets_at, None);
     assert_eq!(primary.window_minutes, None);
     assert!(result.usage.secondary.is_none());

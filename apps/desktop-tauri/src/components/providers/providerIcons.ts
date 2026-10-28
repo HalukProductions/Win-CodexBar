@@ -450,10 +450,11 @@ function normalize(id: string): string {
 /**
  * Providers whose card bars use the label color instead of the brand color,
  * as Mac `progressColorStyle: .label` (ElevenLabs and abliteration.ai, whose
- * brand colors are near-black). The fallback is the light card's `--mac-text`.
+ * brand colors are near-black). `--text-primary` is themed on every surface
+ * (Settings and the menu); `--mac-text` exists only inside the menu popover.
  */
 const LABEL_COLORED_BARS = new Set(["elevenlabs", "abliteration"]);
-const LABEL_BAR_COLOR = "var(--mac-text, rgba(0, 0, 0, 0.85))";
+const LABEL_BAR_COLOR = "var(--text-primary, rgba(0, 0, 0, 0.85))";
 
 /**
  * The card's `--provider-accent`: the user's override when set, otherwise the

@@ -165,6 +165,7 @@ fn build_result(credits: Credits) -> ProviderFetchResult {
             None,
             Some(format!("{} / {}", format::usd(used), format::usd(total))),
         )
+        .with_description_as_detail()
     } else {
         RateWindow::informational(format!("{} / {}", format::usd(used), format::usd(total)))
             .hidden_on_card()

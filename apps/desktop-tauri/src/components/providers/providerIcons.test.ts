@@ -136,15 +136,15 @@ describe("provider icon registry", () => {
   });
 
   it("paints ElevenLabs bars in the label color, as Mac does", () => {
-    expect(providerBarAccent("elevenlabs")).toBe("var(--mac-text, rgba(0, 0, 0, 0.85))");
-    expect(providerBarAccent("ElevenLabs", null)).toBe("var(--mac-text, rgba(0, 0, 0, 0.85))");
+    expect(providerBarAccent("elevenlabs")).toBe("var(--text-primary, rgba(0, 0, 0, 0.85))");
+    expect(providerBarAccent("ElevenLabs", null)).toBe("var(--text-primary, rgba(0, 0, 0, 0.85))");
     // The icon keeps its brand color.
     expect(PROVIDER_ICON_REGISTRY.elevenlabs.brandColor.toLowerCase()).toBe("#111827");
   });
 
   it("paints abliteration.ai bars in the label color and resolves its display name", () => {
-    expect(providerBarAccent("abliteration")).toBe("var(--mac-text, rgba(0, 0, 0, 0.85))");
-    expect(providerBarAccent("abliteration.ai")).toBe("var(--mac-text, rgba(0, 0, 0, 0.85))");
+    expect(providerBarAccent("abliteration")).toBe("var(--text-primary, rgba(0, 0, 0, 0.85))");
+    expect(providerBarAccent("abliteration.ai")).toBe("var(--text-primary, rgba(0, 0, 0, 0.85))");
     expect(PROVIDER_ICON_REGISTRY.abliteration.brandColor.toLowerCase()).toBe("#1b1b1b");
     expect(PROVIDER_ICON_REGISTRY.abliteration.svgPath).toContain('fill="currentColor"');
   });
