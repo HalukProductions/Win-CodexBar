@@ -197,8 +197,8 @@ pub fn pace_capability(id: ProviderId) -> ProviderPaceCapability {
         ProviderId::OpenCodeGo => p::opencodego::PACE_CAPABILITY,
         ProviderId::Claude => p::claude::PACE_CAPABILITY,
         ProviderId::Kiro => p::kiro::PACE_CAPABILITY,
-        ProviderId::Codex
-        | ProviderId::Pi
+        ProviderId::Codex => p::codex::PACE_CAPABILITY,
+        ProviderId::Pi
         | ProviderId::Gemini
         | ProviderId::Antigravity
         | ProviderId::AtlasCloud
