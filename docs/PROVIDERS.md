@@ -1192,6 +1192,13 @@ Codex local cost prices **Priority (Fast)** turns at the Fast rate.
 - Models without a Fast rate stay Standard.
 - Older cost caches rebuild once. Codex cache schema v4 records each row's turn id.
 
+### Cursor app session
+
+Automatic mode first reads the signed-in Cursor app's `cursorAuth/accessToken` from `%APPDATA%\Cursor\User\globalStorage\state.vscdb` (read-only) and rebuilds the session cookie from it.
+
+- Cursor 3.27 and later store that token as a `cursor-safe-storage:v1:` envelope. CodexBar decrypts it with the DPAPI-protected key in `%APPDATA%\Cursor\Local State` (AES-256-GCM, as Chromium does on Windows). A plain JWT never reads that key.
+- An unreadable, malformed or unknown-version envelope yields no app session, and Automatic mode falls through to browser cookies.
+
 ### Cursor unified personal spend
 
 Cursor accounts on a unified membership with a user-level limit (`membershipType` starts with `unified_` and `limitType` is `user`) read monthly additional spend from `GET /api/dashboard/v2/usage-status?scope=user`, using the same session cookie.
