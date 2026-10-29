@@ -1011,6 +1011,37 @@ fn command_code_saved_sessions_need_the_manual_cookie_source() {
 }
 
 #[test]
+fn command_code_saved_session_stays_passive_for_web_under_auto_cookies() {
+    let build = |cookie_source| {
+        fetch_ctx(
+            ProviderId::CommandCode,
+            CtxInput {
+                cookie_source: Some(cookie_source),
+                usage_source: Some("web"),
+                manual_cookie: Some("__Secure-commandcode_prod_.session_token=stored"),
+                accounts: &[("Work", "work-session")],
+                active: Some(0),
+                ..Default::default()
+            },
+        )
+    };
+
+    let auto = build("auto");
+    assert_eq!(auto.source_mode, SourceMode::Web);
+    assert_eq!(
+        auto.manual_cookie_header.as_deref(),
+        Some("__Secure-commandcode_prod_.session_token=stored")
+    );
+
+    let manual = build("manual");
+    assert_eq!(manual.source_mode, SourceMode::Web);
+    assert_eq!(
+        manual.manual_cookie_header.as_deref(),
+        Some("__Secure-commandcode_prod_.session_token=work-session")
+    );
+}
+
+#[test]
 fn doubao_selected_account_forces_ark_api_and_ignores_saved_source() {
     let ctx = fetch_ctx(
         ProviderId::Doubao,

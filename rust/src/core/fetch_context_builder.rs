@@ -214,7 +214,12 @@ pub fn build_fetch_context(
             "auto" | "browser" | "web" => {
                 // Claude resolves its cached cookie and browser fallback inside
                 // the provider; other providers retain the shell fallback.
-                let cookie_header = active_token_cookie.clone().or(stored_cookie).or_else(|| {
+                // A credential-lane provider's saved session is active only
+                // under `manual`, so Web must not pick it up here either.
+                let saved_session = active_token_cookie
+                    .clone()
+                    .filter(|_| !provider.owns_credential_lane_routing());
+                let cookie_header = saved_session.or(stored_cookie).or_else(|| {
                     (!defer_provider_browser_cookie_lookup)
                         .then(|| browser_cookie_header(id, settings))
                         .flatten()
@@ -325,6 +330,19 @@ pub fn build_fetch_context(
         live_usage_enabled: settings.live_usage_enabled(id),
         ..FetchContext::default()
     }
+}
+
+/// Whether a selected token account's saved session is inactive for `id` under
+/// the current settings. A provider that owns its credential lane (Command
+/// Code) uses the saved session only under the `manual` cookie source with a
+/// non-API usage source. Elsewhere every account resolves to the same ambient
+/// credential, so per-account listings must not fetch those rows.
+pub fn token_account_session_is_passive(id: ProviderId, settings: &Settings) -> bool {
+    if !instantiate_provider(id).owns_credential_lane_routing() {
+        return false;
+    }
+    let usage_source = SourceMode::parse(settings.usage_source(id)).unwrap_or_default();
+    !(settings.cookie_source(id) == "manual" && usage_source != SourceMode::OAuth)
 }
 
 /// Unscoped first-browser cookie read shared by both call sites above.

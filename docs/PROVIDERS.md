@@ -127,7 +127,9 @@ bundled-credit quota from the session token.
 
 Command Code keeps several labeled subscription sessions under **Session tokens**
 (upstream #4774). Paste a bare session token, a full Cookie header, or a cURL
-capture; a bare token gets the production session cookie name.
+capture; a bare token gets the production session cookie name. A cURL capture
+must be a single line: the token command rejects multiline values with
+"Token must be a single line".
 
 - Saved sessions count only when the cookie source is **Manual**. In Auto the
   selected session uses browser billing even when an API key is configured, and

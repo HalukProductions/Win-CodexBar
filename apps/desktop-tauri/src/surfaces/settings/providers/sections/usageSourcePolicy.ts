@@ -168,7 +168,7 @@ const POLICIES: Readonly<Record<string, UsageSourcePolicy>> = {
       {
         value: "auto",
         label: "Auto",
-        description: "Uses the active saved session, otherwise the configured Command Code API key or browser cookies.",
+        description: "Uses the active saved session only when the cookie source is Manual; otherwise the configured Command Code API key or browser cookies.",
       },
       {
         value: "oauth",
