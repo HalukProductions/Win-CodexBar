@@ -128,7 +128,7 @@ impl SnapshotProducer {
                     account_tasks.insert(handle.id(), (index, provider_id));
                 }
                 planned => {
-                    match planned {
+                    let settings_ctx = match planned {
                         Some(Err(error)) => {
                             provider_accounts.insert(
                                 provider_id.cli_name().to_string(),
@@ -137,8 +137,9 @@ impl SnapshotProducer {
                                     incomplete: false,
                                 },
                             );
+                            None
                         }
-                        Some(Ok(plan)) => {
+                        Some(Ok(mut plan)) => {
                             provider_accounts.insert(
                                 provider_id.cli_name().to_string(),
                                 ClaudeAccountsInput {
@@ -146,12 +147,16 @@ impl SnapshotProducer {
                                     incomplete: false,
                                 },
                             );
+                            plan.provider_ctx.take()
                         }
-                        None => {}
-                    }
+                        None => None,
+                    };
                     let fetch_timeout = self.fetch_timeout;
-                    let mut ctx = FetchContext::default();
-                    populate_api_region_from_settings(provider_id, &settings, &mut ctx);
+                    let ctx = settings_ctx.unwrap_or_else(|| {
+                        let mut ctx = FetchContext::default();
+                        populate_api_region_from_settings(provider_id, &settings, &mut ctx);
+                        ctx
+                    });
                     set.spawn(async move {
                         (
                             index,
@@ -518,6 +523,10 @@ struct AccountPlan {
     /// The saved sessions are inactive for this route, so the rows are listed
     /// as unavailable instead of fetched (see [`passive_account_rows`]).
     passive: bool,
+    /// For a passive plan, the provider row's context built from settings with
+    /// no selected account, so configured API keys and the cookie source still
+    /// apply (an empty context would ignore them).
+    provider_ctx: Option<FetchContext>,
 }
 
 const PASSIVE_SESSION_ROW_ERROR: &str =
@@ -585,6 +594,8 @@ fn plan_token_accounts(
                 minimum_delay: TokenAccountSupport::for_provider(provider_id)
                     .and_then(|support| support.minimum_delay_between_account_refreshes),
                 passive,
+                provider_ctx: passive
+                    .then(|| build_fetch_context(provider_id, settings, &cookies, &api_keys, None)),
             }),
         );
     }
@@ -900,6 +911,7 @@ mod tests {
             active_id: Some(work.id),
             minimum_delay: None,
             passive: true,
+            provider_ctx: None,
         };
 
         let rows = passive_account_rows(&plan);
