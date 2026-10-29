@@ -525,15 +525,14 @@ fn read_login(dir: &Path, config: &Path) -> io::Result<Option<SavedLogin>> {
     let Some(oauth) = credentials.get("claudeAiOauth").filter(|v| !v.is_null()) else {
         return Ok(None);
     };
-    // A sign-out can also keep the OAuth entry with blank tokens. That is no
-    // login, and treating it as broken would hide and block saved accounts.
-    if ["accessToken", "refreshToken"]
-        .iter()
-        .any(|key| required_string(oauth, key).is_err())
-    {
+    let config = read_object(config)?;
+    // A sign-out can also keep the OAuth entry with a blank access token. That
+    // is no login, and treating it as broken would hide and block saved
+    // accounts. A login that still has an access token stays an error if it
+    // is incomplete, so switching never overwrites it.
+    if required_string(oauth, "accessToken").is_err() {
         return Ok(None);
     }
-    let config = read_object(config)?;
     let login = SavedLogin {
         oauth: oauth.clone(),
         identity: config["oauthAccount"].clone(),
@@ -762,6 +761,39 @@ mod tests {
                 .iter()
                 .any(|a| a.id == "a:one" && a.is_active)
         );
+    }
+
+    #[test]
+    fn blank_token_logout_with_corrupt_config_is_still_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let manager = manager(dir.path());
+        manager.import(login("a", "one", "first")).unwrap();
+        let mut signed_out = login("b", "two", "");
+        signed_out.oauth["refreshToken"] = json!("");
+        activate(&manager, &signed_out);
+        std::fs::write(&manager.config_file, "invalid JSON").unwrap();
+        let credential_path = manager.config_dir.join(".credentials.json");
+        let before = std::fs::read(&credential_path).unwrap();
+
+        assert!(manager.list_with_consent(true).is_err());
+        assert!(manager.switch("a:one").is_err());
+        assert_eq!(std::fs::read(&credential_path).unwrap(), before);
+    }
+
+    #[test]
+    fn access_only_login_is_never_overwritten_by_a_switch() {
+        let dir = tempfile::tempdir().unwrap();
+        let manager = manager(dir.path());
+        manager.import(login("a", "one", "first")).unwrap();
+        // Still usable until it expires, but it can't be saved without a refresh token.
+        let mut access_only = login("b", "two", "live");
+        access_only.oauth["refreshToken"] = json!("");
+        activate(&manager, &access_only);
+        let credential_path = manager.config_dir.join(".credentials.json");
+        let before = std::fs::read(&credential_path).unwrap();
+
+        assert!(manager.switch("a:one").is_err());
+        assert_eq!(std::fs::read(&credential_path).unwrap(), before);
     }
 
     #[cfg(windows)]
