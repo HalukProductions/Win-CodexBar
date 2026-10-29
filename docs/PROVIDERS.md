@@ -1196,7 +1196,7 @@ Codex local cost prices **Priority (Fast)** turns at the Fast rate.
 
 Automatic mode first reads the signed-in Cursor app's `cursorAuth/accessToken` from `%APPDATA%\Cursor\User\globalStorage\state.vscdb` (read-only) and rebuilds the session cookie from it.
 
-- Cursor 3.27 and later store that token as a `cursor-safe-storage:v1:` envelope. CodexBar decrypts it with the DPAPI-protected key in `%APPDATA%\Cursor\Local State` (AES-256-GCM, as Chromium does on Windows). A plain JWT never reads that key.
+- Cursor 3.27 and later may store that token as a `cursor-safe-storage:v1:` envelope. CodexBar decrypts it with the DPAPI-protected key in `%APPDATA%\Cursor\Local State` (AES-256-GCM, as Chromium does on Windows). A plain JWT never reads that key.
 - An unreadable, malformed or unknown-version envelope yields no app session, and Automatic mode falls through to browser cookies.
 
 ### Cursor unified personal spend
