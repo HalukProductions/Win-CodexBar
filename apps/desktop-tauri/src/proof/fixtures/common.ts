@@ -199,6 +199,7 @@ export function baseSettings(overrides: Partial<SettingsSnapshot> = {}): Setting
     codexHistoricalTracking: true,
     codexExternalOauthSourcesAllowed: false,
     codexLocalSessionCostLedgerEnabled: true,
+    codexOpencodeLocalHistoryEnabled: false,
     codexOpenaiWebBatterySaverEnabled: false,
     openAiLiveUsageEnabled: true,
     openAiModelRateLimits: [],

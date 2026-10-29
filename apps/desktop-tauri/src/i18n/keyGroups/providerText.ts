@@ -476,6 +476,8 @@ export const PROVIDER_TEXT_LOCALE_KEYS = [
   "ProviderCodexOpenAiWebExtrasHelp",
   "ProviderCodexExternalOauth",
   "ProviderCodexExternalOauthHelp",
+  "ProviderCodexOpenCodeLocalHistory",
+  "ProviderCodexOpenCodeLocalHistoryHelp",
   "ProviderCodexBatterySaver",
   "ProviderCodexBatterySaverHelp",
   "ProviderOptionNotUsedOnWindows",

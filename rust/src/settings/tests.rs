@@ -1226,11 +1226,17 @@ fn codex_option_toggles_round_trip_through_settings_json() {
     let mut settings = Settings::default();
     settings.set_local_session_cost_ledger_enabled(ProviderId::Codex, true);
     settings.set_openai_web_battery_saver_enabled(ProviderId::Codex, true);
+    settings.set_opencode_local_history_enabled(ProviderId::Codex, true);
     let reloaded = load_settings_json(&serde_json::to_string(&settings).expect("serialize"));
     assert!(reloaded.local_session_cost_ledger_enabled(ProviderId::Codex));
     assert!(reloaded.openai_web_battery_saver_enabled(ProviderId::Codex));
+    assert!(reloaded.opencode_local_history_enabled(ProviderId::Codex));
     assert!(!Settings::default().local_session_cost_ledger_enabled(ProviderId::Codex));
     assert!(!Settings::default().openai_web_battery_saver_enabled(ProviderId::Codex));
+    assert!(!Settings::default().opencode_local_history_enabled(ProviderId::Codex));
+    // Off is the default, so a default config writes no key.
+    let default_json = serde_json::to_value(ProviderConfig::default()).expect("serialize");
+    assert!(default_json.get("opencode_local_history_enabled").is_none());
 }
 
 #[test]

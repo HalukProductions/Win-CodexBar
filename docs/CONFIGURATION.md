@@ -160,6 +160,8 @@ When **Track costs** is off, the pane hides the period picker, the dashboard, Op
 
 Costs are list-price estimates, not billing receipts.
 
+**OpenCode local history.** **Settings > Providers > Codex > Options > OpenCode local history** (`opencode_local_history_enabled`, off by default) adds the OpenAI rows that OpenCode recorded on this PC to the Codex cost chart and the Codex cost summary. The app reads `opencode.db` from `%USERPROFILE%\.local\share\opencode` or `%LOCALAPPDATA%\opencode`, read-only, and keeps only messages whose provider is `openai`. A row's recorded cost is used as-is, including $0; rows without a recorded cost add tokens but no cost. When recorded OpenCode spend is present, the local usage note says so. The rows are left out while `CODEX_HOME` is set, so an alternate Codex home never picks them up. Usage & Spend never includes them.
+
 **Sessions view.** The Sessions view lists the Codex conversations of the selected period. Search matches the shown title or the session id; under Hide personal information titles are already replaced, so hidden titles can't be searched. Sort by recent activity, tokens or cost, in either direction; sessions with no known value sort last. Selecting a session reads its model requests from its own rollout files only, grouped by turn, with usage no turn owns listed last as "Unattributed usage". The read is bounded: it stops at 5,000 requests or 256 MiB of rollout data and then shows "Request details exceed the limit." It also checks the result against the session's summary; if the logs changed since the summary was built, the details are not shown and the pane asks you to refresh usage and try again. Tool activity has no cost and is shown separately.
 ### Notifications
 

@@ -114,7 +114,7 @@ fn daily_entries_carry_message_token_counts_per_day_and_model() {
     );
     drop(conn);
 
-    let rows = read_rows(&db).unwrap();
+    let rows = read_rows(&db, RowSource::OpenCodeGo).unwrap();
     let daily = daily_model_costs(&rows, now(), 30);
     assert_eq!(daily.len(), 1);
     let tokens = &daily[0].tokens;
@@ -141,7 +141,7 @@ fn daily_token_totals_sum_models_per_day_with_the_window_rule() {
     insert_message(&conn, "m3", day2, Some(1.0), Some("glm-5"), Some(NO_TOTAL));
     drop(conn);
 
-    let rows = read_rows(&db).unwrap();
+    let rows = read_rows(&db, RowSource::OpenCodeGo).unwrap();
     let daily = daily_token_totals(&daily_model_costs(&rows, now(), 30)).expect("known");
     let day = |date: &str| daily.iter().find(|(d, _)| d == date).map(|(_, t)| *t);
     // input + output + cache read + cache write: FULL = 1570, NO_TOTAL = 19.
@@ -159,7 +159,7 @@ fn daily_token_totals_are_unknown_when_a_row_lacks_tokens() {
     insert_message(&conn, "m2", created, Some(1.0), Some("kimi-k2"), None);
     drop(conn);
 
-    let rows = read_rows(&db).unwrap();
+    let rows = read_rows(&db, RowSource::OpenCodeGo).unwrap();
     assert_eq!(
         daily_token_totals(&daily_model_costs(&rows, now(), 30)),
         None
@@ -174,13 +174,13 @@ fn row_scan_keeps_an_unreadable_database_apart_from_no_install() {
     let candidates = || vec![(auth.clone(), db.clone())];
 
     assert!(matches!(
-        scan_rows_from(candidates(), &ScanCache::new()),
+        scan_rows_from(candidates(), &ScanCache::new(), RowSource::OpenCodeGo),
         Ok(None)
     ));
 
     std::fs::write(&db, b"not a sqlite database").unwrap();
     assert!(matches!(
-        scan_rows_from(candidates(), &ScanCache::new()),
+        scan_rows_from(candidates(), &ScanCache::new(), RowSource::OpenCodeGo),
         Err(())
     ));
 }
@@ -209,7 +209,7 @@ fn step_finish_tokens_replace_the_parent_message_tokens() {
     );
     drop(conn);
 
-    let rows = read_rows(&db).unwrap();
+    let rows = read_rows(&db, RowSource::OpenCodeGo).unwrap();
     assert_eq!(rows.len(), 3);
     let daily = daily_model_costs(&rows, now(), 30);
     let tokens = &daily[0].tokens;
@@ -237,7 +237,7 @@ fn rows_without_usable_tokens_leave_the_day_incomplete_not_zero() {
     );
     drop(conn);
 
-    let rows = read_rows(&db).unwrap();
+    let rows = read_rows(&db, RowSource::OpenCodeGo).unwrap();
     // Costs survive even when tokens do not.
     assert_eq!(rows.len(), 4);
     let daily = daily_model_costs(&rows, now(), 30);
@@ -276,7 +276,7 @@ fn model_summary_carries_per_model_tokens_and_marks_partial_models() {
     );
     drop(conn);
 
-    let rows = read_rows(&db).unwrap();
+    let rows = read_rows(&db, RowSource::OpenCodeGo).unwrap();
     let summary = model_cost_summary_from_rows(&rows, now(), 30);
 
     let kimi = summary.by_model_tokens["kimi-k2"]
@@ -353,7 +353,7 @@ fn cost_summary_marks_models_with_total_only_rows_as_unknown_tokens() {
     );
     drop(conn);
 
-    let rows = read_rows(&db).unwrap();
+    let rows = read_rows(&db, RowSource::OpenCodeGo).unwrap();
     let summary = model_cost_summary_from_rows(&rows, now(), 30).into_cost_summary();
     // Costs are kept for both models.
     assert_eq!(summary.by_model["mimo"], 1.5);

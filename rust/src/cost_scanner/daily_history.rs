@@ -13,6 +13,7 @@ use crate::codex_costs::add_codex_days_map_to_summary;
 use crate::core::CostUsageDayRange;
 use crate::cost_reporting_period::cost_bucket_zone;
 use crate::providers::opencodego::local as opencodego_local;
+use crate::providers::opencodego::local::codex_history;
 
 use super::hourly::{HourlyCostAccumulator, HourlyCostPoint};
 
@@ -196,6 +197,21 @@ fn daily_cost_history(
     }
 
     (sorted_days(daily_costs), daily_incomplete, complete)
+}
+
+/// Add this device's opt-in OpenCode recorded spend (upstream #4786) to the
+/// Codex series from [`get_daily_cost_history`] and [`get_daily_token_history`].
+/// Those stay native-only, so Usage & Spend never sees it. Under an explicit
+/// `CODEX_HOME` nothing is added. Returns true when the token series is no
+/// longer exact.
+pub fn add_opencode_history_to_codex_daily(
+    costs: &mut [(String, Option<f64>)],
+    tokens: &mut [(String, u64)],
+) -> bool {
+    if !codex_history::codex_home_is_ambient(std::env::var("CODEX_HOME").ok().as_deref()) {
+        return false;
+    }
+    codex_history::append_to_codex_daily(cost_bucket_zone(), costs, tokens)
 }
 
 /// Daily token totals (provider-aware, see [`cache_is_separate_from_input`])

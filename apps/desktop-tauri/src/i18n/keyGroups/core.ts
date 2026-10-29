@@ -1075,6 +1075,7 @@ export const CORE_LOCALE_KEYS = [
   "PanelEstimatedFromLocalLogs",
   "PanelEstimatedFromLocalLogsClaude",
   "PanelEstimatedFromLocalLogsMuse",
+  "PanelEstimatedFromLocalLogsRecordedSpend",
   "PanelExpected",
   "PanelActual",
   "PanelUsedSuffix",
