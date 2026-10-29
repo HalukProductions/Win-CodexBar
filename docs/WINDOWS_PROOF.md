@@ -188,6 +188,8 @@ Use CUA in every proof for what CDP can't see:
 - real-pixel screenshots through `get_window_state` with `--screenshot-out-file`;
 - native facts, such as a dark DWM frame under theme `auto`, the float bar being topmost and layered, and the window frame.
 
+Every native window stays DWM dark under every theme preference, including `light`, because each one is pinned Dark to prevent the theme flip. Only the page's `data-theme` turns light. So a light Settings run that reports `dwm_dark: true` is expected. It is a bug only if dark native chrome shows up in the screenshot.
+
 CDP screenshots are not proof.
 
 ## What to check after an install
