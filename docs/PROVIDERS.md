@@ -1280,6 +1280,14 @@ Cursor accounts on a unified membership with a user-level limit (`membershipType
 
 ## API key notes
 
+### Kimi Total usage breakdown
+
+When Kimi reports the Kimi Code share of the monthly **Total usage** pool, the provider page adds a "Total usage" section with two rows: **Kimi Code** and **Other features** (the total minus the Code share, never below 0%). Both rows are details, not quota windows, because they draw on one limit.
+
+- The Code share always comes from the source that supplied Total usage: `limit_month_code` next to the Code API `limit_month_total`, or `kimiCodeUsedRatio` next to the web membership pool. A Code API Total usage never borrows the web Code share.
+- A missing, negative or malformed Code share leaves Total usage without a breakdown and keeps every quota window.
+- A share above 0% but below 1% shows as "<1% used", as upstream does, even when it would round to 1%.
+
 ### OpenRouter keys
 
 - The **API key** field (or `OPENROUTER_API_KEY`) is required. It takes a regular API key or a Management API key. A Management key there also turns on account Activity from the official OpenRouter API.
