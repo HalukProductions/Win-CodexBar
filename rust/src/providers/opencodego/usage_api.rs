@@ -91,21 +91,29 @@ pub(super) async fn fetch(
         return Err(ProviderError::AuthRequired);
     }
     if !status.is_success() {
-        let message = serde_json::from_str::<serde_json::Value>(&body)
-            .ok()
-            .and_then(|value| {
-                ["message", "error", "detail"]
-                    .into_iter()
-                    .find_map(|key| value.get(key).and_then(serde_json::Value::as_str))
-                    .map(str::to_string)
-            })
-            .unwrap_or_else(|| format!("HTTP {status}"));
-        return Err(ProviderError::Other(format!(
-            "OpenCode Go API error: {message}"
-        )));
+        return Err(api_error(status, &body));
     }
     let usage = parse_usage_text(&body, Utc::now())?;
     Ok(ProviderFetchResult::new(usage, source_label))
+}
+
+/// Build the error for a non-success usage response. The server-controlled
+/// message is redacted before it can reach logs or the UI; a non-JSON body is
+/// never echoed.
+fn api_error(status: reqwest::StatusCode, body: &str) -> ProviderError {
+    let message = serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|value| {
+            ["message", "error", "detail"]
+                .into_iter()
+                .find_map(|key| value.get(key).and_then(serde_json::Value::as_str))
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| format!("HTTP {status}"));
+    ProviderError::Other(format!(
+        "OpenCode Go API error: {}",
+        crate::logging::safe_error_message(&message)
+    ))
 }
 
 fn parse_usage_text(text: &str, now: DateTime<Utc>) -> Result<UsageSnapshot, ProviderError> {
@@ -349,5 +357,46 @@ mod tests {
             snapshot.primary.used_percent
         );
         assert!((snapshot.secondary.as_ref().unwrap().used_percent - 100.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn api_error_redacts_secrets_echoed_in_the_response_body() {
+        let status = reqwest::StatusCode::BAD_REQUEST;
+        for (body, secret) in [
+            (
+                r#"{"message":"Authorization: Bearer live-bearer-9f3a rejected"}"#,
+                "live-bearer-9f3a",
+            ),
+            (
+                r#"{"error":"invalid key sk-live-apikey-4417xyz"}"#,
+                "sk-live-apikey-4417xyz",
+            ),
+            (
+                r#"{"detail":"cookie: session=cookie-secret-7d21; other=x"}"#,
+                "cookie-secret-7d21",
+            ),
+            (
+                r#"{"message":"access_token=oauth-token-b802 expired"}"#,
+                "oauth-token-b802",
+            ),
+        ] {
+            let text = api_error(status, body).to_string();
+            assert!(!text.contains(secret), "{text}");
+            assert!(text.contains("[REDACTED]"), "{text}");
+            assert!(text.starts_with("OpenCode Go API error:"), "{text}");
+        }
+    }
+
+    #[test]
+    fn api_error_keeps_plain_server_messages_and_never_echoes_raw_bodies() {
+        let status = reqwest::StatusCode::TOO_MANY_REQUESTS;
+        assert_eq!(
+            api_error(status, r#"{"message":"rate limit reached"}"#).to_string(),
+            "OpenCode Go API error: rate limit reached"
+        );
+        assert_eq!(
+            api_error(reqwest::StatusCode::BAD_GATEWAY, "Bearer raw-body-secret").to_string(),
+            "OpenCode Go API error: HTTP 502 Bad Gateway"
+        );
     }
 }

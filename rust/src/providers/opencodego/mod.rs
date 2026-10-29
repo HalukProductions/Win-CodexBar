@@ -524,7 +524,10 @@ impl Provider for OpenCodeGoProvider {
                     match usage_api::fetch(&self.client, ctx, api_key, "api").await {
                         Ok(result) => return Ok(result),
                         Err(e) => {
-                            tracing::debug!("OpenCode Go API failed in Auto; trying web: {e}")
+                            tracing::debug!(
+                                "OpenCode Go API failed in Auto; trying web: {}",
+                                crate::logging::safe_error_message(&e)
+                            )
                         }
                     }
                 }
@@ -540,7 +543,10 @@ impl Provider for OpenCodeGoProvider {
                     }
                     Ok(_) => web,
                     Err(e) => {
-                        tracing::debug!("OpenCode Go CLI login unavailable in Auto: {e}");
+                        tracing::debug!(
+                            "OpenCode Go CLI login unavailable in Auto: {}",
+                            crate::logging::safe_error_message(&e)
+                        );
                         web
                     }
                 }
@@ -686,14 +692,20 @@ impl OpenCodeGoProvider {
             Ok(Some((token, source))) if source == usage_api::CLI_SOURCE_LABEL => token,
             Ok(_) => return fallback,
             Err(e) => {
-                tracing::debug!("OpenCode Go CLI login unavailable; keeping estimate: {e}");
+                tracing::debug!(
+                    "OpenCode Go CLI login unavailable; keeping estimate: {}",
+                    crate::logging::safe_error_message(&e)
+                );
                 return fallback;
             }
         };
         match usage_api::fetch(&self.client, ctx, &token, LOCAL_CLI_SOURCE_LABEL).await {
             Ok(result) => result,
             Err(e) => {
-                tracing::debug!("OpenCode Go CLI quota unavailable; keeping estimate: {e}");
+                tracing::debug!(
+                    "OpenCode Go CLI quota unavailable; keeping estimate: {}",
+                    crate::logging::safe_error_message(&e)
+                );
                 fallback
             }
         }
