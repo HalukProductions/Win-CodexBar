@@ -9,6 +9,8 @@
 
 ## [Windows] Unreleased
 
+- Settings, light theme: usage bar tracks are a light grey instead of solid black, and the pace pills, the expected-pace marker and the cost and credits chart colors use their light values instead of the dark ones.
+- abliteration.ai: the total credits row is labeled "Total credits", so Settings > Visible usage items no longer lists "Credits" twice.
 - Codex: the Free plan's 30-day window gets pace, like a weekly window: the pace marker, "lasts until reset" and the daily target. A Plus account's monthly lane also shows pace now. Pace comes only from the window length Codex reports, never from the calendar month. (upstream #4766, #1043)
 - CLI: `codexbar config set-cookie <provider>` saves a manual Cookie header from `--cookie` or `--stdin`, switches the provider to the Manual cookie source and turns it on unless you pass `--no-enable`. `codexbar config clear-credential <provider>` removes the saved API key, cookie or both, and leaves the provider's other settings alone. Neither command prints the secret, both accept `--json`, and both stop without writing when a credential file can't be read. (upstream #4765, #1044)
 - abliteration.ai: a new credits provider, off by default, reads your prepaid balance with an API key saved in Settings > Providers or set in `ABLITERATION_API_KEY`. The card shows credits used against the total, with Balance, Credits used and Credits rows. It makes one free request to the credits endpoint per refresh. (upstream #4756, #1045)

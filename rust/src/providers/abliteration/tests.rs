@@ -88,7 +88,7 @@ async fn contract_response_yields_usd_balance_and_a_cumulative_meter_without_res
     assert!(result.cost.is_none());
     assert_eq!(detail(&result, "Balance").as_deref(), Some("$49.99"));
     assert_eq!(detail(&result, "Credits used").as_deref(), Some("$0.01"));
-    assert_eq!(detail(&result, "Credits").as_deref(), Some("$50.00"));
+    assert_eq!(detail(&result, "Total credits").as_deref(), Some("$50.00"));
 }
 
 #[tokio::test]
@@ -113,7 +113,7 @@ async fn zero_usage_overspending_and_zero_credits_preserve_honest_amounts() {
         assert!(zero.usage.primary.is_informational);
         assert!(zero.usage.primary.hidden_on_card);
         assert_eq!(detail(&zero, "Balance").as_deref(), Some("$0.00"));
-        assert_eq!(detail(&zero, "Credits").as_deref(), Some("$0.00"));
+        assert_eq!(detail(&zero, "Total credits").as_deref(), Some("$0.00"));
     }
 }
 

@@ -227,6 +227,7 @@ export const PROVIDER_TEXT_LOCALE_KEYS = [
   "ProviderLabelScope",
   "ProviderLabelSubscriptionCreditsAvailable",
   "ProviderLabelTotalCreditsAvailable",
+  "ProviderLabelTotalCredits",
   "ProviderLabelUsedThisCycle",
   "ProviderLabelBankCap",
   "ProviderLabelNextRefill",

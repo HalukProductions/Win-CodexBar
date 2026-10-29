@@ -299,6 +299,22 @@
       ]
     },
     {
+      "name": "settings-codex-light-usage-bars",
+      "query": "window=settings&tab=providers:codex&theme=light",
+      "size": [880, 620],
+      "steps": [
+        { "expectTheme": "light" },
+        {
+          "expectStyle": {
+            "selector": ".menu-metric__progress-track",
+            "property": "fill",
+            "value": "rgba(0, 0, 0, 0.1)"
+          }
+        },
+        { "screenshot": "settings-codex-light-usage-bars" }
+      ]
+    },
+    {
       "name": "settings-codex-two-accounts",
       "query": "window=settings&tab=providers:codex&fixture=two-codex-accounts&theme=dark",
       "size": [880, 620],

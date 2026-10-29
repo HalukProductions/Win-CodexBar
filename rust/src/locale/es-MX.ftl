@@ -1525,6 +1525,7 @@ ProviderLabelBillingType = Tipo de facturación
 ProviderLabelScope = Alcance
 ProviderLabelSubscriptionCreditsAvailable = Créditos de suscripción disponibles
 ProviderLabelTotalCreditsAvailable = Total de créditos disponibles
+ProviderLabelTotalCredits = Total de créditos
 ProviderLabelUsedThisCycle = Usado en este ciclo
 ProviderLabelBankCap = Límite acumulable
 ProviderLabelNextRefill = Próxima recarga

@@ -174,7 +174,7 @@ fn build_result(credits: Credits) -> ProviderFetchResult {
     let rows = [
         row("balance", "Balance", format::usd((total - used).max(0.0))),
         row("credits-used", "Credits used", format::usd(used)),
-        row("credits", "Credits", format::usd(total)),
+        row("credits", "Total credits", format::usd(total)),
     ]
     .into_iter()
     .flatten()

@@ -1526,6 +1526,7 @@ ProviderLabelBillingType = 計費類型
 ProviderLabelScope = 範圍
 ProviderLabelSubscriptionCreditsAvailable = 可用訂閱額度
 ProviderLabelTotalCreditsAvailable = 可用總額度
+ProviderLabelTotalCredits = 總額度
 ProviderLabelUsedThisCycle = 本週期已用
 ProviderLabelBankCap = 累積上限
 ProviderLabelNextRefill = 下次補充
