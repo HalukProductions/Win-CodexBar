@@ -525,6 +525,14 @@ fn read_login(dir: &Path, config: &Path) -> io::Result<Option<SavedLogin>> {
     let Some(oauth) = credentials.get("claudeAiOauth").filter(|v| !v.is_null()) else {
         return Ok(None);
     };
+    // A sign-out can also keep the OAuth entry with blank tokens. That is no
+    // login, and treating it as broken would hide and block saved accounts.
+    if ["accessToken", "refreshToken"]
+        .iter()
+        .any(|key| required_string(oauth, key).is_err())
+    {
+        return Ok(None);
+    }
     let config = read_object(config)?;
     let login = SavedLogin {
         oauth: oauth.clone(),
@@ -712,6 +720,50 @@ mod tests {
         assert!(account_manager.list_with_consent(true).unwrap()[0].is_active);
         assert!(!account_manager.list_with_consent(false).unwrap()[0].is_active);
     }
+
+    #[test]
+    fn blank_token_logout_keeps_saved_accounts_listed_and_switchable() {
+        let dir = tempfile::tempdir().unwrap();
+        let manager = manager(dir.path());
+        manager.import(login("a", "one", "first")).unwrap();
+        manager.import(login("b", "two", "second")).unwrap();
+        // Signed out, but the OAuth entry and the identity metadata remain.
+        let mut signed_out = login("b", "two", "");
+        signed_out.oauth["refreshToken"] = json!("");
+        activate(&manager, &signed_out);
+        let credential_path = manager.config_dir.join(".credentials.json");
+
+        for consent in [false, true] {
+            let accounts = manager.list_with_consent(consent).unwrap();
+            assert_eq!(accounts.len(), 2);
+            assert!(accounts.iter().all(|a| a.is_saved && !a.is_active));
+        }
+        assert!(
+            manager
+                .save_current()
+                .unwrap_err()
+                .to_string()
+                .contains("No Claude Code subscription login found")
+        );
+
+        manager.switch("a:one").unwrap();
+        let restored = read_object(&credential_path).unwrap();
+        assert_eq!(restored["claudeAiOauth"]["accessToken"], "first");
+        assert_eq!(restored["mcpOAuth"]["secret"], "preserved");
+        // The blank login was never saved over account b.
+        assert_eq!(
+            manager.usage_credentials("b:two").unwrap().0["accessToken"],
+            "second"
+        );
+        assert!(
+            manager
+                .list_with_consent(true)
+                .unwrap()
+                .iter()
+                .any(|a| a.id == "a:one" && a.is_active)
+        );
+    }
+
     #[cfg(windows)]
     #[test]
     fn switching_does_not_require_a_metadata_write_after_credentials_change() {
