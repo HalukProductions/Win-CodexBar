@@ -1525,6 +1525,7 @@ ProviderLabelBillingType = 결제 유형
 ProviderLabelScope = 범위
 ProviderLabelSubscriptionCreditsAvailable = 사용 가능한 구독 크레딧
 ProviderLabelTotalCreditsAvailable = 사용 가능한 총 크레딧
+ProviderLabelTotalCredits = 총 크레딧
 ProviderLabelUsedThisCycle = 이번 주기 사용량
 ProviderLabelBankCap = 적립 한도
 ProviderLabelNextRefill = 다음 충전

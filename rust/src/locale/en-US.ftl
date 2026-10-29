@@ -1528,6 +1528,7 @@ ProviderLabelBillingType = Billing type
 ProviderLabelScope = Scope
 ProviderLabelSubscriptionCreditsAvailable = Subscription credits available
 ProviderLabelTotalCreditsAvailable = Total credits available
+ProviderLabelTotalCredits = Total credits
 ProviderLabelUsedThisCycle = Used this cycle
 ProviderLabelBankCap = Bank cap
 ProviderLabelNextRefill = Next refill

@@ -1526,6 +1526,7 @@ ProviderLabelBillingType = 請求タイプ
 ProviderLabelScope = スコープ
 ProviderLabelSubscriptionCreditsAvailable = 利用可能なサブスクリプションクレジット
 ProviderLabelTotalCreditsAvailable = 利用可能なクレジット合計
+ProviderLabelTotalCredits = クレジット合計
 ProviderLabelUsedThisCycle = このサイクルの使用量
 ProviderLabelBankCap = 繰越上限
 ProviderLabelNextRefill = 次回の補充

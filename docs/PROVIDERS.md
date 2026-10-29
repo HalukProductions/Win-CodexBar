@@ -950,9 +950,11 @@ both counters are USD.
   example `$0.01 / $50.00`), capped at 100% when overspent. It has no reset
   date and no pace, because the counters are cumulative.
 - The **Credits** section shows **Balance** (total minus usage, floored at
-  zero), **Credits used** and **Credits**. Overspent accounts keep the reported
-  spend. With zero total credits the dollar rows stay and the meter is hidden,
-  so no percentage is invented.
+  zero), **Credits used** and **Total credits**. Overspent accounts keep the
+  reported spend. With zero total credits the dollar rows stay and the meter is
+  hidden, so no percentage is invented. The Mac plugin labels the total row
+  **Credits**; the Windows port says **Total credits** so it does not share a
+  name with the meter in Settings → Visible usage items.
 - Card bars use the label color, as on the Mac (`progressColorStyle: .label`).
 - Missing, negative, non-numeric or non-finite counters fail parsing. 401 and
   403 ask you to check the API key in Settings, 429 reports rate limiting, and

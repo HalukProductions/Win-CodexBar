@@ -1944,6 +1944,7 @@ locale_keys! {
     ProviderLabelScope,
     ProviderLabelSubscriptionCreditsAvailable,
     ProviderLabelTotalCreditsAvailable,
+    ProviderLabelTotalCredits,
     ProviderLabelUsedThisCycle,
     ProviderLabelBankCap,
     ProviderLabelNextRefill,

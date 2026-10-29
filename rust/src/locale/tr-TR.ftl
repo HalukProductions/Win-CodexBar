@@ -1526,6 +1526,7 @@ ProviderLabelBillingType = Fatura türü
 ProviderLabelScope = Kapsam
 ProviderLabelSubscriptionCreditsAvailable = Kullanılabilir abonelik kredileri
 ProviderLabelTotalCreditsAvailable = Kullanılabilir toplam kredi
+ProviderLabelTotalCredits = Toplam kredi
 ProviderLabelUsedThisCycle = Bu döngüde kullanılan
 ProviderLabelBankCap = Biriktirme limiti
 ProviderLabelNextRefill = Sonraki yenileme

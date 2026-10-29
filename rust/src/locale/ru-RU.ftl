@@ -1526,6 +1526,7 @@ ProviderLabelBillingType = Тип оплаты
 ProviderLabelScope = Область
 ProviderLabelSubscriptionCreditsAvailable = Доступно кредитов подписки
 ProviderLabelTotalCreditsAvailable = Всего доступно кредитов
+ProviderLabelTotalCredits = Всего кредитов
 ProviderLabelUsedThisCycle = Использовано за цикл
 ProviderLabelBankCap = Лимит накопления
 ProviderLabelNextRefill = Следующее пополнение
