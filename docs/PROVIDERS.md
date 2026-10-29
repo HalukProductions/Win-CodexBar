@@ -123,6 +123,24 @@ bundled-credit quota from the session token.
   again and refresh.
 - Manual mode needs a freshly pasted Cookie header from a signed-in
   `venice.ai` request; an old header fails with the expired-session message.
+
+### Command Code saved sessions
+
+Command Code keeps several labeled subscription sessions under **Session tokens**
+(upstream #4774). Paste a bare session token, a full Cookie header, or a cURL
+capture; a bare token gets the production session cookie name. A cURL capture
+must be a single line: the token command rejects multiline values with
+"Token must be a single line".
+
+- Saved sessions count only when the cookie source is **Manual**. In Auto the
+  selected session uses browser billing even when an API key is configured, and
+  a rejected session reports an error without trying a cached or browser
+  account.
+- The **API** usage source keeps saved sessions passive and uses the configured
+  key. Cookie source **Automatic** or **Off** also keeps them passive.
+- Unlike the Mac app, an empty Manual cookie source still falls back to browser
+  cookies, because Manual is the Windows default cookie source.
+
 ### Raycast credits
 
 Raycast reads the unofficial `frontend_api/current_user/ai_credits` route of
