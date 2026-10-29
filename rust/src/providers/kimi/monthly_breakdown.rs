@@ -81,7 +81,7 @@ pub(super) fn monthly_breakdown_details(
 }
 
 /// Upstream `UsageFormatter.percentString`: clamped to 0-100, with "<1%" for
-/// a share that rounds to zero but is not zero.
+/// any share above 0 and below 1, including one that would round to 1%.
 fn percent_text(percent: f64) -> String {
     let clamped = percent.clamp(0.0, 100.0);
     if clamped > 0.0 && clamped < 1.0 {

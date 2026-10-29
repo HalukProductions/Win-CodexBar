@@ -120,6 +120,8 @@ fn malformed_code_share_keeps_the_valid_quota_windows() {
 #[test]
 fn tiny_shares_render_below_one_percent() {
     assert_eq!(percent_text(0.4), "<1%");
+    assert_eq!(percent_text(0.8), "<1%");
+    assert_eq!(percent_text(1.0), "1%");
     assert_eq!(percent_text(0.0), "0%");
     assert_eq!(percent_text(140.0), "100%");
 }
