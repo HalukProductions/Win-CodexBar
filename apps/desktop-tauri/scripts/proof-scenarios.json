@@ -304,7 +304,13 @@
       "size": [880, 620],
       "steps": [
         { "expectTheme": "light" },
-        { "expectSelector": ".menu-metric__progress-track" },
+        {
+          "expectStyle": {
+            "selector": ".menu-metric__progress-track",
+            "property": "fill",
+            "value": "rgba(0, 0, 0, 0.1)"
+          }
+        },
         { "screenshot": "settings-codex-light-usage-bars" }
       ]
     },
