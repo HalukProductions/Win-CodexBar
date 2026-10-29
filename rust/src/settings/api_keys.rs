@@ -786,6 +786,15 @@ pub fn get_api_key_providers() -> Vec<ProviderConfigInfo> {
             dashboard_url: Some("https://chatboxai.app"),
         },
         ProviderConfigInfo {
+            id: ProviderId::Abliteration,
+            name: "abliteration.ai",
+            api_key_env_var: Some("ABLITERATION_API_KEY"),
+            api_key_help: Some(
+                "API key from your abliteration.ai account. Or set ABLITERATION_API_KEY. Refresh only reads credits and never sends inference requests.",
+            ),
+            dashboard_url: Some("https://abliteration.ai"),
+        },
+        ProviderConfigInfo {
             id: ProviderId::Cosmic,
             name: "Cosmic AI",
             api_key_env_var: Some("COSMIC_TOKEN"),

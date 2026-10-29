@@ -148,11 +148,11 @@ const fn spec(
     }
 }
 
-const COUNT: usize = 114;
+const COUNT: usize = 115;
 
 pub(crate) static ALL: [ProviderId; COUNT] = {
     // Indexing SPECS by discriminant relies on rows following declaration order.
-    assert!(P::Chatbox as usize + 1 == COUNT);
+    assert!(P::Abliteration as usize + 1 == COUNT);
     let mut ids = [P::Codex; COUNT];
     let mut i = 0;
     while i < COUNT {
@@ -783,7 +783,7 @@ pub(crate) static SPECS: [ProviderSpec; COUNT] = [
         .dashboard("https://console.soniox.com")
         .status("https://status.soniox.com"),
     spec(P::TraeCn, "traecn", "Trae CN", "#4D7CFE")
-        .labels("Credits", "Window")
+        .labels("Usage", "Window")
         .cookie("api.trae.cn")
         .dashboard("https://www.trae.cn/dashboard#usage")
         .aliases(&["trae-cn"])
@@ -792,4 +792,13 @@ pub(crate) static SPECS: [ProviderSpec; COUNT] = [
         .labels("Plan", "Top-up credits")
         .dashboard("https://chatboxai.app")
         .parse_aliases(&["chatbox ai"]),
+    spec(
+        P::Abliteration,
+        "abliteration",
+        "abliteration.ai",
+        "#1B1B1B",
+    )
+    .labels("Credits", "Usage")
+    .dashboard("https://abliteration.ai")
+    .parse_aliases(&["abliteration.ai"]),
 ];
