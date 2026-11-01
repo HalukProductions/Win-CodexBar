@@ -46,6 +46,7 @@ const tauriMocks = vi.hoisted(() => ({
   getCodexAccountsState: vi.fn(),
   getTokenAccounts: vi.fn(),
   getProviderAccountUsage: vi.fn(),
+  claudeAccountsList: vi.fn().mockResolvedValue([]),
   claudeReconciliationState: vi.fn().mockResolvedValue(null),
 }));
 

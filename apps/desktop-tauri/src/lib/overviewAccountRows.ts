@@ -3,6 +3,7 @@ import { buildAccountOrdinals } from "../components/claudeAccountDisplay";
 import type {
   AccountUsageEntryBridge,
   AccountUsageWindowBridge,
+  ClaudeAccount,
   ClaudeSwapOverviewAccountsBridge,
   CodexAccount,
   CodexAccountUsageSnapshot,
@@ -31,6 +32,14 @@ export interface ClaudeTokenOverviewAccounts {
   usage: Readonly<Record<string, AccountUsageEntryBridge>>;
 }
 
+/**
+ * Saved Claude Code accounts from the account switcher, each with the usage
+ * the per-account refresh last cached (`get_claude_accounts_state`).
+ */
+export interface ClaudeManagedOverviewAccounts {
+  accounts: readonly ClaudeAccount[];
+}
+
 export interface OverviewEntry {
   /** React key and DOM id suffix. A plain card keeps the provider id. */
   key: string;
@@ -55,8 +64,8 @@ const CLAUDE_PROVIDER_ID = "claude";
  * already-selected providers are passed in, so rows never take a provider slot.
  *
  * Codex expands over its managed accounts. Claude expands over its claude-swap
- * or tcr pool accounts when two or more are listed, which takes precedence, and
- * otherwise over its saved token accounts. Managed Claude logins stay one card.
+ * or tcr pool accounts when two or more are listed, which takes precedence,
+ * then over its saved token accounts, then over its saved Claude Code accounts.
  * A provider with at most one account keeps its single card. Each row is built
  * from that account's own data and never borrows the active account's quota,
  * plan, email or cost.
@@ -67,6 +76,7 @@ export function expandOverviewAccountRows(
   options: OverviewRowOptions,
   claudeTokens: ClaudeTokenOverviewAccounts | null = null,
   claudeSwap: ClaudeSwapOverviewAccountsBridge | null = null,
+  claudeManaged: ClaudeManagedOverviewAccounts | null = null,
 ): OverviewEntry[] {
   const plain = (provider: ProviderUsageSnapshot): OverviewEntry => ({
     key: provider.providerId,
@@ -83,6 +93,9 @@ export function expandOverviewAccountRows(
       }
       if (claudeTokens && claudeTokens.accounts.length > 1) {
         return claudeTokenAccountRows(provider, claudeTokens, options);
+      }
+      if (claudeManaged && claudeManaged.accounts.length > 1) {
+        return claudeManagedAccountRows(provider, claudeManaged, options);
       }
     }
     return [plain(provider)];
@@ -166,6 +179,55 @@ function claudeSwapAccountRows(
 }
 
 /**
+ * One row per saved Claude Code account. Hidden personal info numbers the
+ * accounts in list order, as the Claude Code accounts list does. An account
+ * whose saved login needs signing in again shows that message instead of its
+ * last cached windows, which would otherwise look current.
+ */
+function claudeManagedAccountRows(
+  provider: ProviderUsageSnapshot,
+  managed: ClaudeManagedOverviewAccounts,
+  options: OverviewRowOptions,
+): OverviewEntry[] {
+  const ordinals = buildAccountOrdinals(managed.accounts);
+  return managed.accounts.map((account) => {
+    const ordinal = ordinals[account.id];
+    const label = options.hidePersonalInfo
+      ? ordinal === undefined
+        ? "••••"
+        : `${options.accountWord} ${ordinal}`
+      : account.email;
+    const signedOut = account.needsAuthentication === true;
+    return {
+      key: `${provider.providerId}/account/${account.id}`,
+      provider: claudeAccountOverviewSnapshot(
+        provider,
+        signedOut ? null : managedAccountUsage(account),
+        label,
+        signedOut && account.usageError ? account.usageError : options.unavailableText,
+      ),
+      accountId: account.id,
+    };
+  });
+}
+
+/** A Claude Code account's cached 5-hour and weekly windows in the shared row shape. */
+function managedAccountUsage(account: ClaudeAccount): AccountUsageEntryBridge | null {
+  const usage = account.usage;
+  if (!usage) return null;
+  const window = (
+    lane: { usedPercent: number; resetsAt: string | null } | null,
+    windowMinutes: number,
+  ): AccountUsageWindowBridge | null =>
+    lane ? { usedPercent: lane.usedPercent, windowMinutes, resetsAt: lane.resetsAt } : null;
+  return {
+    primary: window(usage.fiveHour, 300),
+    secondary: window(usage.sevenDay, 10080),
+    updatedAt: usage.updatedAt,
+  };
+}
+
+/**
  * Build one Codex account's card model. Only display identity (provider id, name,
  * source) comes from the provider card; plan, email, windows and cost come from
  * this account's own usage record.
@@ -205,7 +267,7 @@ function codexAccountOverviewSnapshot(
 }
 
 /**
- * Build one Claude account's card model (token or claude-swap/tcr) from its
+ * Build one Claude account's card model (token, claude-swap/tcr or Claude Code) from its
  * cached last-fetched usage. The cache holds windows and an update time only, so
  * plan, cost and subscription stay empty. A missing entry renders as "No usage
  * data" with an empty update time ("Not fetched yet"); it never shows the active

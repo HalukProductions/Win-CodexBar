@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { makeUsageSnapshot } from "../test/fixtures";
 import type {
+  ClaudeAccount,
   ClaudeSwapOverviewAccountsBridge,
   CodexAccount,
   CodexAccountUsageSnapshot,
 } from "../types/bridge";
 import {
   expandOverviewAccountRows,
+  type ClaudeManagedOverviewAccounts,
   type ClaudeTokenOverviewAccounts,
   type CodexOverviewAccounts,
 } from "./overviewAccountRows";
@@ -408,5 +410,195 @@ describe("expandOverviewAccountRows for claude-swap and tcr pools", () => {
     ]);
     const keys = entries.map((e) => e.key);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+function managedAccount(id: string, email: string, overrides: Partial<ClaudeAccount> = {}): ClaudeAccount {
+  return {
+    id,
+    email,
+    organization: null,
+    plan: "max",
+    isActive: false,
+    isSaved: true,
+    usage: null,
+    ...overrides,
+  };
+}
+
+function managedState(
+  accounts: ClaudeAccount[] = [
+    managedAccount("first:org", "first@example.com", {
+      isActive: true,
+      usage: {
+        fiveHour: { usedPercent: 99, resetsAt: "2026-11-01T22:00:00Z" },
+        sevenDay: { usedPercent: 33, resetsAt: "2026-11-04T09:00:00Z" },
+        updatedAt: "2026-11-01T20:00:00Z",
+      },
+    }),
+    managedAccount("second:org", "second@example.com", {
+      usage: {
+        fiveHour: { usedPercent: 7, resetsAt: "2026-11-01T20:13:00Z" },
+        sevenDay: { usedPercent: 65, resetsAt: null },
+        updatedAt: "2026-11-01T19:55:00Z",
+      },
+    }),
+  ],
+): ClaudeManagedOverviewAccounts {
+  return { accounts };
+}
+
+describe("expandOverviewAccountRows for saved Claude Code accounts", () => {
+  it("expands saved Claude Code accounts into one row each, in list order", () => {
+    const entries = expandOverviewAccountRows([activeClaude], null, OPTIONS, null, null, managedState());
+    expect(entries.map((e) => e.key)).toEqual([
+      "claude/account/first:org",
+      "claude/account/second:org",
+    ]);
+    expect(entries.map((e) => e.accountId)).toEqual(["first:org", "second:org"]);
+    expect(entries.map((e) => e.provider.accountEmail)).toEqual([
+      "first@example.com",
+      "second@example.com",
+    ]);
+  });
+
+  it("builds each row from that account's own cached windows, never from the active card", () => {
+    const [, second] = expandOverviewAccountRows(
+      [activeClaude],
+      null,
+      OPTIONS,
+      null,
+      null,
+      managedState(),
+    );
+    const row = second.provider;
+    expect(row.primary.usedPercent).toBe(7);
+    expect(row.primary.windowMinutes).toBe(300);
+    expect(row.primary.resetsAt).toBe("2026-11-01T20:13:00Z");
+    expect(row.secondary?.usedPercent).toBe(65);
+    expect(row.secondary?.windowMinutes).toBe(10_080);
+    expect(row.updatedAt).toBe("2026-11-01T19:55:00Z");
+    expect(row.planName).toBeNull();
+    expect(row.accountEmail).toBe("second@example.com");
+    expect(row.error).toBeNull();
+  });
+
+  it("shows an account with no cached usage as unavailable, with no update time", () => {
+    const entries = expandOverviewAccountRows(
+      [activeClaude],
+      null,
+      OPTIONS,
+      null,
+      null,
+      managedState([
+        managedAccount("first:org", "first@example.com"),
+        managedAccount("second:org", "second@example.com", { usageError: "Sign in again to check this Claude account." }),
+      ]),
+    );
+    for (const entry of entries) {
+      expect(entry.provider.error).toBe("No usage data");
+      expect(entry.provider.errorState).toBe("unknown");
+      expect(entry.provider.updatedAt).toBe("");
+      expect(entry.provider.secondary).toBeNull();
+    }
+  });
+
+  it("shows the sign-in message instead of stale windows when a saved login needs signing in again", () => {
+    const [first, second] = managedState().accounts;
+    const entries = expandOverviewAccountRows(
+      [activeClaude],
+      null,
+      OPTIONS,
+      null,
+      null,
+      managedState([
+        first,
+        {
+          ...second,
+          needsAuthentication: true,
+          usageError: "Sign in again to check this Claude account.",
+        },
+      ]),
+    );
+    expect(entries[0].provider.primary.usedPercent).toBe(99);
+    const row = entries[1].provider;
+    expect(row.error).toBe("Sign in again to check this Claude account.");
+    expect(row.errorState).toBe("unknown");
+    expect(row.primary.usedPercent).toBe(0);
+    expect(row.secondary).toBeNull();
+    expect(row.updatedAt).toBe("");
+  });
+
+  it("uses generic Account N labels and never the email under Hide personal information", () => {
+    const entries = expandOverviewAccountRows(
+      [activeClaude],
+      null,
+      { ...OPTIONS, hidePersonalInfo: true },
+      null,
+      null,
+      managedState(),
+    );
+    expect(entries.map((e) => e.provider.accountEmail)).toEqual(["Account 1", "Account 2"]);
+    const serialized = JSON.stringify(entries.map((e) => e.provider));
+    expect(serialized).not.toContain("first@example.com");
+    expect(serialized).not.toContain("second@example.com");
+  });
+
+  it("keeps the single Claude card when there is at most one saved account", () => {
+    const entries = expandOverviewAccountRows(
+      [activeClaude],
+      null,
+      OPTIONS,
+      null,
+      null,
+      managedState([managedAccount("first:org", "first@example.com")]),
+    );
+    expect(entries.map((e) => e.key)).toEqual(["claude"]);
+    expect(entries[0].provider).toBe(activeClaude);
+  });
+
+  it("yields to claude-swap pools and Claude token accounts when those have two or more", () => {
+    const withTokens = expandOverviewAccountRows(
+      [activeClaude],
+      null,
+      OPTIONS,
+      claudeState(),
+      null,
+      managedState(),
+    );
+    expect(withTokens.map((e) => e.key)).toEqual([
+      "claude/account/tok-work",
+      "claude/account/tok-personal",
+    ]);
+    const withSwap = expandOverviewAccountRows(
+      [activeClaude],
+      null,
+      OPTIONS,
+      null,
+      swapState(),
+      managedState(),
+    );
+    expect(withSwap.map((e) => e.key)).toEqual([
+      "claude/account/claude-swap:1",
+      "claude/account/claude-swap:2",
+      "claude/account/claude-swap:3",
+    ]);
+  });
+
+  it("leaves Codex rows alone when Claude Code account rows expand next to them", () => {
+    const entries = expandOverviewAccountRows(
+      [activeCodex, activeClaude],
+      codexState(),
+      OPTIONS,
+      null,
+      null,
+      managedState(),
+    );
+    expect(entries.map((e) => e.key)).toEqual([
+      "codex/account/acc-work",
+      "codex/account/acc-home",
+      "claude/account/first:org",
+      "claude/account/second:org",
+    ]);
   });
 });

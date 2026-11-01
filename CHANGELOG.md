@@ -9,6 +9,7 @@
 
 ## [Windows] Unreleased
 
+- Claude: Show all accounts in Overview now gives each saved Claude Code account its own row, with that account's session and weekly usage, so two subscriptions show side by side. claude-swap pools and token accounts keep precedence when they list two or more accounts.
 - Settings, light theme: usage bar tracks are a light grey instead of solid black, and the pace pills, the expected-pace marker and the cost and credits chart colors use their light values instead of the dark ones.
 - abliteration.ai: the total credits row is labeled "Total credits", so Settings > Visible usage items no longer lists "Credits" twice.
 - Codex: the Free plan's 30-day window gets pace, like a weekly window: the pace marker, "lasts until reset" and the daily target. A Plus account's monthly lane also shows pace now. Pace comes only from the window length Codex reports, never from the calendar month. (upstream #4766, #1043)
