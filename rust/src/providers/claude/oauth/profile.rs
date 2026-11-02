@@ -65,6 +65,47 @@ pub(super) fn display_email(
     .0
 }
 
+/// The email for `access_token`, starting the lookup when none ran yet and
+/// waiting for one already in flight instead of sending a second request.
+/// Bounded by [`LOOKUP_BUDGET`].
+pub(super) async fn awaited_email(client: &Client, access_token: &str) -> Option<String> {
+    awaited_email_at(client, &profile_url(), access_token, LOOKUP_BUDGET).await
+}
+
+async fn awaited_email_at(
+    client: &Client,
+    url: &str,
+    access_token: &str,
+    budget: Duration,
+) -> Option<String> {
+    let fingerprint = super::usage_gate::token_fingerprint(access_token);
+    let (email, task) = lookup(client, url, access_token, &fingerprint, budget);
+    if email.is_some() {
+        return email;
+    }
+    if let Some(task) = task {
+        if let Err(error) = task.await {
+            tracing::debug!(%error, "Claude OAuth profile lookup task ended early");
+        }
+    } else {
+        let deadline = tokio::time::Instant::now() + budget;
+        while is_pending(&fingerprint) && tokio::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }
+    known_email(access_token)
+}
+
+fn is_pending(fingerprint: &str) -> bool {
+    matches!(
+        PROFILE_CACHE
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(fingerprint),
+        Some(CachedProfile::Pending)
+    )
+}
+
 /// The email a finished lookup found for `access_token`. Never starts a request.
 pub(super) fn known_email(access_token: &str) -> Option<String> {
     let fingerprint = super::usage_gate::token_fingerprint(access_token);
@@ -279,6 +320,51 @@ mod tests {
                 Some("fixture-profile-found@example.com")
             );
         }
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn awaited_lookup_answers_on_the_first_call() {
+        let mut server = Server::new_async().await;
+        let token = "fixture-profile-awaited";
+        let mock = profile_mock(&mut server, token, 200, 1).await;
+        let url = format!("{}/api/oauth/profile", server.url());
+
+        assert_eq!(
+            awaited_email_at(&Client::new(), &url, token, TEST_BUDGET)
+                .await
+                .as_deref(),
+            Some("fixture-profile-awaited@example.com")
+        );
+        assert_eq!(
+            known_email(token).as_deref(),
+            Some("fixture-profile-awaited@example.com")
+        );
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn awaited_lookup_waits_for_one_in_flight_without_a_second_request() {
+        let mut server = Server::new_async().await;
+        let token = "fixture-profile-in-flight";
+        let mock = profile_mock(&mut server, token, 200, 1).await;
+        let url = format!("{}/api/oauth/profile", server.url());
+
+        // A usage refresh started the lookup and did not wait for it.
+        let (email, started) = lookup(
+            &Client::new(),
+            &url,
+            token,
+            &fingerprint(token),
+            TEST_BUDGET,
+        );
+        assert!(email.is_none() && started.is_some());
+        assert_eq!(
+            awaited_email_at(&Client::new(), &url, token, TEST_BUDGET)
+                .await
+                .as_deref(),
+            Some("fixture-profile-in-flight@example.com")
+        );
         mock.assert_async().await;
     }
 

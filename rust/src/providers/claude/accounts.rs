@@ -26,6 +26,14 @@ pub async fn fetch_usage(
         .await
 }
 
+/// Learn the live login's real owner before saved accounts are refreshed, so
+/// the first refresh after start does not trust a misnamed `.claude.json`.
+pub async fn learn_live_login_owner() {
+    super::oauth::ClaudeOAuthFetcher::new()
+        .learn_live_owner()
+        .await;
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClaudeAccount {

@@ -464,6 +464,19 @@ impl ClaudeOAuthFetcher {
         }
     }
 
+    /// Learn which account Claude Code's live token belongs to, within the
+    /// profile lookup budget, so saved accounts refreshed right after start
+    /// are matched to the right login. Sends nothing for an expired or
+    /// scope-less token.
+    pub async fn learn_live_owner(&self) {
+        let Ok((credentials, _)) = credentials_store::load_credentials() else {
+            return;
+        };
+        if Self::check_usage_credentials(&credentials).is_ok() {
+            let _ = profile::awaited_email(&self.client, &credentials.access_token).await;
+        }
+    }
+
     /// A fetcher against a local server with its own in-memory usage gate, so
     /// tests never touch the shared gate file. The CLI version is pinned so
     /// the User-Agent is deterministic.
