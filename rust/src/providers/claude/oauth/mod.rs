@@ -29,6 +29,17 @@ pub(super) fn clear_account_cache(credential_path: &std::path::Path) {
     ));
 }
 
+/// The email Claude's profile reported for `access_token`, once a lookup has
+/// finished. Never starts a request.
+pub(super) fn known_profile_email(access_token: &str) -> Option<String> {
+    profile::known_email(access_token)
+}
+
+#[cfg(test)]
+pub(super) fn remember_profile_email(access_token: &str, email: &str) {
+    profile::remember_email(access_token, email);
+}
+
 /// OAuth credentials from Claude CLI
 #[derive(Debug, Clone)]
 pub struct ClaudeOAuthCredentials {
@@ -490,10 +501,13 @@ impl ClaudeOAuthFetcher {
         {
             return result;
         }
-        let saved_account_id = account_manager
-            .as_ref()
-            .and_then(|manager| manager.current_account_id().ok().flatten());
         let (credentials, source) = credentials_store::load_credentials()?;
+        let saved_account_id = account_manager.as_ref().and_then(|manager| {
+            manager
+                .refresh_account_id(&credentials.access_token)
+                .ok()
+                .flatten()
+        });
         let (credentials, refresh_outcome) = self
             .ensure_fresh_credentials(
                 credentials,

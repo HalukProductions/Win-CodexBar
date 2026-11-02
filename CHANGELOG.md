@@ -9,6 +9,7 @@
 
 ## [Windows] Unreleased
 
+- Claude: when `.claude.json` names a different account than Claude Code's login token belongs to (the Claude desktop app rewrites it with its own account), the Claude Code accounts list, per-account usage and Switch follow the token's owner, found from its profile email. Switching away saves the live login under its real owner, and a token refresh no longer writes one account's tokens into another account's saved login. If the token's owner is not a saved account, Switch and Save current account stop with a message instead of guessing.
 - Settings, light theme: usage bar tracks are a light grey instead of solid black, and the pace pills, the expected-pace marker and the cost and credits chart colors use their light values instead of the dark ones.
 - abliteration.ai: the total credits row is labeled "Total credits", so Settings > Visible usage items no longer lists "Credits" twice.
 - Codex: the Free plan's 30-day window gets pace, like a weekly window: the pace marker, "lasts until reset" and the daily target. A Plus account's monthly lane also shows pace now. Pace comes only from the window length Codex reports, never from the calendar month. (upstream #4766, #1043)

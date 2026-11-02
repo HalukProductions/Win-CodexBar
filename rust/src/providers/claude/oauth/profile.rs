@@ -65,6 +65,31 @@ pub(super) fn display_email(
     .0
 }
 
+/// The email a finished lookup found for `access_token`. Never starts a request.
+pub(super) fn known_email(access_token: &str) -> Option<String> {
+    let fingerprint = super::usage_gate::token_fingerprint(access_token);
+    match PROFILE_CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(&fingerprint)
+    {
+        Some(CachedProfile::Found(email)) => Some(email.clone()),
+        _ => None,
+    }
+}
+
+/// Record `email` as the finished lookup for `access_token`.
+#[cfg(test)]
+pub(super) fn remember_email(access_token: &str, email: &str) {
+    PROFILE_CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(
+            super::usage_gate::token_fingerprint(access_token),
+            CachedProfile::Found(email.to_string()),
+        );
+}
+
 /// [`display_email`] against `url`, also returning the started lookup task.
 fn lookup(
     client: &Client,
