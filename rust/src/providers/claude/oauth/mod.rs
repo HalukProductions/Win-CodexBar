@@ -517,7 +517,10 @@ impl ClaudeOAuthFetcher {
         let (credentials, source) = credentials_store::load_credentials()?;
         let saved_account_id = account_manager.as_ref().and_then(|manager| {
             manager
-                .refresh_account_id(&credentials.access_token)
+                .refresh_account_id(
+                    &credentials.access_token,
+                    credentials.refresh_token.as_deref(),
+                )
                 .ok()
                 .flatten()
         });

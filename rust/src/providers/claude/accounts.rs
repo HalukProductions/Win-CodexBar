@@ -346,21 +346,36 @@ impl AccountManager {
         identity_id(identity).map(Some)
     }
 
-    /// The saved account a refresh of `access_token` may update: the
-    /// `.claude.json` account, or none once the token's reported email shows
-    /// the login belongs to another account, so no saved login is overwritten
-    /// with tokens that are not its own.
-    pub(super) fn refresh_account_id(&self, access_token: &str) -> io::Result<Option<String>> {
+    /// The saved account a refresh of the live login may update, only when its
+    /// ownership is proven, so no saved login is overwritten with tokens that
+    /// are not its own. A saved account whose refresh token is the live one
+    /// shares its chain and owns it. Otherwise the `.claude.json` account owns
+    /// it once the token's reported email matches that account. After a
+    /// restart an expired token has no reported email, and `.claude.json` may
+    /// name another account, so an unproven login updates no saved account;
+    /// Switch still saves the live login under its owner before replacing it.
+    pub(super) fn refresh_account_id(
+        &self,
+        access_token: &str,
+        refresh_token: Option<&str>,
+    ) -> io::Result<Option<String>> {
+        if let Some(refresh_token) = refresh_token.filter(|token| !token.trim().is_empty())
+            && let Some(owner) = self
+                .load()?
+                .accounts
+                .iter()
+                .find(|account| account.oauth["refreshToken"].as_str() == Some(refresh_token))
+        {
+            return owner.id().map(Some);
+        }
         let config = read_object(&self.config_file)?;
         let Some(identity) = config.get("oauthAccount").filter(|value| !value.is_null()) else {
             return Ok(None);
         };
-        if let Some(email) = super::oauth::known_profile_email(access_token)
-            && !has_email(identity, &email)
-        {
-            return Ok(None);
+        match super::oauth::known_profile_email(access_token) {
+            Some(email) if has_email(identity, &email) => identity_id(identity).map(Some),
+            _ => Ok(None),
         }
-        identity_id(identity).map(Some)
     }
 
     /// Update the already-saved account identified before a token refresh.
@@ -883,7 +898,10 @@ mod tests {
             "owner-a-saved"
         );
         // A refresh of the live token must not land in account a's saved login.
-        assert_eq!(manager.refresh_account_id("owner-b-live").unwrap(), None);
+        assert_eq!(
+            manager.refresh_account_id("owner-b-live", None).unwrap(),
+            None
+        );
 
         manager.switch("a:one").unwrap();
         let credentials = read_object(&manager.config_dir.join(".credentials.json")).unwrap();
@@ -956,11 +974,14 @@ mod tests {
             std::fs::read(manager.root.join("accounts.json")).unwrap(),
             store_before
         );
-        assert_eq!(manager.refresh_account_id("owner3-c-live").unwrap(), None);
+        assert_eq!(
+            manager.refresh_account_id("owner3-c-live", None).unwrap(),
+            None
+        );
     }
 
     #[test]
-    fn without_a_reported_email_the_named_account_stays_live() {
+    fn without_a_reported_email_the_named_account_stays_live_but_unproven() {
         let dir = tempfile::tempdir().unwrap();
         let manager = manager(dir.path());
         manager
@@ -980,9 +1001,55 @@ mod tests {
             .map(|a| a.id)
             .collect();
         assert_eq!(active, ["a:one"]);
+        // `.claude.json` alone never proves which saved login a refresh may update.
         assert_eq!(
             manager
-                .refresh_account_id("owner4-unreported")
+                .refresh_account_id("owner4-unreported", Some("refresh-owner4-unreported"))
+                .unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn refresh_updates_only_a_saved_login_that_provably_owns_the_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let manager = manager(dir.path());
+        manager
+            .import(owned_login("a", "one", "owner5-a-saved"))
+            .unwrap();
+        manager
+            .import(owned_login("b", "two", "owner5-b-shared"))
+            .unwrap();
+
+        // After a restart: `.claude.json` names a, the expired token has no
+        // reported email, and its refresh chain is b's. The chain decides.
+        assert_eq!(
+            manager
+                .refresh_account_id("owner5-expired", Some("refresh-owner5-b-shared"))
+                .unwrap()
+                .as_deref(),
+            Some("b:two")
+        );
+        activate(&manager, &owned_login("a", "one", "owner5-expired"));
+        assert_eq!(
+            manager
+                .refresh_account_id("owner5-expired", Some("refresh-owner5-b-shared"))
+                .unwrap()
+                .as_deref(),
+            Some("b:two")
+        );
+        // Same situation with a chain no saved login shares: nothing is updated.
+        assert_eq!(
+            manager
+                .refresh_account_id("owner5-expired", Some("refresh-owner5-unknown"))
+                .unwrap(),
+            None
+        );
+        // A reported email that matches `.claude.json` proves ownership.
+        super::super::oauth::remember_profile_email("owner5-reported", "a@example.com");
+        assert_eq!(
+            manager
+                .refresh_account_id("owner5-reported", Some("refresh-owner5-unknown"))
                 .unwrap()
                 .as_deref(),
             Some("a:one")
