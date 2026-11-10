@@ -3,7 +3,8 @@ use std::ffi::OsString;
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::time::Duration;
+use std::sync::Mutex;
+use std::time::{Duration, SystemTime};
 
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::process::Command as AsyncCommand;
@@ -20,7 +21,11 @@ use crate::managed_process::ProcessJob;
 const REPORT_TIMEOUT: Duration = Duration::from_secs(90);
 const REPORT_TOO_LARGE: &str = "Antigravity CLI usage report is too large";
 const VERSION_ARGS: [&str; 1] = ["--version"];
-const VERSION_TIMEOUT: Duration = Duration::from_secs(3);
+/// A cold `agy` start on Windows (first run after boot, or while antivirus
+/// scans it) measured up to 14 s. A shorter limit made the probe fail
+/// intermittently, which sent CSRF-gated `agy` down the managed-server path
+/// and surfaced as a false sign-in or session-expired error.
+const VERSION_TIMEOUT: Duration = Duration::from_secs(15);
 const VERSION_TOO_LARGE: &str = "Antigravity CLI version output is too large";
 const USAGE_ARGS: [&str; 6] = [
     "-p",
@@ -151,10 +156,32 @@ pub(super) async fn managed_spawn_is_csrf_gated(binary: Option<PathBuf>) -> bool
         .is_ok_and(|version| is_csrf_gated_version(&version))
 }
 
+/// Versions of `agy` binaries that answered, keyed by path and modification
+/// time, so routine refreshes skip a slow start and an update is probed again.
+static VERSION_CACHE: Mutex<Vec<(PathBuf, SystemTime, String)>> = Mutex::new(Vec::new());
+
 /// `agy --version` output, trimmed.
 async fn agy_version(binary: &Path, timeout: Duration) -> Result<String, LiveFailure> {
+    let modified = std::fs::metadata(binary)
+        .and_then(|metadata| metadata.modified())
+        .ok();
+    if let Some(modified) = modified
+        && let Ok(cache) = VERSION_CACHE.lock()
+        && let Some((_, _, version)) = cache
+            .iter()
+            .find(|(path, stamp, _)| path == binary && *stamp == modified)
+    {
+        return Ok(version.clone());
+    }
     let version = run_cli_command(binary, &VERSION_ARGS, timeout, VERSION_TOO_LARGE).await?;
-    Ok(String::from_utf8_lossy(&version).trim().to_string())
+    let version = String::from_utf8_lossy(&version).trim().to_string();
+    if let Some(modified) = modified
+        && let Ok(mut cache) = VERSION_CACHE.lock()
+    {
+        cache.retain(|(path, _, _)| path != binary);
+        cache.push((binary.to_path_buf(), modified, version.clone()));
+    }
+    Ok(version)
 }
 
 async fn fetch_print_usage(binary: &Path) -> Result<ProviderFetchResult, LiveFailure> {
@@ -475,7 +502,7 @@ mod tests {
     }
 
     /// Version-probe timeout for the `agy.cmd` fixtures. cmd.exe startup on a
-    /// loaded CI runner can exceed the production 3 s limit.
+    /// loaded CI runner can exceed the production 15 s limit.
     #[cfg(windows)]
     const FIXTURE_VERSION_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -702,7 +729,7 @@ mod tests {
                 "90s"
             ]
         );
-        assert_eq!(VERSION_TIMEOUT, Duration::from_secs(3));
+        assert_eq!(VERSION_TIMEOUT, Duration::from_secs(15));
         assert_eq!(REPORT_TIMEOUT, Duration::from_secs(90));
 
         let workdir = PrivateWorkdir::create().expect("private working directory");
@@ -776,5 +803,44 @@ mod tests {
         let guards =
             std::fs::read_to_string(dir.path().join("guards.txt")).expect("guard log written");
         assert_eq!(guards, "--version:true\r\n-p:true\r\n");
+    }
+
+    /// A slow cold start must not be paid on every refresh: the version of an
+    /// unchanged binary comes from the cache, and an updated binary is probed.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn version_probe_is_cached_until_the_binary_changes() {
+        let dir = tempfile::tempdir().expect("fixture directory");
+        let binary = dir.path().join("agy.cmd");
+        std::fs::write(
+            &binary,
+            "@echo off\r\n(echo probe)>> \"%~dp0probes.txt\"\r\necho 1.4.12\r\n",
+        )
+        .expect("agy fixture");
+        let probes = || {
+            std::fs::read_to_string(dir.path().join("probes.txt"))
+                .unwrap_or_default()
+                .lines()
+                .count()
+        };
+
+        for _ in 0..2 {
+            let version = agy_version(&binary, FIXTURE_VERSION_TIMEOUT)
+                .await
+                .expect("version fixture runs");
+            assert_eq!(version, "1.4.12");
+        }
+        assert_eq!(probes(), 1);
+
+        let updated = SystemTime::now() + Duration::from_secs(60);
+        std::fs::File::options()
+            .write(true)
+            .open(&binary)
+            .and_then(|file| file.set_modified(updated))
+            .expect("touch fixture");
+        agy_version(&binary, FIXTURE_VERSION_TIMEOUT)
+            .await
+            .expect("updated fixture runs");
+        assert_eq!(probes(), 2);
     }
 }
