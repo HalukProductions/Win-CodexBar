@@ -301,8 +301,13 @@ function claudeAccountOverviewSnapshot(
     providerId: base.providerId,
     displayName: base.displayName,
     primary,
+    // Every Claude account has the same 5-hour and weekly windows, so the rows
+    // use the provider card's lane names instead of "Primary" and "Secondary".
+    primaryLabel: base.primaryLabel || "Session",
     selectedMetric: primary,
     secondary: secondaryWindow,
+    secondaryLabel: base.secondaryLabel || "Weekly",
+    secondaryLabelKey: base.secondaryLabelKey ?? null,
     modelSpecific: null,
     tertiary: null,
     extraRateWindows,

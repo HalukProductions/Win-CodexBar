@@ -510,6 +510,32 @@ describe("expandOverviewAccountRows for saved Claude Code accounts", () => {
     expect(extras[1][0].window.resetsAt).toBe("2026-11-04T09:00:00Z");
   });
 
+  it("names each account's windows like the provider card, not Primary and Secondary", () => {
+    const entries = expandOverviewAccountRows(
+      [{ ...activeClaude, primaryLabel: "Session", secondaryLabel: "Weekly" }],
+      null,
+      OPTIONS,
+      null,
+      null,
+      managedState(),
+    );
+    for (const entry of entries) {
+      expect(entry.provider.primaryLabel).toBe("Session");
+      expect(entry.provider.secondaryLabel).toBe("Weekly");
+    }
+    // Without a provider label (no weekly window on the card) the names still hold.
+    const [row] = expandOverviewAccountRows(
+      [{ ...activeClaude, primaryLabel: undefined, secondaryLabel: undefined }],
+      null,
+      OPTIONS,
+      null,
+      null,
+      managedState(),
+    );
+    expect(row.provider.primaryLabel).toBe("Session");
+    expect(row.provider.secondaryLabel).toBe("Weekly");
+  });
+
   it("keeps no named limits for an account that needs signing in again", () => {
     const [first, second] = managedState().accounts;
     const entries = expandOverviewAccountRows(
