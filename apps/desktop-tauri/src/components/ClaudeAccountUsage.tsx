@@ -12,6 +12,7 @@ export default function ClaudeAccountUsage({ account, t, showAsUsed = false, res
   return <div className="claude-account-usage" data-stale={Boolean(account.usageError)}>
     {windows?.fiveHour && <UsageWindow window={windows.fiveHour} label={t("ProviderSession")} t={t} showAsUsed={showAsUsed} relative={resetTimeRelative} />}
     {windows?.sevenDay && <UsageWindow window={windows.sevenDay} label={t("ProviderWeekly")} t={t} showAsUsed={showAsUsed} relative={resetTimeRelative} />}
+    {(windows?.extra ?? []).map((extra) => <UsageWindow key={extra.id} window={extra} label={extra.title} t={t} showAsUsed={showAsUsed} relative={resetTimeRelative} />)}
     {!windows?.fiveHour && !windows?.sevenDay && !account.usageError && <span className="codex-menu-accounts__usage">{t("CodexAccountsUsageUnavailable")}</span>}
     {account.usageError && <span className="codex-menu-accounts__error" role="status">
       {account.usageError}{windows && ` · ${t("DetailUpdatedPrefix")} ${new Date(windows.updatedAt).toLocaleString()}`}

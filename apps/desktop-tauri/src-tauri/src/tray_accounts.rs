@@ -761,6 +761,7 @@ mod tests {
                         used_percent: 10.0,
                         resets_at: None,
                     }),
+                    extra: Vec::new(),
                     updated_at: "2026-10-18T00:00:00+00:00".into(),
                 }),
                 ..Default::default()
@@ -800,6 +801,7 @@ mod tests {
                     used_percent: 10.0,
                     resets_at: seven_day.map(String::from),
                 }),
+                extra: Vec::new(),
                 updated_at: "2026-10-18T00:00:00+00:00".into(),
             }),
             ..Default::default()

@@ -19,11 +19,26 @@ pub struct ClaudeAccountWindow {
     pub resets_at: Option<String>,
 }
 
+/// A named limit beyond the 5-hour and weekly windows, such as a model-scoped
+/// weekly limit ("Fable only") or Daily Routines.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaudeAccountExtraWindow {
+    pub id: String,
+    pub title: String,
+    pub used_percent: f64,
+    pub resets_at: Option<String>,
+    pub window_minutes: Option<u32>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClaudeAccountUsage {
     pub five_hour: Option<ClaudeAccountWindow>,
     pub seven_day: Option<ClaudeAccountWindow>,
+    /// Absent in caches written before extra limits were kept.
+    #[serde(default)]
+    pub extra: Vec<ClaudeAccountExtraWindow>,
     pub updated_at: String,
 }
 
@@ -86,6 +101,25 @@ fn quota_window(window: &RateWindow) -> Option<ClaudeAccountWindow> {
     })
 }
 
+/// Named limits with real usage. Fallback lanes stand in only when no core
+/// window is reported, so they are left out.
+fn extra_windows(usage: &UsageSnapshot) -> Vec<ClaudeAccountExtraWindow> {
+    usage
+        .extra_rate_windows
+        .iter()
+        .filter(|extra| !extra.fallback_lane)
+        .filter_map(|extra| {
+            quota_window(&extra.window).map(|window| ClaudeAccountExtraWindow {
+                id: extra.id.clone(),
+                title: extra.title.clone(),
+                used_percent: window.used_percent,
+                resets_at: window.resets_at,
+                window_minutes: extra.window.window_minutes,
+            })
+        })
+        .collect()
+}
+
 fn update_usage(
     previous: &mut ClaudeAccountUsageState,
     result: Result<UsageSnapshot, ProviderError>,
@@ -95,6 +129,7 @@ fn update_usage(
             previous.usage = Some(ClaudeAccountUsage {
                 five_hour: quota_window(&usage.primary),
                 seven_day: usage.secondary.as_ref().and_then(quota_window),
+                extra: extra_windows(&usage),
                 updated_at: usage.updated_at.to_rfc3339(),
             });
             previous.usage_error = None;
@@ -521,6 +556,7 @@ mod tests {
                         resets_at: None,
                     }),
                     seven_day: None,
+                    extra: Vec::new(),
                     updated_at: "2026-10-18T00:00:00+00:00".into(),
                 }),
                 usage_error: None,
@@ -553,5 +589,48 @@ mod tests {
         let other_version = raw.replace("\"version\": 1", "\"version\": 2");
         assert!(decode_account_usage(&other_version).is_none());
         assert!(decode_account_usage("not json").is_none());
+    }
+
+    #[test]
+    fn model_scoped_limits_are_kept_per_account() {
+        use codexbar::core::NamedRateWindow;
+        let mut fable = RateWindow::new(9.0);
+        fable.window_minutes = Some(10080);
+        let mut snapshot = UsageSnapshot::new(RateWindow::new(77.0));
+        snapshot.extra_rate_windows = vec![
+            NamedRateWindow::new("claude-weekly-scoped-fable", "Fable only", fable),
+            NamedRateWindow::new("stand-in", "Stand-in", RateWindow::new(50.0))
+                .with_fallback_lane(true),
+        ];
+        let mut state = ClaudeAccountUsageState::default();
+        update_usage(&mut state, Ok(snapshot));
+        let extra = &state.usage.as_ref().unwrap().extra;
+        assert_eq!(extra.len(), 1, "fallback lanes are left out");
+        assert_eq!(extra[0].id, "claude-weekly-scoped-fable");
+        assert_eq!(extra[0].title, "Fable only");
+        assert_eq!(extra[0].used_percent, 9.0);
+        assert_eq!(extra[0].window_minutes, Some(10080));
+    }
+
+    #[test]
+    fn cache_written_before_extra_limits_still_loads() {
+        let mut usage = HashMap::new();
+        usage.insert(
+            "acct-a".to_string(),
+            ClaudeAccountUsageState {
+                usage: Some(ClaudeAccountUsage {
+                    five_hour: None,
+                    seven_day: None,
+                    extra: Vec::new(),
+                    updated_at: "2026-10-18T00:00:00+00:00".into(),
+                }),
+                ..Default::default()
+            },
+        );
+        let raw = encode_account_usage(&usage).unwrap();
+        assert!(raw.contains("\"extra\": []"));
+        let old = raw.replace("\"extra\": [],", "");
+        let decoded = decode_account_usage(&old).expect("old cache decodes");
+        assert!(decoded["acct-a"].usage.as_ref().unwrap().extra.is_empty());
     }
 }

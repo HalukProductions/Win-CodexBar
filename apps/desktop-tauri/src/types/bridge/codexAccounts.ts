@@ -77,6 +77,14 @@ export interface ClaudeAccount {
   usage?: {
     fiveHour: { usedPercent: number; resetsAt: string | null } | null;
     sevenDay: { usedPercent: number; resetsAt: string | null } | null;
+    /** Named limits such as "Fable only" or Daily Routines; absent from older builds. */
+    extra?: Array<{
+      id: string;
+      title: string;
+      usedPercent: number;
+      resetsAt: string | null;
+      windowMinutes: number | null;
+    }>;
     updatedAt: string;
   } | null;
   usageError?: string | null;

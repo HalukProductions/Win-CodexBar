@@ -179,7 +179,8 @@ function claudeSwapAccountRows(
 }
 
 /**
- * One row per saved Claude Code account. Hidden personal info numbers the
+ * One row per saved Claude Code account, with its own named limits such as
+ * "Fable only". Hidden personal info numbers the
  * accounts in list order, as the Claude Code accounts list does. An account
  * whose saved login needs signing in again shows that message instead of its
  * last cached windows, which would otherwise look current.
@@ -205,10 +206,22 @@ function claudeManagedAccountRows(
         signedOut ? null : managedAccountUsage(account),
         label,
         signedOut && account.usageError ? account.usageError : options.unavailableText,
+        signedOut ? [] : managedAccountExtraWindows(account),
       ),
       accountId: account.id,
     };
   });
+}
+
+/** A Claude Code account's own named limits, such as "Fable only". */
+function managedAccountExtraWindows(
+  account: ClaudeAccount,
+): ProviderUsageSnapshot["extraRateWindows"] {
+  return (account.usage?.extra ?? []).map((extra) => ({
+    id: extra.id,
+    title: extra.title,
+    window: rateWindow(extra.usedPercent, extra.windowMinutes, extra.resetsAt),
+  }));
 }
 
 /** A Claude Code account's cached 5-hour and weekly windows in the shared row shape. */
@@ -278,6 +291,7 @@ function claudeAccountOverviewSnapshot(
   entry: AccountUsageEntryBridge | null,
   label: string,
   unavailableText: string,
+  extraRateWindows: ProviderUsageSnapshot["extraRateWindows"] = [],
 ): ProviderUsageSnapshot {
   const primaryWindow = claudeRateWindow(entry?.primary);
   const secondaryWindow = claudeRateWindow(entry?.secondary);
@@ -291,7 +305,7 @@ function claudeAccountOverviewSnapshot(
     secondary: secondaryWindow,
     modelSpecific: null,
     tertiary: null,
-    extraRateWindows: [],
+    extraRateWindows,
     cost: null,
     subscription: null,
     planName: null,

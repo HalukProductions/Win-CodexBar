@@ -483,6 +483,56 @@ describe("expandOverviewAccountRows for saved Claude Code accounts", () => {
     expect(row.error).toBeNull();
   });
 
+  it("shows each account's own named limits, such as Fable only", () => {
+    const [first, second] = managedState().accounts;
+    const fable = (usedPercent: number) => ({
+      id: "claude-weekly-scoped-fable",
+      title: "Fable only",
+      usedPercent,
+      resetsAt: "2026-11-04T09:00:00Z",
+      windowMinutes: 10_080,
+    });
+    const entries = expandOverviewAccountRows(
+      [activeClaude],
+      null,
+      OPTIONS,
+      null,
+      null,
+      managedState([
+        { ...first, usage: { ...first.usage!, extra: [fable(9)] } },
+        { ...second, usage: { ...second.usage!, extra: [fable(41)] } },
+      ]),
+    );
+    const extras = entries.map((entry) => entry.provider.extraRateWindows);
+    expect(extras.map((rows) => rows.map((row) => row.title))).toEqual([["Fable only"], ["Fable only"]]);
+    expect(extras.map((rows) => rows[0].window.usedPercent)).toEqual([9, 41]);
+    expect(extras[1][0].window.windowMinutes).toBe(10_080);
+    expect(extras[1][0].window.resetsAt).toBe("2026-11-04T09:00:00Z");
+  });
+
+  it("keeps no named limits for an account that needs signing in again", () => {
+    const [first, second] = managedState().accounts;
+    const entries = expandOverviewAccountRows(
+      [activeClaude],
+      null,
+      OPTIONS,
+      null,
+      null,
+      managedState([
+        first,
+        {
+          ...second,
+          needsAuthentication: true,
+          usage: {
+            ...second.usage!,
+            extra: [{ id: "x", title: "Fable only", usedPercent: 5, resetsAt: null, windowMinutes: null }],
+          },
+        },
+      ]),
+    );
+    expect(entries[1].provider.extraRateWindows).toEqual([]);
+  });
+
   it("shows an account with no cached usage as unavailable, with no update time", () => {
     const entries = expandOverviewAccountRows(
       [activeClaude],
