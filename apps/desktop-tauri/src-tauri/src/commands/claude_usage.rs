@@ -290,6 +290,10 @@ pub(crate) async fn refresh_claude_account_lanes(
     if !codexbar::settings::Settings::load().claude_allow_reading_claude_code_credentials {
         return;
     }
+    // The main Claude refresh starts this lookup without waiting. Wait for it
+    // here, so the first refresh after start already files each account's usage
+    // under the login that really owns Claude Code's token.
+    accounts::learn_live_login_owner().await;
     // Read before the account list, so any removal that follows is newer than this refresh.
     let started_revision = {
         let state = app.state::<Mutex<AppState>>();

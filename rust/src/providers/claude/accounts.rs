@@ -26,6 +26,14 @@ pub async fn fetch_usage(
         .await
 }
 
+/// Learn the live login's real owner before saved accounts are refreshed, so
+/// the first refresh after start does not trust a misnamed `.claude.json`.
+pub async fn learn_live_login_owner() {
+    super::oauth::ClaudeOAuthFetcher::new()
+        .learn_live_owner()
+        .await;
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClaudeAccount {
@@ -86,6 +94,25 @@ struct Store {
     /// provenance is unknown and they are never used for standalone usage.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     isolated_accounts: Vec<String>,
+}
+
+/// Claude Code's live login and the account it belongs to.
+enum LiveLogin {
+    None,
+    /// The login under the identity of the account that owns its token.
+    Known(SavedLogin),
+    /// `.claude.json` names another account than the token's, and no single
+    /// saved account has the token's email.
+    Unattributed,
+}
+
+impl LiveLogin {
+    fn known(self) -> Option<SavedLogin> {
+        match self {
+            Self::Known(login) => Some(login),
+            Self::None | Self::Unattributed => None,
+        }
+    }
 }
 
 pub struct AccountManager {
@@ -165,8 +192,9 @@ impl AccountManager {
 
     fn list_with_consent(&self, consent: bool) -> io::Result<Vec<ClaudeAccount>> {
         let store = self.load()?;
+        // An unattributed login names no account it can prove, so none is active.
         let current = if consent {
-            read_login(&self.config_dir, &self.config_file)?
+            self.live_login(&store)?.known()
         } else {
             None
         };
@@ -188,12 +216,51 @@ impl AccountManager {
     }
 
     pub fn save_current(&self) -> io::Result<()> {
-        let current = read_login(&self.config_dir, &self.config_file)?.ok_or_else(|| {
-            io::Error::other("No Claude Code subscription login found. Add an account first.")
-        })?;
         let mut store = self.load()?;
+        let current = match self.live_login(&store)? {
+            LiveLogin::Known(login) => login,
+            LiveLogin::Unattributed => return Err(unattributed_login()),
+            LiveLogin::None => {
+                return Err(io::Error::other(
+                    "No Claude Code subscription login found. Add an account first.",
+                ));
+            }
+        };
         import_into(&mut store, current, true)?;
         self.save(&store)
+    }
+
+    /// Claude Code's live login, with its owner checked against the token.
+    /// `.claude.json` can name another account than the token belongs to: the
+    /// Claude desktop app's own Claude Code rewrites it with the app's account.
+    /// Once Claude's profile lookup has reported the token's email, a mismatch
+    /// is attributed to the one saved account with that email, and to no
+    /// account when none or several match. Without a reported email the
+    /// `.claude.json` account is used, as before.
+    fn live_login(&self, store: &Store) -> io::Result<LiveLogin> {
+        let Some(mut login) = read_login(&self.config_dir, &self.config_file)? else {
+            return Ok(LiveLogin::None);
+        };
+        let Some(token_email) = login.oauth["accessToken"]
+            .as_str()
+            .and_then(super::oauth::known_profile_email)
+        else {
+            return Ok(LiveLogin::Known(login));
+        };
+        if has_email(&login.identity, &token_email) {
+            return Ok(LiveLogin::Known(login));
+        }
+        let mut owners = store
+            .accounts
+            .iter()
+            .filter(|account| has_email(&account.identity, &token_email));
+        match (owners.next(), owners.next()) {
+            (Some(owner), None) => {
+                login.identity = owner.identity.clone();
+                Ok(LiveLogin::Known(login))
+            }
+            _ => Ok(LiveLogin::Unattributed),
+        }
     }
 
     fn set_installed_in_claude_code(&self, id: Option<&str>) -> io::Result<()> {
@@ -253,12 +320,13 @@ impl AccountManager {
     /// Resolve this account only. The active login may have newer credentials
     /// than its saved copy after Claude Code rotates its token.
     pub(super) fn usage_credentials(&self, id: &str) -> io::Result<(Value, bool)> {
-        if let Ok(Some(current)) = read_login(&self.config_dir, &self.config_file)
+        let store = self.load()?;
+        if let Ok(LiveLogin::Known(current)) = self.live_login(&store)
             && current.id()? == id
         {
             return Ok((current.oauth, true));
         }
-        self.load()?
+        store
             .accounts
             .into_iter()
             .find(|account| account.id().ok().as_deref() == Some(id))
@@ -276,6 +344,38 @@ impl AccountManager {
             return Ok(None);
         };
         identity_id(identity).map(Some)
+    }
+
+    /// The saved account a refresh of the live login may update, only when its
+    /// ownership is proven, so no saved login is overwritten with tokens that
+    /// are not its own. A saved account whose refresh token is the live one
+    /// shares its chain and owns it. Otherwise the `.claude.json` account owns
+    /// it once the token's reported email matches that account. After a
+    /// restart an expired token has no reported email, and `.claude.json` may
+    /// name another account, so an unproven login updates no saved account;
+    /// Switch still saves the live login under its owner before replacing it.
+    pub(super) fn refresh_account_id(
+        &self,
+        access_token: &str,
+        refresh_token: Option<&str>,
+    ) -> io::Result<Option<String>> {
+        if let Some(refresh_token) = refresh_token.filter(|token| !token.trim().is_empty())
+            && let Some(owner) = self
+                .load()?
+                .accounts
+                .iter()
+                .find(|account| account.oauth["refreshToken"].as_str() == Some(refresh_token))
+        {
+            return owner.id().map(Some);
+        }
+        let config = read_object(&self.config_file)?;
+        let Some(identity) = config.get("oauthAccount").filter(|value| !value.is_null()) else {
+            return Ok(None);
+        };
+        match super::oauth::known_profile_email(access_token) {
+            Some(email) if has_email(identity, &email) => identity_id(identity).map(Some),
+            _ => Ok(None),
+        }
     }
 
     /// Update the already-saved account identified before a token refresh.
@@ -332,7 +432,7 @@ impl AccountManager {
             ));
         }
         let mut store = self.load()?;
-        let current = read_login(&self.config_dir, &self.config_file)?;
+        let current = self.live_login(&store)?.known();
         let active = current
             .as_ref()
             .is_some_and(|account| account.id().ok().as_deref() == Some(id));
@@ -387,18 +487,36 @@ impl AccountManager {
         // no longer a standalone candidate. Persist that with the save below,
         // before the credentials change, so a later marker write cannot leave it isolated.
         store.isolated_accounts.retain(|known| known != id);
-        if let Some(current) = read_login(&self.config_dir, &self.config_file)? {
-            if current.id()? == id {
-                self.set_installed_in_claude_code(Some(id))?;
-                return Ok(());
+        match self.live_login(&store)? {
+            LiveLogin::Known(current) => {
+                // Already live and named correctly: nothing to change. A live
+                // login that `.claude.json` names wrongly is rewritten below.
+                let named_correctly =
+                    self.current_account_id()?.as_deref() == current.id().ok().as_deref();
+                if current.id()? == id && named_correctly {
+                    self.set_installed_in_claude_code(Some(id))?;
+                    return Ok(());
+                }
+                // Preserve the latest refresh token before replacing the active login.
+                // This copy is Claude Code's chain, so it loses isolated provenance.
+                upsert_shared(&mut store, current)?;
+                self.save(&store)?;
             }
-            // Preserve the latest refresh token before replacing the active login.
-            // This copy is Claude Code's chain, so it loses isolated provenance.
-            upsert_shared(&mut store, current)?;
-            self.save(&store)?;
-        } else if let Err(error) = self.save(&store) {
-            tracing::warn!(%error, "Could not record the switch before changing Claude Code's login");
+            // Its owner is unknown, so it could be neither saved nor restored.
+            LiveLogin::Unattributed => return Err(unattributed_login()),
+            LiveLogin::None => {
+                if let Err(error) = self.save(&store) {
+                    tracing::warn!(%error, "Could not record the switch before changing Claude Code's login");
+                }
+            }
         }
+        // Re-read: when the target was the live login, its newest tokens were just saved.
+        let target = store
+            .accounts
+            .iter()
+            .find(|a| a.id().ok().as_deref() == Some(id))
+            .cloned()
+            .unwrap_or(target);
         let credential_path = self.config_dir.join(".credentials.json");
         let old_credentials = read_object(&credential_path)?;
         let mut credentials = old_credentials.clone();
@@ -502,6 +620,18 @@ fn identity_id(identity: &Value) -> io::Result<String> {
     let account = required_string(identity, "accountUuid")?;
     let org = required_string(identity, "organizationUuid")?;
     Ok(format!("{account}:{org}"))
+}
+
+fn has_email(identity: &Value, email: &str) -> bool {
+    identity["emailAddress"]
+        .as_str()
+        .is_some_and(|known| known.eq_ignore_ascii_case(email))
+}
+
+fn unattributed_login() -> io::Error {
+    io::Error::other(
+        "Claude Code's login belongs to a different account than its settings name. Run `claude`, sign in again, then retry.",
+    )
 }
 
 fn read_object(path: &Path) -> io::Result<Value> {
@@ -763,6 +893,110 @@ mod tests {
         );
     }
 
+    /// A login for `account` with an email of its own, unlike [`login`].
+    fn owned_login(account: &str, org: &str, token: &str) -> SavedLogin {
+        let mut login = login(account, org, token);
+        login.identity["emailAddress"] = json!(format!("{account}@example.com"));
+        login
+    }
+
+    /// Claude Code holds `token_owner`'s token while `.claude.json` names
+    /// `named`, as after the Claude app rewrites it, and the profile lookup
+    /// has reported the token's email.
+    fn activate_misnamed(manager: &AccountManager, named: &SavedLogin, token_owner: &SavedLogin) {
+        activate(
+            manager,
+            &SavedLogin {
+                oauth: token_owner.oauth.clone(),
+                identity: named.identity.clone(),
+            },
+        );
+        super::super::oauth::remember_profile_email(
+            token_owner.oauth["accessToken"].as_str().unwrap(),
+            token_owner.identity["emailAddress"].as_str().unwrap(),
+        );
+    }
+
+    #[test]
+    fn misnamed_live_login_is_attributed_to_its_saved_owner() {
+        let dir = tempfile::tempdir().unwrap();
+        let manager = manager(dir.path());
+        manager
+            .import(owned_login("a", "one", "owner-a-saved"))
+            .unwrap();
+        manager
+            .import(owned_login("b", "two", "owner-b-saved"))
+            .unwrap();
+        let named = owned_login("a", "one", "owner-a-saved");
+        let live = owned_login("b", "two", "owner-b-live");
+        activate_misnamed(&manager, &named, &live);
+
+        let accounts = manager.list_with_consent(true).unwrap();
+        let active: Vec<_> = accounts
+            .iter()
+            .filter(|a| a.is_active)
+            .map(|a| a.id.as_str())
+            .collect();
+        assert_eq!(active, ["b:two"]);
+        // Usage is filed under the token's owner, never under the account `.claude.json` names.
+        assert_eq!(
+            manager.usage_credentials("b:two").unwrap(),
+            (live.oauth.clone(), true)
+        );
+        assert_eq!(
+            manager.usage_credentials("a:one").unwrap().0["accessToken"],
+            "owner-a-saved"
+        );
+        // A refresh of the live token must not land in account a's saved login.
+        assert_eq!(
+            manager.refresh_account_id("owner-b-live", None).unwrap(),
+            None
+        );
+
+        manager.switch("a:one").unwrap();
+        let credentials = read_object(&manager.config_dir.join(".credentials.json")).unwrap();
+        assert_eq!(credentials["claudeAiOauth"]["accessToken"], "owner-a-saved");
+        // The outgoing live login was saved under its real owner, b.
+        let store = manager.load().unwrap();
+        let saved = |id: &str| {
+            store
+                .accounts
+                .iter()
+                .find(|account| account.id().unwrap() == id)
+                .unwrap()
+                .oauth["accessToken"]
+                .clone()
+        };
+        assert_eq!(saved("b:two"), "owner-b-live");
+        assert_eq!(saved("a:one"), "owner-a-saved");
+    }
+
+    #[test]
+    fn switching_to_the_misnamed_owner_keeps_its_live_tokens_and_fixes_the_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let manager = manager(dir.path());
+        manager
+            .import(owned_login("a", "one", "owner2-a-saved"))
+            .unwrap();
+        manager
+            .import(owned_login("b", "two", "owner2-b-stale"))
+            .unwrap();
+        let named = owned_login("a", "one", "owner2-a-saved");
+        let live = owned_login("b", "two", "owner2-b-live");
+        activate_misnamed(&manager, &named, &live);
+
+        manager.switch("b:two").unwrap();
+        let credentials = read_object(&manager.config_dir.join(".credentials.json")).unwrap();
+        assert_eq!(credentials["claudeAiOauth"]["accessToken"], "owner2-b-live");
+        assert_eq!(credentials["mcpOAuth"]["secret"], "preserved");
+        let config = read_object(&manager.config_file).unwrap();
+        assert_eq!(config["oauthAccount"]["accountUuid"], "b");
+        assert_eq!(
+            manager.current_account_id().unwrap().as_deref(),
+            Some("b:two")
+        );
+    }
+
     #[test]
     fn blank_token_logout_with_corrupt_config_is_still_an_error() {
         let dir = tempfile::tempdir().unwrap();
@@ -794,6 +1028,115 @@ mod tests {
 
         assert!(manager.switch("a:one").is_err());
         assert_eq!(std::fs::read(&credential_path).unwrap(), before);
+    }
+
+    #[test]
+    fn unattributed_live_login_is_neither_saved_nor_overwritten() {
+        let dir = tempfile::tempdir().unwrap();
+        let manager = manager(dir.path());
+        manager
+            .import(owned_login("a", "one", "owner3-a-saved"))
+            .unwrap();
+        manager
+            .import(owned_login("b", "two", "owner3-b-saved"))
+            .unwrap();
+        let named = owned_login("a", "one", "owner3-a-saved");
+        let stranger = owned_login("c", "three", "owner3-c-live");
+        activate_misnamed(&manager, &named, &stranger);
+        let credential_path = manager.config_dir.join(".credentials.json");
+        let before = std::fs::read(&credential_path).unwrap();
+        let store_before = std::fs::read(manager.root.join("accounts.json")).unwrap();
+
+        let accounts = manager.list_with_consent(true).unwrap();
+        assert_eq!(accounts.len(), 2);
+        assert!(accounts.iter().all(|a| a.is_saved && !a.is_active));
+        assert!(manager.switch("b:two").is_err());
+        assert!(manager.save_current().is_err());
+        assert_eq!(std::fs::read(&credential_path).unwrap(), before);
+        assert_eq!(
+            std::fs::read(manager.root.join("accounts.json")).unwrap(),
+            store_before
+        );
+        assert_eq!(
+            manager.refresh_account_id("owner3-c-live", None).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn without_a_reported_email_the_named_account_stays_live_but_unproven() {
+        let dir = tempfile::tempdir().unwrap();
+        let manager = manager(dir.path());
+        manager
+            .import(owned_login("a", "one", "owner4-a-saved"))
+            .unwrap();
+        manager
+            .import(owned_login("b", "two", "owner4-b-saved"))
+            .unwrap();
+        // No profile lookup has finished for this token.
+        activate(&manager, &owned_login("a", "one", "owner4-unreported"));
+
+        let active: Vec<_> = manager
+            .list_with_consent(true)
+            .unwrap()
+            .into_iter()
+            .filter(|a| a.is_active)
+            .map(|a| a.id)
+            .collect();
+        assert_eq!(active, ["a:one"]);
+        // `.claude.json` alone never proves which saved login a refresh may update.
+        assert_eq!(
+            manager
+                .refresh_account_id("owner4-unreported", Some("refresh-owner4-unreported"))
+                .unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn refresh_updates_only_a_saved_login_that_provably_owns_the_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let manager = manager(dir.path());
+        manager
+            .import(owned_login("a", "one", "owner5-a-saved"))
+            .unwrap();
+        manager
+            .import(owned_login("b", "two", "owner5-b-shared"))
+            .unwrap();
+
+        // After a restart: `.claude.json` names a, the expired token has no
+        // reported email, and its refresh chain is b's. The chain decides.
+        assert_eq!(
+            manager
+                .refresh_account_id("owner5-expired", Some("refresh-owner5-b-shared"))
+                .unwrap()
+                .as_deref(),
+            Some("b:two")
+        );
+        activate(&manager, &owned_login("a", "one", "owner5-expired"));
+        assert_eq!(
+            manager
+                .refresh_account_id("owner5-expired", Some("refresh-owner5-b-shared"))
+                .unwrap()
+                .as_deref(),
+            Some("b:two")
+        );
+        // Same situation with a chain no saved login shares: nothing is updated.
+        assert_eq!(
+            manager
+                .refresh_account_id("owner5-expired", Some("refresh-owner5-unknown"))
+                .unwrap(),
+            None
+        );
+        // A reported email that matches `.claude.json` proves ownership.
+        super::super::oauth::remember_profile_email("owner5-reported", "a@example.com");
+        assert_eq!(
+            manager
+                .refresh_account_id("owner5-reported", Some("refresh-owner5-unknown"))
+                .unwrap()
+                .as_deref(),
+            Some("a:one")
+        );
     }
 
     #[cfg(windows)]
